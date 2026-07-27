@@ -15,7 +15,12 @@ report, and release decision.
 
 ### Increment 1 — YC Migration and Publishing Foundation
 
-**Status:** Accepted for planning
+**Status:** Implementation plans drafted; review and approval pending
+
+Planning artifacts:
+
+- [WP91-WP98 implementation plan](docs/superpowers/plans/2026-07-27-increment-1-wp91-wp98-implementation-plan.md)
+- [Increment 1 acceptance test plan](docs/superpowers/plans/2026-07-27-increment-1-acceptance-test-plan.md)
 
 - Introduce reusable, versioned Book Projects and Book Blueprints.
 - Generalize project and chapter discovery beyond one volume and chapter count.

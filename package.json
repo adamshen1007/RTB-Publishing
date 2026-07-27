@@ -15,7 +15,7 @@
   "scripts": {
     "check": "pnpm run check:tools && pnpm run check:markdown && pnpm run check:links && pnpm run check:spelling && pnpm run check:style && pnpm run check:diagrams && pnpm run check:citations && pnpm run test && pnpm run eval:agents && pnpm run check:example && pnpm run check:research && pnpm run check:agent-example && pnpm run check:platform",
     "check:tools": "node scripts/check-tools.mjs",
-    "check:markdown": "markdownlint-cli2 \"**/*.md\" \"#node_modules/**\" \"#dist/**\" \"#build/**\"",
+    "check:markdown": "markdownlint-cli2 \"**/*.md\" \"#.superpowers/**\" \"#node_modules/**\" \"#dist/**\" \"#build/**\"",
     "check:links": "node scripts/check-links.mjs",
     "check:spelling": "cspell lint \"**/*.md\" --no-progress --show-suggestions",
     "check:style": "node scripts/check-style.mjs",
@@ -35,6 +35,7 @@
     "platform:start": "node bin/rtb-publishing.mjs platform start",
     "build": "node scripts/build-book.mjs",
     "verify:outputs": "node scripts/verify-outputs.mjs",
+    "baseline:increment-1": "node scripts/record-increment-1-baseline.mjs",
     "notion:export": "node scripts/notion-publication.mjs export",
     "notion:check": "node scripts/notion-publication.mjs check",
     "preview": "node scripts/preview.mjs",

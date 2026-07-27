@@ -135,6 +135,18 @@ test("live index increments only when canonical state changes", () => {
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
+test("live index ignores hidden temporary research fixtures", () => {
+  const directory = resolve(ROOT, "research", "topics", ".tmp-platform-index-test");
+  const fixture = resolve(directory, "research.yaml");
+  const index = new WorkspaceIndex({ localFile: isolatedLocalFile, now: () => "2026-07-13T09:00:00Z" });
+  try {
+    assert.equal(index.refresh().index.generation, 1);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(fixture, "fixture: ignored\n");
+    assert.equal(index.refresh().index.generation, 1);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("pilot template validates without being claimed as a completed session", () => {
   const template = parse(readFileSync(resolve(ROOT, "pilots", "templates", "session.yaml"), "utf8"));
   assert.doesNotThrow(() => validatePlatformRecord("pilot-session", template));

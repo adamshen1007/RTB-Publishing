@@ -5,6 +5,7 @@
   "enableGlobDot": true,
   "ignorePaths": [
     ".git/**",
+    ".superpowers/**",
     "build/**",
     "dist/**",
     "node_modules/**",

@@ -10,8 +10,12 @@ import { WORKSPACE_FILE } from "./constants.mjs";
 import { loadEffectiveWorkspace, loadLocalWorkspace } from "./local-state.mjs";
 import { safeExternalPath } from "./security.mjs";
 
+function canonicalFiles(directory, predicate = () => true) {
+  return listFiles(directory, predicate).filter((file) => !relative(directory, file).split(sep).some((part) => part.startsWith(".")));
+}
+
 function count(directory, predicate) {
-  return listFiles(directory, predicate).filter((file) => !relative(directory, file).split(sep).some((part) => part.startsWith("."))).length;
+  return canonicalFiles(directory, predicate).length;
 }
 
 function externalFiles(directory, predicate = () => true) {
@@ -106,7 +110,7 @@ export class WorkspaceIndex {
   refresh() {
     try {
       const next = buildWorkspaceIndex(this.file, this.localFile);
-      const tracked = [resolve(ROOT, "ROADMAP.md"), resolve(ROOT, "package.json"), resolve(this.file), ...listFiles(resolve(ROOT, "research"), (file) => /\.(ya?ml|json|md)$/.test(file)), ...listFiles(resolve(ROOT, "examples"), (file) => /(rtb-publishing\.project\.yaml|\/(proposal|verification|approval|summary)\.json)$/.test(file))].filter(existsSync);
+      const tracked = [resolve(ROOT, "ROADMAP.md"), resolve(ROOT, "package.json"), resolve(this.file), ...canonicalFiles(resolve(ROOT, "research"), (file) => /\.(ya?ml|json|md)$/.test(file)), ...canonicalFiles(resolve(ROOT, "examples"), (file) => /(rtb-publishing\.project\.yaml|\/(proposal|verification|approval|summary)\.json)$/.test(file))].filter(existsSync);
       const fingerprint = tracked.sort().map((file) => `${file}:${createHash("sha256").update(readFileSync(file)).digest("hex")}`).join("|");
       const hash = createHash("sha256").update(JSON.stringify(next)).update(fingerprint).digest("hex");
       if (hash !== this.hash) { this.current = next; this.hash = hash; this.generation += 1; }
@@ -118,7 +122,7 @@ export class WorkspaceIndex {
 
 export function researchDetail(projectId) {
   if (projectId !== "rtb-publishing-core") return { topics: [] };
-  const topicFiles = listFiles(resolve(ROOT, "research", "topics"), (file) => file.endsWith("research.yaml"));
+  const topicFiles = canonicalFiles(resolve(ROOT, "research", "topics"), (file) => file.endsWith("research.yaml"));
   return { topics: topicFiles.map((file) => {
     const data = loadResearch(file);
     return { id: data.topic.topic.id, title: data.topic.topic.title, status: data.topic.research.status, asOf: data.topic.research.asOf, sources: data.sources.length, evidence: data.evidence.length, claims: data.claims.length, staleSources: data.staleSources.length, proposedClaims: data.claims.filter((claim) => claim.status === "proposed").length, assumptions: data.claims.filter((claim) => claim.classification === "assumption").length };
