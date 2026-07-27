@@ -30,6 +30,10 @@ test("EPUB semantic snapshots exclude build-time metadata", () => {
   const first = '<dc:date id="epub-date">2026-07-27T14:45:00Z</dc:date><meta property="dcterms:modified">2026-07-27T14:45:00Z</meta>';
   const second = '<dc:date id="epub-date" content="2026-07-27T15:00:00Z" /><meta content="2026-07-27T15:00:00Z" property="dcterms:modified" />';
   assert.equal(normalizeEpubDocument(first), normalizeEpubDocument(second));
+  assert.equal(
+    normalizeEpubDocument('<meta data-note="a > b" property="dcterms:modified" content="2026-07-27T15:00:00Z" />'),
+    '<meta content="[build-time]" data-note="a > b" property="dcterms:modified" />'
+  );
 });
 
 test("baseline capture rejects a revision or worktree change after checks complete", async () => {

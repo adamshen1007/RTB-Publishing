@@ -93,7 +93,7 @@ export function normalizeHtml(markup) {
 }
 
 export function normalizeEpubDocument(markup) {
-  const tokens = normalizeHtml(markup).match(/<[^>]*>|[^<]+/g) ?? [];
+  const tokens = tokenizeXml(normalizeHtml(markup));
   const normalized = [];
   const metadataText = [];
   for (const token of tokens) {
@@ -137,6 +137,38 @@ export function normalizeEpubDocument(markup) {
     normalized.push(serializeXmlTag({ ...tag, attributes: canonicalAttributes }));
   }
   return normalized.join("").trim();
+}
+
+function tokenizeXml(markup) {
+  const tokens = [];
+  let textStart = 0;
+  let index = 0;
+  while (index < markup.length) {
+    if (markup[index] !== "<") {
+      index += 1;
+      continue;
+    }
+    if (textStart < index) tokens.push(markup.slice(textStart, index));
+    let quote = null;
+    let end = index + 1;
+    for (; end < markup.length; end += 1) {
+      const character = markup[end];
+      if (quote) {
+        if (character === quote) quote = null;
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === ">") {
+        end += 1;
+        break;
+      }
+    }
+    if (quote || end > markup.length || markup[end - 1] !== ">") return [markup];
+    tokens.push(markup.slice(index, end));
+    index = end;
+    textStart = index;
+  }
+  if (textStart < markup.length) tokens.push(markup.slice(textStart));
+  return tokens;
 }
 
 function parseXmlTag(token) {
