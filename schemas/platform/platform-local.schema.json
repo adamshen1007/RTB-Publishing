@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS local workspace overlay",
+  "title": "RTB Publishing local workspace overlay",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "allowedRoots", "projects"],

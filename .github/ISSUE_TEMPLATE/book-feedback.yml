@@ -1,11 +1,11 @@
-name: FounderOS Playbook feedback
+name: RTB Publishing Playbook feedback
 description: Report a confusing passage, factual concern, or worksheet problem.
 title: "[Book feedback]: "
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reviewing *The FounderOS Playbook for AI Founders*.
+        Thank you for reviewing *The RTB Publishing Playbook for AI Founders*.
         Do not include company secrets, customer data, credentials, or sensitive personal information.
   - type: input
     id: version

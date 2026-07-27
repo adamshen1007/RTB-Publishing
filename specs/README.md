@@ -1,6 +1,6 @@
 # Specification Index
 
-This directory contains the canonical implementation contracts for FounderOS.
+This directory contains the canonical implementation contracts for RTB Publishing.
 Numbered publishing-platform specifications use a stable three-digit prefix so
 references do not change when new specifications are added.
 
@@ -36,6 +36,6 @@ accepted numbers must not be silently reused for a different topic.
 ## Supporting Specifications
 
 - [`engines/`](engines/) defines the responsibilities and boundaries of the
-  FounderOS engines.
+  RTB Publishing engines.
 - [`orchestration/`](orchestration/) defines interaction patterns, approval
   gates, and the lightweight initial workflow.

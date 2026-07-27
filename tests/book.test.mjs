@@ -86,5 +86,5 @@ test("footnote namespaces remain unique when chapters are combined", () => {
 test("publication preparation uses explicit public statuses and artifact naming", () => {
   assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Publication Candidate"));
   assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Public Preview"));
-  assert.equal(BOOK_OUTPUT_NAME, "founderos-playbook");
+  assert.equal(BOOK_OUTPUT_NAME, "rtb-publishing-playbook");
 });

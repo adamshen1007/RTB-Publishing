@@ -1,23 +1,23 @@
 ---
-title: The FounderOS Playbook for AI Founders
+title: The RTB Publishing Playbook for AI Founders
 subtitle: The Complete Guide to Building AI Companies
-author: FounderOS
-identifier: founderos-volume-01-playbook
+author: RTB Publishing
+identifier: rtb-publishing-volume-01-playbook
 version: "0.3.0"
 status: Publication Candidate
 lang: en-US
-rights: Copyright 2026 FounderOS contributors. All rights reserved.
+rights: Copyright 2026 RTB Publishing contributors. All rights reserved.
 ---
 
-# The FounderOS Playbook for AI Founders
+# The RTB Publishing Playbook for AI Founders
 
-> **Edition Status — 0.3.0 Publication Candidate:** FounderOS has decided to
+> **Edition Status — 0.3.0 Publication Candidate:** RTB Publishing has decided to
 > pursue publication, but this candidate is not the 0.9.0 Public Preview or the
 > 1.0.0 published edition. Human review gates remain open.
 
 This practical field guide helps a first-time AI founder move from an uncertain
 problem to an evidence-backed operating rhythm. It synthesizes public startup
-guidance, primary sources, and explicit FounderOS interpretation. Y Combinator
+guidance, primary sources, and explicit RTB Publishing interpretation. Y Combinator
 is one of several cited sources; it did not publish, sponsor, review, or endorse
 this independent work. The book does not promise admission, funding, or a
 particular company outcome.

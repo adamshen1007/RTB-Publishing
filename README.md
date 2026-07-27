@@ -1,11 +1,11 @@
-# FounderOS
+# RTB Publishing
 
-FounderOS is a documentation-first foundation for building an AI-native
+RTB Publishing is a documentation-first foundation for building an AI-native
 founder operating system. It is designed to turn reusable knowledge,
 governance, research, engineering practices, and publishing workflows into a
 compounding operating system for founders.
 
-The current development priority is **The FounderOS Playbook for AI Founders**.
+The current development priority is **The RTB Publishing Playbook for AI Founders**.
 Its complete 23-chapter manuscript is a publication candidate. The repository
 also contains the canonical strategy, architecture, engine specifications,
 governance records, publishing templates, an initial Founder Library sample,
@@ -30,8 +30,8 @@ The complete governance rules are defined in [CONSTITUTION.md](CONSTITUTION.md).
 Clone the repository:
 
 ```bash
-git clone https://github.com/adamshen1007/FounderOS.git
-cd FounderOS
+git clone https://github.com/adamshen1007/RTB Publishing.git
+cd RTB Publishing
 ```
 
 Then read these documents in order:
@@ -63,13 +63,13 @@ the [canonical table of contents](books/volume-01-yc-playbook/table-of-contents.
 the [publication plan](books/volume-01-yc-playbook/publication-plan.md), the
 [release-readiness checklist](books/volume-01-yc-playbook/release-readiness-checklist.md),
 and the [book authoring workflow](docs/05-operations/book-authoring.md). The book
-is an independent FounderOS publication; it is not endorsed by Y Combinator and
+is an independent RTB Publishing publication; it is not endorsed by Y Combinator and
 does not promise funding or a company outcome.
 
 Create an engineering kit for a new project:
 
 ```bash
-pnpm founderos create my-project \
+pnpm rtb-publishing create my-project \
   --name "My Project" \
   --description "A focused description of the project." \
   --owner "Your Name" \
@@ -83,9 +83,9 @@ before regenerating or forcing replacement.
 Validate and inspect the example research topic:
 
 ```bash
-pnpm founderos research validate \
+pnpm rtb-publishing research validate \
   research/topics/customer-validation-before-mvp/research.yaml
-pnpm founderos research status \
+pnpm rtb-publishing research status \
   research/topics/customer-validation-before-mvp/research.yaml
 ```
 
@@ -95,7 +95,7 @@ before adding sources, advancing freshness dates, or rebuilding a brief.
 Run the Research Review Agent without a provider key:
 
 ```bash
-pnpm founderos agent run research-reviewer \
+pnpm rtb-publishing agent run research-reviewer \
   --subject research/topics/customer-validation-before-mvp/research.yaml \
   --provider fake \
   --run-id RUN-LOCAL-001
@@ -108,7 +108,7 @@ reviewing, applying, or selecting the optional OpenAI provider.
 Start the local Founder Workspace:
 
 ```bash
-pnpm founderos platform doctor
+pnpm rtb-publishing platform doctor
 pnpm platform:start
 ```
 
@@ -119,7 +119,7 @@ running workflows or changing the project registry.
 Inspect an external repository without changing local state:
 
 ```bash
-pnpm founderos platform project onboard "/absolute/path/to/project"
+pnpm rtb-publishing platform project onboard "/absolute/path/to/project"
 ```
 
 External access requires a separate explicit allowlist and remains read-only.
@@ -130,7 +130,7 @@ The next product activity remains real internal use recorded with the
 currently a no-go, not an implied next implementation stage.
 
 ```bash
-pnpm founderos platform pilot status
+pnpm rtb-publishing platform pilot status
 ```
 
 This reports evidence progress but never turns local jobs into pilot sessions.
@@ -142,7 +142,7 @@ prerequisites and individual commands.
 ## Canonical Repository Structure
 
 ```text
-FounderOS/
+RTB Publishing/
 ├── governance/     # ADRs, RFCs, and policies
 ├── docs/           # Strategy, architecture, and operating guides
 ├── specs/          # Implementation contracts and engine specifications
@@ -193,5 +193,5 @@ security issues according to [SECURITY.md](SECURITY.md), not in a public issue.
 
 ## License
 
-Copyright is reserved while FounderOS validates which components should become
+Copyright is reserved while RTB Publishing validates which components should become
 open source. See [LICENSE](LICENSE) for the current terms.

@@ -21,7 +21,7 @@ canonical Markdown change and focused checks have been reviewed.
 
 ## Resolution Rules
 
-1. Preserve sourced guidance, FounderOS synthesis, and founder assumptions as
+1. Preserve sourced guidance, RTB Publishing synthesis, and founder assumptions as
    distinct claim types.
 2. Recheck the primary source before changing a sourced claim.
 3. Record the source commit or pull request with the resolution.

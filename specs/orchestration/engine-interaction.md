@@ -1,11 +1,11 @@
-# FounderOS Engine Interaction and Orchestration Specification
+# RTB Publishing Engine Interaction and Orchestration Specification
 
 **Milestone:** M0 — Strategy and Governance  
 **Status:** Draft
 
 ## Purpose
 
-This specification defines how FounderOS Core engines collaborate.
+This specification defines how RTB Publishing Core engines collaborate.
 
 Previous milestones defined:
 
@@ -13,13 +13,13 @@ Previous milestones defined:
 - Capabilities — value delivered
 - Engines — implementation boundaries
 
-This document defines the orchestration model between engines so FounderOS can operate as a coherent platform rather than a collection of disconnected modules.
+This document defines the orchestration model between engines so RTB Publishing can operate as a coherent platform rather than a collection of disconnected modules.
 
 ---
 
 # 1. Core Orchestration Principle
 
-FounderOS engines should communicate through explicit contracts, events, and shared objects.
+RTB Publishing engines should communicate through explicit contracts, events, and shared objects.
 
 Engines should avoid hidden dependencies, direct file mutation across domains, or implicit behavior.
 
@@ -43,7 +43,7 @@ Automation Engine records result
 
 # 2. Interaction Types
 
-FounderOS supports three interaction types.
+RTB Publishing supports three interaction types.
 
 ## 2.1 Event-Based Interaction
 
@@ -485,6 +485,6 @@ This specification is accepted when:
 
 # 17. Decision
 
-FounderOS should proceed with an event-first orchestration model, while keeping the first implementation lightweight and file-based.
+RTB Publishing should proceed with an event-first orchestration model, while keeping the first implementation lightweight and file-based.
 
 The initial implementation should rely on Git, Markdown, CI checks, and scripts before introducing a full event runtime.

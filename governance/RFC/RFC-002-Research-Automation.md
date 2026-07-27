@@ -6,7 +6,7 @@ Accepted for M3 implementation
 
 ## Summary
 
-FounderOS will provide a local research workflow that turns structured topic,
+RTB Publishing will provide a local research workflow that turns structured topic,
 source, evidence, and claim records into a validated Markdown research brief.
 
 ## Motivation
@@ -17,7 +17,7 @@ facts from synthesis and assumptions or to refresh a publication safely.
 
 ## Proposal
 
-Add a `founderos research` command group with these operations:
+Add a `rtb-publishing research` command group with these operations:
 
 - `create` creates a research topic manifest and record directories.
 - `add-source` writes one normalized source record.

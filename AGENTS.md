@@ -1,4 +1,4 @@
-# FounderOS AI Agent Instructions
+# RTB Publishing AI Agent Instructions
 
 ## Universal Rules
 

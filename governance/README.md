@@ -1,16 +1,16 @@
 # Governance
 
 This directory contains the constitutional, RFC, ADR, policy, and decision
-framework for FounderOS. Earlier records remain part of the decision history
+framework for RTB Publishing. Earlier records remain part of the decision history
 when a later record narrows or supersedes them.
 
 ## Constitution and Process
 
-- [FounderOS Constitution](../CONSTITUTION.md) is the only canonical FounderOS
-  constitution and the authority for FounderOS source-of-truth rules.
-- [FounderOS agent instructions](../AGENTS.md) define the repository-wide
+- [RTB Publishing Constitution](../CONSTITUTION.md) is the only canonical RTB Publishing
+  constitution and the authority for RTB Publishing source-of-truth rules.
+- [RTB Publishing agent instructions](../AGENTS.md) define the repository-wide
   operating rules and required chapter elements.
-- [RFC-000 — FounderOS RFC Process](RFC/RFC-000-Process.md) defines how major
+- [RFC-000 — RTB Publishing RFC Process](RFC/RFC-000-Process.md) defines how major
   changes are proposed, reviewed, accepted, and superseded.
 - [RFC template](RFC/RFC-001-Template.md) provides the required structure for
   a new RFC.

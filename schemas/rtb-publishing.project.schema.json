@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/founderos.project.schema.json",
-  "title": "FounderOS project manifest",
+  "$id": "https://rtb-publishing.dev/schemas/rtb-publishing.project.schema.json",
+  "title": "RTB Publishing project manifest",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "project", "product", "generation"],

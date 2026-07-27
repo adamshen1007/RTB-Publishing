@@ -6,7 +6,7 @@ Accepted for Increment 1 planning
 
 ## Summary
 
-FounderOS changes from a general founder workspace into a local-first
+RTB Publishing changes from a general founder workspace into a local-first
 research-to-book Creator Studio with a private subscriber library. Markdown and
 Git remain authoritative for authored publication content. The Creator Studio
 coordinates research, composition, review, and release work locally; only
@@ -21,12 +21,12 @@ publication.
 
 ## Motivation
 
-FounderOS already has validated Markdown publishing, research automation,
+RTB Publishing already has validated Markdown publishing, research automation,
 governed agents, a local founder workspace, and a private Notion editorial
 surface. The reviewed research-to-book design combines those capabilities into
 one reusable product rather than extending the paused general hosted workspace.
 
-The existing YC Playbook supplies a concrete migration oracle, but FounderOS
+The existing YC Playbook supplies a concrete migration oracle, but RTB Publishing
 must not hard-code one topic, volume, or chapter count. A second short pilot is
 needed to test whether the system can carry a different bounded topic from
 evidence to an accepted beta. A staged delivery program keeps the first
@@ -37,7 +37,7 @@ the highest-risk transitions.
 
 ### Product Boundary
 
-FounderOS must provide a private, local-first Creator Studio for reusable Book
+RTB Publishing must provide a private, local-first Creator Studio for reusable Book
 Projects and a private hosted subscriber library for approved editions.
 Canonical manuscripts, research records, drafts, rejected proposals,
 credentials, and Editorial Memory stay local. Hosted services must receive

@@ -30,7 +30,7 @@ function values(overrides = {}) {
 
 function fixture(overrides = {}) {
   const directory = mkdtempSync(resolve(temporaryRoot, "generator-"));
-  const manifestFile = resolve(directory, "founderos.project.yaml");
+  const manifestFile = resolve(directory, "rtb-publishing.project.yaml");
   writeFileSync(manifestFile, stringify(createManifest(values(overrides))));
   return { directory, manifestFile };
 }
@@ -50,7 +50,7 @@ test("first generation creates the complete kit and deterministic state", () => 
     const first = generateKit(manifestFile);
     assert.equal(first.changes.length, 8);
     assert.ok(first.files.every((file) => file.content.startsWith(GENERATED_MARKER)));
-    const stateFile = resolve(directory, ".founderos", "generation-state.json");
+    const stateFile = resolve(directory, ".rtb-publishing", "generation-state.json");
     assert.ok(existsSync(stateFile));
     const stateBefore = readFileSync(stateFile, "utf8");
     const second = generateKit(manifestFile);
@@ -79,7 +79,7 @@ test("unsafe output paths are rejected", () => {
 test("symbolic-link output paths are rejected", () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "generator-symlink-"));
   const target = mkdtempSync(resolve(temporaryRoot, "generator-target-"));
-  const manifestFile = resolve(directory, "founderos.project.yaml");
+  const manifestFile = resolve(directory, "rtb-publishing.project.yaml");
   try {
     symlinkSync(target, resolve(directory, "redirect"));
     writeFileSync(manifestFile, stringify(createManifest(values({ output: "redirect" }))));
@@ -148,12 +148,12 @@ test("check mode detects template drift without writing", () => {
 test("non-interactive create builds a complete first project", () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "cli-create-"));
   try {
-    const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "founderos.mjs"), "create", "cli-project",
+    const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "rtb-publishing.mjs"), "create", "cli-project",
       "--name", "CLI Project", "--description", "A project created by the command-line integration test.",
       "--owner", "Test Owner", "--audience", "Test users", "--problem", "Test users need a deterministic starter kit.",
       "--stage", "discovery", "--output", directory, "--non-interactive"], { cwd: ROOT, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
-    assert.ok(existsSync(resolve(directory, "founderos.project.yaml")));
+    assert.ok(existsSync(resolve(directory, "rtb-publishing.project.yaml")));
     assert.ok(existsSync(resolve(directory, "planning", "verification-plan.md")));
     assert.match(result.stdout, /create\s+README\.md/);
   } finally {
@@ -164,7 +164,7 @@ test("non-interactive create builds a complete first project", () => {
 test("non-interactive create reports missing values without writing", () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "cli-missing-"));
   cleanup(directory);
-  const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "founderos.mjs"), "create", "incomplete-project",
+  const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "rtb-publishing.mjs"), "create", "incomplete-project",
     "--output", directory, "--non-interactive"], { cwd: ROOT, encoding: "utf8" });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Missing required create options/);
@@ -174,7 +174,7 @@ test("non-interactive create reports missing values without writing", () => {
 test("create dry-run reports the complete kit without writing", () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "cli-dry-run-"));
   cleanup(directory);
-  const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "founderos.mjs"), "create", "dry-run-project",
+  const result = spawnSync(process.execPath, [resolve(ROOT, "bin", "rtb-publishing.mjs"), "create", "dry-run-project",
     "--name", "Dry Run Project", "--description", "A project that must not be written.",
     "--owner", "Test Owner", "--audience", "Test users", "--problem", "Test users need safe previews.",
     "--output", directory, "--non-interactive", "--dry-run"], { cwd: ROOT, encoding: "utf8" });

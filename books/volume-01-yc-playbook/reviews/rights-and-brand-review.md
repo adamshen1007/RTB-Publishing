@@ -9,13 +9,13 @@ source use, quotations, paraphrases, rights statement, and launch copy.
 
 ## Current Repository Actions
 
-- The public title is *The FounderOS Playbook for AI Founders*.
+- The public title is *The RTB Publishing Playbook for AI Founders*.
 - “YC” was removed from the public title.
 - The manuscript states that Y Combinator did not publish, sponsor, review, or
   endorse the work.
 - The historical source-directory slug remains unchanged and is not public
   branding.
-- Public download filenames use `founderos-playbook`.
+- Public download filenames use `rtb-publishing-playbook`.
 - No Y Combinator logo or copied brand asset is planned.
 
 These actions reduce ambiguity but do not constitute legal clearance.
@@ -25,7 +25,7 @@ These actions reduce ambiguity but do not constitute legal clearance.
 - [Y Combinator Legal and Terms of Use](https://www.ycombinator.com/legal/)
 - [U.S. Copyright Office Fair Use Index](https://www.copyright.gov/fair-use/)
 - [U.S. Copyright Office permission guidance](https://www.copyright.gov/circs/circ16a.pdf)
-- [FounderOS source registry](../references/source-registry.md)
+- [RTB Publishing source registry](../references/source-registry.md)
 
 ## Open Review Items
 

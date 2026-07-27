@@ -7,16 +7,16 @@ import { PLATFORM_JOB_DIRECTORY } from "./constants.mjs";
 import { validatePlatformRecord } from "./model.mjs";
 import { redactLog, safePlatformPath } from "./security.mjs";
 
-const cli = resolve(ROOT, "bin", "founderos.mjs");
+const cli = resolve(ROOT, "bin", "rtb-publishing.mjs");
 const research = resolve(ROOT, "research", "topics", "customer-validation-before-mvp", "research.yaml");
-const kit = resolve(ROOT, "examples", "ai-launch-copilot", "founderos.project.yaml");
+const kit = resolve(ROOT, "examples", "ai-launch-copilot", "rtb-publishing.project.yaml");
 
 export function workflowCommand(projectId, workflow, jobId) {
   const key = `${projectId}:${workflow}`;
   const commands = {
-    "founderos-core:quality-check": ["pnpm", "check"],
-    "founderos-core:research-validate": [process.execPath, cli, "research", "validate", research],
-    "founderos-core:agent-review-fake": [process.execPath, cli, "agent", "run", "research-reviewer", "--subject", research, "--provider", "fake", "--run-id", jobId.replace("JOB-", "RUN-"), "--output", resolve(ROOT, ".founderos", "agent-runs", jobId.replace("JOB-", "RUN-"))],
+    "rtb-publishing-core:quality-check": ["pnpm", "check"],
+    "rtb-publishing-core:research-validate": [process.execPath, cli, "research", "validate", research],
+    "rtb-publishing-core:agent-review-fake": [process.execPath, cli, "agent", "run", "research-reviewer", "--subject", research, "--provider", "fake", "--run-id", jobId.replace("JOB-", "RUN-"), "--output", resolve(ROOT, ".rtb-publishing", "agent-runs", jobId.replace("JOB-", "RUN-"))],
     "ai-launch-copilot:kit-check": [process.execPath, cli, "generate", kit, "--check"]
   };
   if (!commands[key]) throw new Error(`Workflow ${workflow} is not allowed for ${projectId}.`);

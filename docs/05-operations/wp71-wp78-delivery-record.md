@@ -18,9 +18,9 @@ preserving human approval gates.
 
 ## Implemented Boundary
 
-- The public title is *The FounderOS Playbook for AI Founders*.
+- The public title is *The RTB Publishing Playbook for AI Founders*.
 - The source-directory slug remains historical and internal.
-- Public artifacts use the `founderos-playbook` filename.
+- Public artifacts use the `rtb-publishing-playbook` filename.
 - Book metadata identifies version 0.3.0 as `Publication Candidate`.
 - The release ladder requires 0.9.0 Public Preview before 1.0.0 Published.
 - The issue template requests sanitized, actionable reader feedback.

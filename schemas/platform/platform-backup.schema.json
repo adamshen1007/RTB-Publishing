@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS local workspace backup",
+  "title": "RTB Publishing local workspace backup",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "createdAt", "scope", "localWorkspace"],

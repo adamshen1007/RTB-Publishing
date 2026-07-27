@@ -3,7 +3,7 @@
 ## Outcome
 
 WP79–WP86 establish a private Notion editorial and workbook layer for all 23
-chapters of *The FounderOS Playbook for AI Founders*. The canonical publication
+chapters of *The RTB Publishing Playbook for AI Founders*. The canonical publication
 source remains Markdown in Git. No human review or publication approval is
 claimed by this delivery.
 
@@ -12,7 +12,7 @@ claimed by this delivery.
 | Work package | Delivered outcome | Verification |
 | --- | --- | --- |
 | WP79 | Accepted ownership, direction, conflict, privacy, and release boundary | RFC-005, ADR-007, and Spec 009 |
-| WP80 | Private FounderOS Book Headquarters and five-database architecture | Headquarters contains Chapters, Worksheets, Sources, Review Findings, and Release Readiness |
+| WP80 | Private RTB Publishing Book Headquarters and five-database architecture | Headquarters contains Chapters, Worksheets, Sources, Review Findings, and Release Readiness |
 | WP81 | Derived editorial copy for every canonical chapter | 23 chapter records, numbered 01–23, each with source path and SHA-256 hash |
 | WP82 | Structured source, review, and release operations | 18 source records, Review Findings workflow, and 55 release actions |
 | WP83 | Fillable chapter workbooks | 23 worksheets linked one-to-one to chapters |
@@ -32,7 +32,7 @@ claimed by this delivery.
 | Workflow-verification findings | 23 |
 
 The private page identifiers and URLs are recorded only in
-`.founderos/notion/sync-state.json`. That path is Git-ignored and is not a
+`.rtb-publishing/notion/sync-state.json`. That path is Git-ignored and is not a
 portable or public project artifact.
 
 ## Remaining Human Gates
@@ -51,7 +51,7 @@ coordinate the evidence but cannot clear a gate automatically.
 ```sh
 pnpm notion:check
 node scripts/notion-publication.mjs check \
-  --state .founderos/notion/sync-state.json
+  --state .rtb-publishing/notion/sync-state.json
 ```
 
 The first command verifies export completeness. The second additionally fails

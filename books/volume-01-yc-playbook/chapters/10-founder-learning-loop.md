@@ -17,7 +17,7 @@ stream of features.
 YC’s essential advice joins launching, talking to users, focus, and rapid
 improvement.[^essential] Its Startup Playbook similarly treats product quality,
 execution, and growth as connected founder responsibilities.[^playbook]
-FounderOS synthesis: set one primary learning question for each cycle.
+RTB Publishing synthesis: set one primary learning question for each cycle.
 
 Begin with the assumption register. Choose the top item and write the smallest
 product or service change that exposes it to reality. Define an evidence window,

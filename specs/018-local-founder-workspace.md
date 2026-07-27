@@ -16,7 +16,7 @@ flowchart LR
     B --> D["Local API"]
     D --> E["Founder dashboard"]
     E --> F["Allowlisted job request"]
-    F --> G["Existing FounderOS CLI"]
+    F --> G["Existing RTB Publishing CLI"]
     G --> C
 ```
 

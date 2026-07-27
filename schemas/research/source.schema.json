@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/research/source.schema.json",
-  "title": "FounderOS research source",
+  "$id": "https://rtb-publishing.dev/schemas/research/source.schema.json",
+  "title": "RTB Publishing research source",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "type", "sourceClass", "title", "author", "publisher", "url", "published", "accessed", "summary", "licenseNote"],

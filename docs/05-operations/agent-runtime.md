@@ -2,7 +2,7 @@
 
 ## What It Does
 
-FounderOS M4 adds one enabled Research Review Agent. It reads an already-valid
+RTB Publishing M4 adds one enabled Research Review Agent. It reads an already-valid
 M3 topic and creates a review proposal. It cannot browse, run commands, edit
 files, use Git, publish, approve itself, or bypass existing research checks.
 
@@ -12,8 +12,8 @@ if you try to run them.
 ## Inspect the Runtime
 
 ```bash
-pnpm founderos agent list
-pnpm founderos agent doctor
+pnpm rtb-publishing agent list
+pnpm rtb-publishing agent doctor
 ```
 
 `doctor` does not require an API key. A hollow circle beside the OpenAI key is
@@ -22,13 +22,13 @@ normal when using the fake provider.
 ## Run Locally Without an API Key
 
 ```bash
-pnpm founderos agent run research-reviewer \
+pnpm rtb-publishing agent run research-reviewer \
   --subject research/topics/customer-validation-before-mvp/research.yaml \
   --provider fake \
   --run-id RUN-LOCAL-001
 ```
 
-The run is stored in `.founderos/agent-runs/RUN-LOCAL-001/`, which Git ignores.
+The run is stored in `.rtb-publishing/agent-runs/RUN-LOCAL-001/`, which Git ignores.
 Inspect `proposal.json`, `verification.json`, and `summary.json`. The command
 does not change the research topic.
 
@@ -37,7 +37,7 @@ does not change the research topic.
 Record a real human decision with an explicit timestamp:
 
 ```bash
-pnpm founderos agent review .founderos/agent-runs/RUN-LOCAL-001 \
+pnpm rtb-publishing agent review .rtb-publishing/agent-runs/RUN-LOCAL-001 \
   --decision rejected \
   --reviewer "Your Name" \
   --reviewed-at "2026-07-13T12:00:00Z" \
@@ -48,7 +48,7 @@ For an approved proposal, use `--decision approved`, inspect the approval
 artifact, and then run:
 
 ```bash
-pnpm founderos agent apply .founderos/agent-runs/RUN-LOCAL-001
+pnpm rtb-publishing agent apply .rtb-publishing/agent-runs/RUN-LOCAL-001
 ```
 
 Apply fails if the proposal or any target changed after review. It validates
@@ -58,12 +58,12 @@ push.
 
 ## Optional OpenAI Provider
 
-Set the key only in your shell or local environment loader. FounderOS never
+Set the key only in your shell or local environment loader. RTB Publishing never
 writes it to an artifact:
 
 ```bash
 export OPENAI_API_KEY="your-key"
-pnpm founderos agent run research-reviewer \
+pnpm rtb-publishing agent run research-reviewer \
   --subject research/topics/customer-validation-before-mvp/research.yaml \
   --provider openai \
   --model "a-model-enabled-for-your-project" \

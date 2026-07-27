@@ -104,10 +104,10 @@ test("valid research builds once and regenerates idempotently", () => {
   try {
     const first = buildResearch(manifestFile);
     assert.equal(first.action, "create");
-    const stateBefore = readFileSync(resolve(directory, ".founderos", "research-state.json"), "utf8");
+    const stateBefore = readFileSync(resolve(directory, ".rtb-publishing", "research-state.json"), "utf8");
     const second = buildResearch(manifestFile);
     assert.equal(second.action, "unchanged");
-    assert.equal(readFileSync(resolve(directory, ".founderos", "research-state.json"), "utf8"), stateBefore);
+    assert.equal(readFileSync(resolve(directory, ".rtb-publishing", "research-state.json"), "utf8"), stateBefore);
   } finally {
     cleanup(directory);
   }
@@ -229,7 +229,7 @@ test("check mode detects drift without writing", () => {
 test("refresh dry-run preserves files and refresh updates review dates", () => {
   const { directory, manifestFile } = fixture();
   try {
-    const args = [resolve(ROOT, "bin", "founderos.mjs"), "research", "refresh", manifestFile, "--as-of", "2026-02-01"];
+    const args = [resolve(ROOT, "bin", "rtb-publishing.mjs"), "research", "refresh", manifestFile, "--as-of", "2026-02-01"];
     const before = readFileSync(manifestFile, "utf8");
     const dryRun = spawnSync(process.execPath, [...args, "--dry-run"], { cwd: ROOT, encoding: "utf8" });
     assert.equal(dryRun.status, 0, dryRun.stderr);
@@ -247,12 +247,12 @@ test("research create and add-source support a complete CLI first run", () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "research-cli-"));
   cleanup(directory);
   try {
-    const createResult = spawnSync(process.execPath, [resolve(ROOT, "bin", "founderos.mjs"), "research", "create", "cli-topic",
+    const createResult = spawnSync(process.execPath, [resolve(ROOT, "bin", "rtb-publishing.mjs"), "research", "create", "cli-topic",
       "--title", "CLI Topic", "--question", "Can the CLI create a research topic?", "--owner", "Test Owner",
       "--as-of", "2026-01-01", "--minimum-sources", "1", "--output", directory], { cwd: ROOT, encoding: "utf8" });
     assert.equal(createResult.status, 0, createResult.stderr);
     const manifestFile = resolve(directory, "research.yaml");
-    const addResult = spawnSync(process.execPath, [resolve(ROOT, "bin", "founderos.mjs"), "research", "add-source", manifestFile,
+    const addResult = spawnSync(process.execPath, [resolve(ROOT, "bin", "rtb-publishing.mjs"), "research", "add-source", manifestFile,
       "--id", "SRC-001", "--type", "official-guidance", "--source-class", "primary", "--title", "CLI Source",
       "--author", "Test Author", "--publisher", "Test Publisher", "--url", "https://example.com/cli",
       "--published", "2025-01-01", "--accessed", "2026-01-01", "--summary", "A CLI source fixture.",

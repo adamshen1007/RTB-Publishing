@@ -6,7 +6,7 @@ Accepted for M2 implementation
 
 ## Summary
 
-FounderOS will provide a local, deterministic CLI that generates a standard
+RTB Publishing will provide a local, deterministic CLI that generates a standard
 engineering documentation kit from one validated YAML manifest.
 
 ## Motivation
@@ -18,7 +18,7 @@ second source of truth.
 
 ## Proposal
 
-The `founderos` CLI will support four commands:
+The `rtb-publishing` CLI will support four commands:
 
 - `create` creates a manifest and its first engineering kit.
 - `validate` validates a manifest and its output boundary.
@@ -38,7 +38,7 @@ reinterpretation.
 
 ## Security and Safety
 
-- Output must remain inside the FounderOS repository.
+- Output must remain inside the RTB Publishing repository.
 - Absolute paths and repository-root output are rejected.
 - Symbolic-link path segments are rejected before files are read or written.
 - Existing unowned or user-modified files are never silently replaced.

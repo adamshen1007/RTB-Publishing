@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The private FounderOS Book Headquarters makes the 23-chapter manuscript easier
+The private RTB Publishing Book Headquarters makes the 23-chapter manuscript easier
 to review, search, and use as a workbook. It does not replace Git or authorize a
 release. The ownership and conflict rules are defined by RFC-005, ADR-007, and
 the Notion editorial workspace specification.
@@ -13,7 +13,7 @@ Run:
 
 ```sh
 pnpm notion:check
-pnpm notion:export > /tmp/founderos-notion-export.json
+pnpm notion:export > /tmp/rtb-publishing-notion-export.json
 ```
 
 The first command must report 23 chapters and 23 worksheets. The export contains
@@ -22,7 +22,7 @@ paths, and SHA-256 hashes. It contains no Notion credentials or private page IDs
 
 ## Review a Chapter
 
-1. Open **FounderOS Book Headquarters**, then **Chapters**.
+1. Open **RTB Publishing Book Headquarters**, then **Chapters**.
 2. Filter or search for the two-digit chapter number.
 3. Read the derived copy and open its linked worksheet when useful.
 4. Record each proposed correction in **Review Findings**. Include the chapter
@@ -40,11 +40,11 @@ paths, and SHA-256 hashes. It contains no Notion credentials or private page IDs
 
 ## Freshness Check
 
-The local sync receipt is stored at `.founderos/notion/sync-state.json`. Run:
+The local sync receipt is stored at `.rtb-publishing/notion/sync-state.json`. Run:
 
 ```sh
 node scripts/notion-publication.mjs check \
-  --state .founderos/notion/sync-state.json
+  --state .rtb-publishing/notion/sync-state.json
 ```
 
 Any missing chapter or hash mismatch is stale. Inspect unresolved findings

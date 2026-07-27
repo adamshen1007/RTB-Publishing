@@ -1,4 +1,4 @@
-# FounderOS Publishing Platform Master Spec
+# RTB Publishing Platform Master Spec
 
 ## Goal
 

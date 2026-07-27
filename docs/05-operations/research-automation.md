@@ -2,7 +2,7 @@
 
 ## What It Does
 
-FounderOS turns structured YAML research records into a cited Markdown brief.
+RTB Publishing turns structured YAML research records into a cited Markdown brief.
 It validates provenance and freshness locally. It does not scrape websites,
 decide whether a claim is true, or replace human source review.
 
@@ -15,7 +15,7 @@ Claim -> Evidence -> Source
 - A source records public metadata and a canonical URL.
 - Evidence stores a short quote, paraphrase, or internal observation with a
   locator.
-- A claim states what FounderOS may publish and labels its classification,
+- A claim states what RTB Publishing may publish and labels its classification,
   confidence, limitations, and review status.
 - The topic manifest controls the research question, minimum source count,
   freshness window, review date, and approval state.
@@ -23,7 +23,7 @@ Claim -> Evidence -> Source
 ## Create a Topic
 
 ```bash
-pnpm founderos research create ai-onboarding-validation \
+pnpm rtb-publishing research create ai-onboarding-validation \
   --title "AI Onboarding Validation" \
   --question "Which onboarding problem should this product solve first?" \
   --owner "Your Name" \
@@ -39,7 +39,7 @@ minimum source count.
 ## Add a Source
 
 ```bash
-pnpm founderos research add-source \
+pnpm rtb-publishing research add-source \
   research/topics/ai-onboarding-validation/research.yaml \
   --id SRC-001 \
   --type official-guidance \
@@ -74,13 +74,13 @@ not exceed 25 words.
 ## Validate and Build
 
 ```bash
-pnpm founderos research validate research/topics/ai-onboarding-validation/research.yaml
-pnpm founderos research status research/topics/ai-onboarding-validation/research.yaml
-pnpm founderos research build research/topics/ai-onboarding-validation/research.yaml --dry-run
-pnpm founderos research build research/topics/ai-onboarding-validation/research.yaml
+pnpm rtb-publishing research validate research/topics/ai-onboarding-validation/research.yaml
+pnpm rtb-publishing research status research/topics/ai-onboarding-validation/research.yaml
+pnpm rtb-publishing research build research/topics/ai-onboarding-validation/research.yaml --dry-run
+pnpm rtb-publishing research build research/topics/ai-onboarding-validation/research.yaml
 ```
 
-Generated briefs are protected by a deterministic hash. FounderOS stops if a
+Generated briefs are protected by a deterministic hash. RTB Publishing stops if a
 human has edited the generated brief. Move valuable edits into YAML records or
 another user-owned document before using `--force`.
 
@@ -90,7 +90,7 @@ After manually reopening and reviewing every source, advance their access dates
 and the topic review date together:
 
 ```bash
-pnpm founderos research refresh \
+pnpm rtb-publishing research refresh \
   research/topics/ai-onboarding-validation/research.yaml \
   --as-of "2026-10-01" \
   --dry-run

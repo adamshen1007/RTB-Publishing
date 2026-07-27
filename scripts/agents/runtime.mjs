@@ -16,7 +16,7 @@ function filesBelow(directory) {
   if (!existsSync(directory)) return [];
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const file = resolve(directory, entry.name);
-    if (entry.isDirectory()) return [".founderos", "outputs"].includes(entry.name) ? [] : filesBelow(file);
+    if (entry.isDirectory()) return [".rtb-publishing", "outputs"].includes(entry.name) ? [] : filesBelow(file);
     return [".yaml", ".yml"].includes(extname(entry.name)) ? [file] : [];
   }).sort();
 }

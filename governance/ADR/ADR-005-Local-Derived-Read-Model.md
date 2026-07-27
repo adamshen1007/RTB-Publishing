@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-FounderOS needs a coherent interface without introducing a database or web
+RTB Publishing needs a coherent interface without introducing a database or web
 application as a competing source of truth.
 
 ## Decision

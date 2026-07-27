@@ -343,7 +343,7 @@ incident blocks Publish.
 - Providers may not expose complete retention, training, deletion, billing, or
   internal-access evidence.
 - Notion, Ghost, object storage, DNS, identity, and email providers can suffer
-  outages or privileged compromise outside FounderOS control.
+  outages or privileged compromise outside RTB Publishing control.
 - Sanitizers, renderers, file-type detectors, and rights decisions can contain
   errors despite pinned versions and review.
 - Short-lived links reduce exposure but an authorized subscriber can still

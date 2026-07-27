@@ -7,9 +7,9 @@ Automation supplies evidence but cannot approve publication.
 ## Decision and Ownership
 
 - [x] Record the decision to pursue public publication and its date.
-- [x] Name *The FounderOS Playbook for AI Founders* as the public edition.
+- [x] Name *The RTB Publishing Playbook for AI Founders* as the public edition.
 - [x] Define the 0.3.0, 0.9.0, and 1.0.0 release ladder.
-- [x] Identify FounderOS as the independent publisher.
+- [x] Identify RTB Publishing as the independent publisher.
 - [ ] Record the human preview approver and approval date.
 - [ ] Record the human 1.0.0 approver and approval date.
 
@@ -63,7 +63,7 @@ Automation supplies evidence but cannot approve publication.
 - [ ] Run `pnpm verify:outputs` on the exact release commit.
 - [ ] Inspect all generated formats manually.
 - [ ] Confirm the title, version, status, rights, and publication date agree.
-- [ ] Confirm download filenames use `founderos-playbook`.
+- [ ] Confirm download filenames use `rtb-publishing-playbook`.
 - [ ] Create and complete the release manifest.
 - [ ] Record the release commit and generated-file checksums.
 

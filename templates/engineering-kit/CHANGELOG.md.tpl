@@ -6,7 +6,7 @@ All notable changes to {{project.name}} are recorded here.
 
 ### Added
 
-- Initial FounderOS engineering kit
+- Initial RTB Publishing engineering kit
 
 ### Changed
 

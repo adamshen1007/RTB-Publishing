@@ -1,3 +1,3 @@
-# FounderOS Publishing Platform Vision
+# RTB Publishing Platform Vision
 
-FounderOS Publishing Platform is the first subsystem of FounderOS. It turns structured Markdown into editable Notion pages and polished published outputs.
+The RTB Publishing Platform turns structured Markdown into editable Notion pages and polished published outputs.

@@ -1,18 +1,18 @@
-# FounderOS Capability Architecture
+# RTB Publishing Capability Architecture
 
 **Milestone:** M0 — Strategy and Governance  
 **Status:** Draft
 
 ## Purpose
 
-This document defines the business and platform capabilities FounderOS must provide. While the Domain Architecture explains ownership, the Capability Architecture explains value delivery.
+This document defines the business and platform capabilities RTB Publishing must provide. While the Domain Architecture explains ownership, the Capability Architecture explains value delivery.
 
 ---
 
 # 1. Capability Map
 
 ```text
-FounderOS Capabilities
+RTB Publishing Capabilities
 
 ├── Founder Knowledge Management
 ├── Research & Evidence Synthesis
@@ -235,7 +235,7 @@ Supporting domains:
 
 Purpose:
 
-Connect FounderOS to external systems while keeping Git + Markdown canonical.
+Connect RTB Publishing to external systems while keeping Git + Markdown canonical.
 
 Includes:
 
@@ -293,7 +293,7 @@ Supporting domains:
 
 Purpose:
 
-Package, version, and publish FounderOS outputs.
+Package, version, and publish RTB Publishing outputs.
 
 Includes:
 
@@ -347,18 +347,18 @@ Supporting domains:
 
 Purpose:
 
-Make FounderOS executable through reusable commands.
+Make RTB Publishing executable through reusable commands.
 
 Future commands:
 
 ```bash
-founderos create project
-founderos create book
-founderos generate engineering-kit
-founderos publish notion
-founderos export pdf
-founderos validate
-founderos release
+rtb-publishing create project
+rtb-publishing create book
+rtb-publishing generate engineering-kit
+rtb-publishing publish notion
+rtb-publishing export pdf
+rtb-publishing validate
+rtb-publishing release
 ```
 
 Owning domain:
@@ -395,7 +395,7 @@ Supporting domains:
 
 # 4. MVP Capability Set
 
-The minimum useful FounderOS Core should include:
+The minimum useful RTB Publishing Core should include:
 
 1. Decision Governance
 2. Founder Knowledge Management

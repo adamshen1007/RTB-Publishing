@@ -1,11 +1,11 @@
 {
-  "name": "founderos",
+  "name": "rtb-publishing",
   "version": "0.9.1",
   "private": true,
-  "description": "Documentation-first publishing foundation for FounderOS",
+  "description": "Documentation-first publishing foundation for RTB Publishing",
   "type": "module",
   "bin": {
-    "founderos": "bin/founderos.mjs"
+    "rtb-publishing": "bin/rtb-publishing.mjs"
   },
   "engines": {
     "node": ">=24 <25",
@@ -22,17 +22,17 @@
     "check:diagrams": "node scripts/check-diagrams.mjs",
     "check:book": "node scripts/check-book.mjs",
     "check:citations": "node scripts/check-citations.mjs",
-    "check:example": "node bin/founderos.mjs generate examples/ai-launch-copilot/founderos.project.yaml --check",
-    "check:research": "node bin/founderos.mjs research validate research/topics/customer-validation-before-mvp/research.yaml && node bin/founderos.mjs research build research/topics/customer-validation-before-mvp/research.yaml --check",
-    "founderos": "node bin/founderos.mjs",
+    "check:example": "node bin/rtb-publishing.mjs generate examples/ai-launch-copilot/rtb-publishing.project.yaml --check",
+    "check:research": "node bin/rtb-publishing.mjs research validate research/topics/customer-validation-before-mvp/research.yaml && node bin/rtb-publishing.mjs research build research/topics/customer-validation-before-mvp/research.yaml --check",
+    "rtb-publishing": "node bin/rtb-publishing.mjs",
     "test": "node --test tests/*.test.mjs",
     "test:research": "node --test tests/research.test.mjs",
     "test:agents": "node --test tests/agents.test.mjs",
     "eval:agents": "node scripts/agents/eval.mjs",
-    "check:agent-example": "node bin/founderos.mjs agent validate examples/agent-runs/research-review-rejected",
+    "check:agent-example": "node bin/rtb-publishing.mjs agent validate examples/agent-runs/research-review-rejected",
     "test:platform": "node --test tests/platform.test.mjs",
-    "check:platform": "node bin/founderos.mjs platform doctor && node bin/founderos.mjs platform index && node bin/founderos.mjs platform pilot check",
-    "platform:start": "node bin/founderos.mjs platform start",
+    "check:platform": "node bin/rtb-publishing.mjs platform doctor && node bin/rtb-publishing.mjs platform index && node bin/rtb-publishing.mjs platform pilot check",
+    "platform:start": "node bin/rtb-publishing.mjs platform start",
     "build": "node scripts/build-book.mjs",
     "verify:outputs": "node scripts/verify-outputs.mjs",
     "notion:export": "node scripts/notion-publication.mjs export",

@@ -8,7 +8,7 @@ Accepted for Increment 1 implementation
 
 ## Summary
 
-FounderOS publishes canonical Markdown as validated HTML, PDF, and EPUB 3.
+RTB Publishing publishes canonical Markdown as validated HTML, PDF, and EPUB 3.
 DOCX is removed from the research-to-book release contract. Increment 1 must
 generalize the existing pipeline, migrate the YC Playbook through a semantic
 oracle, select and pin the required validators, use safe disk-backed staging,

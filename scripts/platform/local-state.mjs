@@ -87,7 +87,7 @@ export function removeExternalRoot(path, { localFile = PLATFORM_LOCAL_FILE, dryR
 export function importExternalProject(path, { id, localFile = PLATFORM_LOCAL_FILE, workspaceFile, dryRun = false } = {}) {
   const local = loadLocalWorkspace(localFile);
   const candidate = inspectExternalCandidate(path, { localFile });
-  if (!candidate.allowed) throw new Error(`External project is not allowlisted. First run: founderos platform root allow "${candidate.recommendedRoot}" --confirm`);
+  if (!candidate.allowed) throw new Error(`External project is not allowlisted. First run: rtb-publishing platform root allow "${candidate.recommendedRoot}" --confirm`);
   const project = { id: id ?? candidate.id, kind: "repository", path: safeExternalPath(candidate.path, local.allowedRoots).absolute };
   const all = loadWorkspace(workspaceFile, { local }).projects;
   if (all.some((item) => item.id === project.id)) throw new Error(`Project ID already registered: ${project.id}`);

@@ -1,17 +1,17 @@
-# FounderOS Strategy & Business Model
+# RTB Publishing Strategy & Business Model
 
 Version: 0.1 (Draft)
 
 # Purpose
 
-Define the long-term strategic direction for FounderOS before
+Define the long-term strategic direction for RTB Publishing before
 engineering begins.
 
 ------------------------------------------------------------------------
 
 # Vision
 
-FounderOS is an AI-native operating system that helps founders
+RTB Publishing is an AI-native operating system that helps founders
 repeatedly transform ideas into successful companies through structured
 workflows, reusable knowledge, and intelligent automation.
 
@@ -19,10 +19,10 @@ workflows, reusable knowledge, and intelligent automation.
 
 # Strategic Position
 
-FounderOS is **not**: - another note-taking app - another project
+RTB Publishing is **not**: - another note-taking app - another project
 manager - another AI chatbot
 
-FounderOS **orchestrates** best-in-class tools into a unified founder
+RTB Publishing **orchestrates** best-in-class tools into a unified founder
 operating system.
 
 ------------------------------------------------------------------------
@@ -101,7 +101,7 @@ after validation.
 
 # Competitive Advantage
 
-FounderOS combines: - documentation-first engineering - AI-assisted
+RTB Publishing combines: - documentation-first engineering - AI-assisted
 execution - knowledge management - automated publishing - reusable
 engineering kits
 
@@ -119,7 +119,7 @@ AI coding assistants - Future MCP-compatible tools
 
 # Five-Year Vision
 
-FounderOS should become the primary operating environment for launching,
+RTB Publishing should become the primary operating environment for launching,
 documenting, scaling, and continuously improving AI-native companies.
 
 ------------------------------------------------------------------------
@@ -130,14 +130,14 @@ documenting, scaling, and continuously improving AI-native companies.
 - Higher documentation reuse
 - Increased automation coverage
 - Faster publishing cycles
-- Successful ventures built using FounderOS
+- Successful ventures built using RTB Publishing
 
 ------------------------------------------------------------------------
 
 # Guiding Principle
 
 Every new company, handbook, playbook, and engineering kit should
-strengthen FounderOS itself, creating a compounding knowledge platform.
+strengthen RTB Publishing itself, creating a compounding knowledge platform.
 
-Decision: Proceed with FounderOS as a modular platform, beginning with
+Decision: Proceed with RTB Publishing as a modular platform, beginning with
 governance, engineering standards, and the publishing subsystem.

@@ -1,13 +1,13 @@
-# FounderOS Roadmap
+# RTB Publishing Roadmap
 
-FounderOS uses one milestone sequence: **M0, M1, M2, M3, M4, and M5**.
+RTB Publishing uses one milestone sequence: **M0, M1, M2, M3, M4, and M5**.
 Decimal milestone names such as M0.1–M0.3 were working-draft labels and are no
 longer part of the canonical roadmap. Each milestone must satisfy its exit
 criteria before the next milestone becomes the primary implementation focus.
 
 ## Current Priority — Research-to-Book Increment 1 — YC Migration and Publishing Foundation
 
-RFC-006 changes FounderOS from a general founder workspace into a local-first
+RFC-006 changes RTB Publishing from a general founder workspace into a local-first
 research-to-book Creator Studio with a private subscriber library. The three
 increments below are the canonical delivery sequence after M5A.3. Each
 increment requires its own implementation plan, test artifact, acceptance
@@ -69,7 +69,7 @@ bounded, allowlisted Ghost publishing adapter accepted by RFC-006.
 
 ## M0 — Strategy and Governance
 
-**Goal:** Establish the source of truth and define what FounderOS is building.
+**Goal:** Establish the source of truth and define what RTB Publishing is building.
 
 **Status:** Complete
 
@@ -169,7 +169,7 @@ Exit criteria:
 - Every proposal, verification, review decision, usage record, and lifecycle
   state is inspectable as a versioned artifact.
 
-## M5 — FounderOS Platform
+## M5 — RTB Publishing Platform
 
 **Goal:** Package proven workflows into a coherent multi-project platform.
 
@@ -201,7 +201,7 @@ allowlist; external projects remain read-only. It also adds registry backup and
 restore, clearer workflow progress and recovery guidance, and broader local
 security and browser-shell coverage. This hardening is not pilot evidence.
 
-M5A.3 is the active evidence cycle. FounderOS now reports pilot session,
+M5A.3 is the active evidence cycle. RTB Publishing now reports pilot session,
 represented-project, date-span, outcome, and task coverage while preserving a
 manual decision gate. The cycle cannot complete until genuine records span the
 published two-week threshold.

@@ -10,7 +10,7 @@ research/topics/<topic>/
 ├── evidence/
 ├── claims/
 ├── outputs/research-brief.md
-└── .founderos/research-state.json
+└── .rtb-publishing/research-state.json
 ```
 
 Do not store full copyrighted pages. Preserve canonical URLs, short quotations

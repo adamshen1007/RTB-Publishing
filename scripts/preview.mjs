@@ -41,7 +41,7 @@ const server = createServer((request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`FounderOS preview available at http://127.0.0.1:${port}`);
+  console.log(`RTB Publishing preview available at http://127.0.0.1:${port}`);
   console.log("Press Ctrl+C to stop.");
 });
 process.on("SIGINT", () => server.close(() => process.exit(0)));

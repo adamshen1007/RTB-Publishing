@@ -16,7 +16,7 @@ A publishing RFC and expanded threat model make output and security
 requirements executable. The roadmap and governance indexes identify every
 superseded decision.
 
-**Tech Stack:** Markdown, FounderOS RFC/ADR process, markdownlint, CSpell, Vale,
+**Tech Stack:** Markdown, RTB Publishing RFC/ADR process, markdownlint, CSpell, Vale,
 link checker, Node test runner
 
 ## Global Constraints
@@ -61,7 +61,7 @@ link checker, Node test runner
 - [x] **Step 1: Write RFC-006**
 
 Use the required RFC sections. Set status to `Accepted for Increment 1
-planning`. State that FounderOS changes from a general founder workspace into a
+planning`. State that RTB Publishing changes from a general founder workspace into a
 local-first research-to-book Creator Studio with a private subscriber library.
 Normatively include the three increments, three approval gates, Ghost-first
 adapter, HTML/PDF/EPUB formats, YC migration, short pilot, scorecard, and the

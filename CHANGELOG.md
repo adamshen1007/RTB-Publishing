@@ -2,7 +2,7 @@
 
 ## Unreleased — Volume 1 Publication Preparation
 
-- Rename the public edition to *The FounderOS Playbook for AI Founders* while
+- Rename the public edition to *The RTB Publishing Playbook for AI Founders* while
   retaining the historical source-directory slug.
 - Record the decision to pursue a staged 0.9.0 Public Preview before 1.0.0.
 - Add publication planning, readiness, review, feedback, and release records for
@@ -57,7 +57,7 @@
 - Add versioned workspace, project-summary, and workflow-job schemas.
 - Add a safe deterministic two-project indexer and loopback-only local API.
 - Add a responsive operating-ledger dashboard for projects, signals, and jobs.
-- Delegate writes to a fixed allowlist of existing FounderOS CLI workflows.
+- Delegate writes to a fixed allowlist of existing RTB Publishing CLI workflows.
 - Add CSRF, origin, path, symbolic-link, rate, concurrency, redaction, retention,
   and interrupted-job recovery controls.
 - Add seven platform tests, CI verification, and beginner-first local operations
@@ -124,8 +124,8 @@
 - Standardize delivery naming on milestones M0 through M5.
 - Add the root project guide, contribution guide, security policy, license,
   ignore rules, and specification-number registry.
-- Add the missing FounderOS Vale style configuration.
+- Add the missing RTB Publishing Vale style configuration.
 
 ## 0.1.0
 
-- Initial FounderOS Publishing Platform engineering kit.
+- Initial RTB Publishing Publishing Platform engineering kit.

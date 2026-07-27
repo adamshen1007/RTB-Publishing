@@ -1,10 +1,10 @@
 {
-  "README.md": "058a3d56791aea08d5398ee3d450afd5a00e563a4c22a42400900303290ff2b4",
-  "docs/strategy/vision-manifesto.md": "9e5644e53f28d94dcafd8ad27d106fb3a9f21eb0b23aaa5692427d69138cf9a2",
-  "docs/strategy/worthiness-review.md": "926644c495a326a2cd8767eef3b678661ff8dbf1622de16c9a0a68f11bba9fcf",
-  "docs/strategy/product-requirements.md": "bd2397ec302747236bf78047c95181f58d07992f9ce98f941bc183238b244d26",
-  "governance/ADR/ADR-000-foundational-architecture.md": "e86bf300e35cc57d00d2b45641bd79a77d6da096e42c9ef752cdc5a5e507ce9e",
-  "planning/MILESTONES.md": "12bdc90efeb35ee4396a47478d3f594f814e145c9c9f4bd0d3023c30eacbd8ce",
-  "planning/verification-plan.md": "de2e7e7ec1fed9397ee38da896f140bbee77efdec91b7d7e48a34a04fc2c28e1",
-  "CHANGELOG.md": "f9a03568354641f2811418b96b8785c6acddfe02d5fa023c9545413036d64bdf"
+  "README.md": "50b3f4176fe65213e5b1c7e864d77b1e396e9f36e7bf773889165660d4ec8377",
+  "docs/strategy/vision-manifesto.md": "8e731030d867b9c3f9ae79527bc3d7db3454e7ee69ebda76cefd507c0333adb4",
+  "docs/strategy/worthiness-review.md": "027fc9ec90872a1cbd25193624e24ae1d1504ec2ef03217f7b491b9bc18f1aea",
+  "docs/strategy/product-requirements.md": "d7e9f86d1d03d49afbc717028fa659ad21cbe4a248ae0f1e60d650995c52b515",
+  "governance/ADR/ADR-000-foundational-architecture.md": "9a4d1c021ce130c4099379c8ee0cb6ecff05eea7d82f19898d6143ca61327e26",
+  "planning/MILESTONES.md": "2bc505dd479c91240ebe23566c1dc68d75f39e857695bdf76b57226257da0a45",
+  "planning/verification-plan.md": "8f93ec1424870ebe213b45369a83e7b318071ad9d9e05c2328ab61454e8f748c",
+  "CHANGELOG.md": "3289591033795aac055b878f4d6a3aa8820dab8063902c92dbb4de7375a1cef8"
 }

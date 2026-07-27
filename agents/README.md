@@ -1,4 +1,4 @@
-# FounderOS Agent Contracts
+# RTB Publishing Agent Contracts
 
 Agent definitions are declarative capability contracts. An enabled agent may
 read only its allowlist and may return only a schema-valid proposal. It never

@@ -6,6 +6,6 @@ confidence: medium
 status: accepted
 evidence: [EVD-001, EVD-002, EVD-003, EVD-004, EVD-005]
 limitations:
-  - The sequence is FounderOS synthesis and has not been tested as a universal process.
+  - The sequence is RTB Publishing synthesis and has not been tested as a universal process.
   - AI products may require additional evaluation for model reliability and safety.
 contradicts: []

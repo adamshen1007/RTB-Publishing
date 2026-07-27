@@ -2,7 +2,7 @@
 
 ## Rule
 
-FounderOS roles coordinate only through canonical or run-package artifacts.
+RTB Publishing roles coordinate only through canonical or run-package artifacts.
 Free-form private agent-to-agent messages are not an accepted interface.
 
 ## Handoff Contract

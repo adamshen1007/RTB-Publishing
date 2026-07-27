@@ -11,17 +11,17 @@ function slug(value) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 
 export function detectProject(path, id) {
   const target = safePlatformPath(path, { allowRoot: true });
-  const manifest = resolve(target.absolute, "founderos.project.yaml");
+  const manifest = resolve(target.absolute, "rtb-publishing.project.yaml");
   if (existsSync(manifest)) {
     const record = parse(readFileSync(manifest, "utf8"));
-    return { id: id ?? record.project?.slug ?? slug(basename(target.absolute)), kind: "kit", path: target.relative, manifest: "founderos.project.yaml" };
+    return { id: id ?? record.project?.slug ?? slug(basename(target.absolute)), kind: "kit", path: target.relative, manifest: "rtb-publishing.project.yaml" };
   }
   const packageFile = resolve(target.absolute, "package.json");
   if (existsSync(packageFile)) {
     const pkg = JSON.parse(readFileSync(packageFile, "utf8"));
     return { id: id ?? slug(pkg.name ?? basename(target.absolute)), kind: "repository", path: target.relative };
   }
-  throw new Error("Project must contain founderos.project.yaml or package.json.");
+  throw new Error("Project must contain rtb-publishing.project.yaml or package.json.");
 }
 
 function save(workspace, file, dryRun) {

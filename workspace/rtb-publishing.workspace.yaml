@@ -1,12 +1,12 @@
 schemaVersion: 1
 workspace:
-  name: FounderOS Working Studio
+  name: RTB Publishing Working Studio
   owner: Adam Shen
 projects:
-  - id: founderos-core
+  - id: rtb-publishing-core
     kind: repository
     path: .
   - id: ai-launch-copilot
     kind: kit
     path: examples/ai-launch-copilot
-    manifest: founderos.project.yaml
+    manifest: rtb-publishing.project.yaml

@@ -1,4 +1,4 @@
-# RFC-000 — FounderOS RFC Process
+# RFC-000 — RTB Publishing RFC Process
 
 ## Status
 

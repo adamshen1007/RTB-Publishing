@@ -38,7 +38,7 @@ small Mermaid diagram and run the diagram check.
 ## 4. Mark Claim Types
 
 - Attach a footnote to sourced external claims.
-- Say “FounderOS synthesis” when connecting guidance into a new recommendation.
+- Say “RTB Publishing synthesis” when connecting guidance into a new recommendation.
 - Describe a founder-specific belief as an assumption to test.
 - Label invented examples as hypothetical.
 - Avoid legal, financial, medical, or regulatory instructions.

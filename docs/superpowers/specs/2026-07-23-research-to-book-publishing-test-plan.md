@@ -1,7 +1,7 @@
 # Research-to-Book Test Plan
 
-**Generated:** 2026-07-23  
-**Branch:** `codex/research-to-book-design`  
+**Generated:** 2026-07-23
+**Branch:** `codex/research-to-book-design`
 **Primary input:** `2026-07-23-research-to-book-publishing-design.md`
 
 ## Affected Pages and Surfaces

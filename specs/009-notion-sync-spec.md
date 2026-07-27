@@ -3,7 +3,7 @@
 ## Purpose
 
 Notion is a private editorial, worksheet, and release-coordination layer for
-*The FounderOS Playbook for AI Founders*. Markdown in Git remains canonical.
+*The RTB Publishing Playbook for AI Founders*. Markdown in Git remains canonical.
 Notion is never an alternate publication source.
 
 ## Ownership Boundary
@@ -23,7 +23,7 @@ accepted RFC because conflict resolution would change this boundary.
 
 ## Workspace Model
 
-One private **FounderOS Book Headquarters** page owns five databases:
+One private **RTB Publishing Book Headquarters** page owns five databases:
 
 1. Chapters — one derived page for each of the 23 canonical chapters.
 2. Worksheets — one working page for each chapter worksheet.
@@ -33,7 +33,7 @@ One private **FounderOS Book Headquarters** page owns five databases:
 
 Every chapter and worksheet record carries its source path, SHA-256 source
 hash, book version, and sync date. Private Notion identifiers live only in
-`.founderos/notion/sync-state.json`, which is Git-ignored.
+`.rtb-publishing/notion/sync-state.json`, which is Git-ignored.
 
 ## Direction and Conflict Rules
 

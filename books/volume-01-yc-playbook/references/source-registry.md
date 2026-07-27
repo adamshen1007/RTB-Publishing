@@ -2,7 +2,7 @@
 
 This registry is the canonical source list for Volume 1. It records primary and
 first-party material that may support chapter claims. Inclusion does not mean a
-source endorses FounderOS or that every statement in it is adopted.
+source endorses RTB Publishing or that every statement in it is adopted.
 
 Review date: 2026-07-16
 
@@ -12,7 +12,7 @@ Review date: 2026-07-16
   advice, policy, or experience.
 - **Official standard:** a public body publishes a framework or technical
   reference.
-- **FounderOS synthesis:** a conclusion developed in the manuscript; it must be
+- **RTB Publishing synthesis:** a conclusion developed in the manuscript; it must be
   labeled as interpretation and should connect at least two identified sources.
 
 ## Registered Sources

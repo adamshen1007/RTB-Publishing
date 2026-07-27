@@ -14,7 +14,7 @@ pandoc --version
 vale --version
 ```
 
-FounderOS requires major version 3 or newer for both tools.
+RTB Publishing requires major version 3 or newer for both tools.
 
 ## Mermaid Cannot Launch a Browser
 

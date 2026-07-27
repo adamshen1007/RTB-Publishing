@@ -1,14 +1,14 @@
-# FounderOS Research-to-Book Publishing Design
+# RTB Publishing Research-to-Book Publishing Design
 
 <!-- cspell:words devex passwordless WCAG gstack -->
 
 **Status:** Reviewed and approved for implementation planning
-**Date:** 2026-07-23  
-**Initial reference publication:** The FounderOS Playbook for AI Founders
+**Date:** 2026-07-23
+**Initial reference publication:** The RTB Publishing Playbook for AI Founders
 
 ## 1. Purpose
 
-FounderOS will become a reusable research-to-book publishing application. It
+RTB Publishing will become a reusable research-to-book publishing application. It
 will help one creator research a bounded topic, organize traceable evidence,
 compose and enrich a beta book, review that beta in Notion, and publish an
 approved edition as HTML, PDF, and EPUB to a private subscriber library.
@@ -54,9 +54,9 @@ The approved product decisions are:
 
 ## 3. Architectural Direction
 
-FounderOS uses a governed pipeline with bounded AI workers. Deterministic
+RTB Publishing uses a governed pipeline with bounded AI workers. Deterministic
 workflow state, evidence relationships, review gates, quality policies, and
-release manifests are owned by FounderOS. Providers, skills, and MCP
+release manifests are owned by RTB Publishing. Providers, skills, and MCP
 integrations operate inside individual stages but cannot bypass those controls.
 
 ```text
@@ -144,7 +144,7 @@ legal basis, notice, retention, deletion and revocation procedure, backup
 treatment, region, and minimization rationale. Extra fields fail closed.
 
 Creator Studio sends immutable release bundles; Ghost never reads the local
-FounderOS database, drafts, evidence archive, rejected proposals, or Editorial
+RTB Publishing database, drafts, evidence archive, rejected proposals, or Editorial
 Memory.
 
 ### 4.4 Integration Boundaries
@@ -267,7 +267,7 @@ reapproves the new Blueprint version. Non-material evidence refinements remain
 append-only review decisions and do not create another lifecycle gate.
 
 Organizations such as YC, McKinsey, or Bain may be research subjects or source
-families. FounderOS must not imply endorsement, reproduce protected
+families. RTB Publishing must not imply endorsement, reproduce protected
 publications, or imitate protected visual identities.
 
 ## 7. Evidence Gateway, Provenance, and Rights
@@ -394,7 +394,7 @@ text interface. Initial contracts include:
 
 Each run records the provider, model, parameters, prompt version, capability
 contract version, approved egress, usage, cost, and output hash. Unsupported
-capabilities fail visibly. FounderOS does not silently change providers,
+capabilities fail visibly. RTB Publishing does not silently change providers,
 models, or capability levels.
 
 ## 10. Lifecycle and Approval Model

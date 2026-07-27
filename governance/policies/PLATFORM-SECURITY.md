@@ -31,12 +31,12 @@ host, or multi-tenant deployment.
 
 ## Retention
 
-Local job records under `.founderos/platform/jobs/` are ignored by Git. Delete
+Local job records under `.rtb-publishing/platform/jobs/` are ignored by Git. Delete
 terminal records after 30 days unless an incident or active audit requires them.
 Committed examples must be sanitized and must not originate from private logs.
 
 The local external-project overlay and registry backups under
-`.founderos/platform/` are also ignored. A backup contains registry pointers,
+`.rtb-publishing/platform/` are also ignored. A backup contains registry pointers,
 not project content, and restore requires explicit confirmation.
 
 Remote access, user accounts, and collaboration require a new threat model and

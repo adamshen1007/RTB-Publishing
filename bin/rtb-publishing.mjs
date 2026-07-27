@@ -12,16 +12,16 @@ import { runResearchCommand } from "../scripts/research/cli.mjs";
 import { runAgentCommand } from "../scripts/agents/cli.mjs";
 import { runPlatformCommand } from "../scripts/platform/cli.mjs";
 
-const HELP = `FounderOS Engineering Kit Generator
+const HELP = `RTB Publishing Engineering Kit Generator
 
 Usage:
-  founderos create <slug> [options]
-  founderos validate [manifest]
-  founderos generate [manifest] [--dry-run] [--check] [--force]
-  founderos doctor
-  founderos research <command> [options]
-  founderos agent <list|doctor|run|status|review|apply|validate> [options]
-  founderos platform <doctor|index|start|project|root|backup> [options]
+  rtb-publishing create <slug> [options]
+  rtb-publishing validate [manifest]
+  rtb-publishing generate [manifest] [--dry-run] [--check] [--force]
+  rtb-publishing doctor
+  rtb-publishing research <command> [options]
+  rtb-publishing agent <list|doctor|run|status|review|apply|validate> [options]
+  rtb-publishing platform <doctor|index|start|project|root|backup> [options]
 
 Create options:
   --name <text>          Project name
@@ -123,7 +123,7 @@ function doctorCommand() {
     console.log(`${valid ? "✓" : "✗"} ${label}${typeof target === "string" ? `: ${target}` : ""}`);
     failed ||= !valid;
   }
-  if (failed) throw new Error("FounderOS doctor found setup problems.");
+  if (failed) throw new Error("RTB Publishing doctor found setup problems.");
 }
 
 async function main() {
@@ -145,6 +145,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`FounderOS error: ${error.message}`);
+  console.error(`RTB Publishing error: ${error.message}`);
   process.exitCode = 1;
 });

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/research/claim.schema.json",
-  "title": "FounderOS research claim",
+  "$id": "https://rtb-publishing.dev/schemas/research/claim.schema.json",
+  "title": "RTB Publishing research claim",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "statement", "classification", "confidence", "status", "evidence", "limitations", "contradicts"],

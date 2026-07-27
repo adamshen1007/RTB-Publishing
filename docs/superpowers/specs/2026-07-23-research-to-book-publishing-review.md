@@ -1,8 +1,8 @@
 # Research-to-Book Specification Review
 
-**Reviewed:** 2026-07-23  
-**Specification:** `2026-07-23-research-to-book-publishing-design.md`  
-**Mode:** Full review with scope restructuring  
+**Reviewed:** 2026-07-23
+**Specification:** `2026-07-23-research-to-book-publishing-design.md`
+**Mode:** Full review with scope restructuring
 **Result:** Clear for implementation planning
 
 ## Scope Result

@@ -46,7 +46,7 @@ export function renderResearchBrief(data) {
     "",
     "## Method",
     "",
-    "FounderOS validated structured source, evidence, and claim records. Source advice is labeled separately from synthesis and assumptions. This brief does not treat practitioner guidance as controlled experimental evidence.",
+    "RTB Publishing validated structured source, evidence, and claim records. Source advice is labeled separately from synthesis and assumptions. This brief does not treat practitioner guidance as controlled experimental evidence.",
     "",
     "## Findings",
     "",

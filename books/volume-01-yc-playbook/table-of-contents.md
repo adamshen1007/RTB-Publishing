@@ -64,7 +64,7 @@ in the same change.
 - Use “Part” only for the six book sections; do not call parts phases or
   milestones.
 - Use “first 30 days” and “first 90 days” for time-boxed practice plans.
-- Use FounderOS repository milestones only for product development; book parts
+- Use RTB Publishing repository milestones only for product development; book parts
   do not alter the root roadmap sequence.
 - Do not insert or reserve chapter numbers. Renumber the complete sequence when
   the editorial structure changes before publication.

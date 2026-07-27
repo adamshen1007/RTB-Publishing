@@ -19,7 +19,7 @@ Writing these beliefs makes the plan easier to change.
 YC’s Startup Playbook emphasizes starting with a good product and talking to
 users rather than relying on an elaborate plan.[^playbook] In his application
 guidance, Paul Graham asks founders to show specific insight, acknowledge
-obstacles, and explain a theory for overcoming them.[^apply] FounderOS
+obstacles, and explain a theory for overcoming them.[^apply] RTB Publishing
 synthesizes those ideas into an assumption map: expose the obstacle before
 investing heavily in the solution.
 

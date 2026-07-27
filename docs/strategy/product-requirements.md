@@ -1,4 +1,4 @@
-# FounderOS Product Requirements Document
+# RTB Publishing Product Requirements Document
 
 ## Problem
 
@@ -63,7 +63,7 @@ Secondary:
 - M2 — Engineering Kit Generator
 - M3 — Research Automation
 - M4 — AI Agent Ecosystem
-- M5 — FounderOS Platform
+- M5 — RTB Publishing Platform
 
 The root [roadmap](../../ROADMAP.md) defines the deliverables and exit criteria
 for each milestone.

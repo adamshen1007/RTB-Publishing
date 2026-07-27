@@ -17,7 +17,7 @@ for continuous integration.
 - Pandoc 3 converts canonical Markdown into standalone HTML, EPUB 3, and DOCX.
 - `markdownlint-cli2`, CSpell, Vale, and Mermaid CLI provide automated quality
   checks.
-- Small Node.js scripts coordinate tool execution and implement FounderOS-
+- Small Node.js scripts coordinate tool execution and implement RTB Publishing-
   specific checks for links, citations, diagrams, outputs, and previewing.
 - Generated and intermediate files live under `dist/` and `build/`; neither is
   a canonical source.

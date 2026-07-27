@@ -5,15 +5,15 @@ import { buildResearch } from "./generator.mjs";
 import { RECORD_DIRECTORIES, RESEARCH_MANIFEST, RESEARCH_ROOT } from "./constants.mjs";
 import { createTopic, loadResearch, serializeResearch, sourceIdsForClaim, validateRecord } from "./model.mjs";
 
-export const RESEARCH_HELP = `FounderOS Research Automation
+export const RESEARCH_HELP = `RTB Publishing Research Automation
 
 Usage:
-  founderos research create <topic> [options]
-  founderos research add-source <manifest> [options]
-  founderos research validate <manifest>
-  founderos research build <manifest> [--dry-run] [--check] [--force]
-  founderos research status <manifest>
-  founderos research refresh <manifest> --as-of YYYY-MM-DD [--dry-run]`;
+  rtb-publishing research create <topic> [options]
+  rtb-publishing research add-source <manifest> [options]
+  rtb-publishing research validate <manifest>
+  rtb-publishing research build <manifest> [--dry-run] [--check] [--force]
+  rtb-publishing research status <manifest>
+  rtb-publishing research refresh <manifest> --as-of YYYY-MM-DD [--dry-run]`;
 
 function required(options, names) {
   const missing = names.filter((name) => !options[name]);

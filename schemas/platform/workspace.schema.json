@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS workspace",
+  "title": "RTB Publishing workspace",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "workspace", "projects"],

@@ -122,7 +122,7 @@ legal basis, field set, destination, or retention requires renewed review and,
 where the recorded basis requires it, renewed consent before dispatch.
 
 Hosted identity records follow their declared per-store retention and deletion
-schedule. FounderOS records deletion requests, observed outcomes, and
+schedule. RTB Publishing records deletion requests, observed outcomes, and
 exceptions without claiming physical erasure that the adapter cannot prove.
 This narrow allowance does not permit subscriber data to enter AI or media
 provider calls.
@@ -165,7 +165,7 @@ features before dispatch. Missing structured output, region, retention,
 training, deletion, idempotency, reconciliation, or tool restrictions is a
 capability failure, not permission to degrade behavior.
 
-FounderOS never silently changes a provider, model, region, prompt, capability
+RTB Publishing never silently changes a provider, model, region, prompt, capability
 version, or capability level. A fallback is allowed only when the project
 policy names it in advance or the creator approves a new dispatch after seeing
 the changed destination, terms, capability, cost, and expected quality. The

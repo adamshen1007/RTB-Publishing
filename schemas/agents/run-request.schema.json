@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS agent run request",
+  "title": "RTB Publishing agent run request",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "runId", "agentId", "subject", "provider", "model", "createdAt", "inputs", "limits"],

@@ -17,7 +17,7 @@ export async function runPlatformCommand(positionals, options) {
     if (action === "inspect") return console.log(JSON.stringify(inspectAnyProject(subject), null, 2));
     if (action === "onboard") {
       const candidate = inspectExternalCandidate(subject);
-      console.log(JSON.stringify({ ...candidate, nextCommand: candidate.allowed ? `founderos platform project import "${candidate.path}" --dry-run` : `founderos platform root allow "${candidate.recommendedRoot}" --dry-run` }, null, 2));
+      console.log(JSON.stringify({ ...candidate, nextCommand: candidate.allowed ? `rtb-publishing platform project import "${candidate.path}" --dry-run` : `rtb-publishing platform root allow "${candidate.recommendedRoot}" --dry-run` }, null, 2));
       return;
     }
     if (action === "import") {
@@ -125,7 +125,7 @@ export async function runPlatformCommand(positionals, options) {
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("--port must be an integer from 0 to 65535.");
     const platform = await startPlatform({ host, port });
     const address = platform.server.address();
-    console.log(`FounderOS workspace: http://${host.includes(":") ? `[${host}]` : host}:${address.port}`);
+    console.log(`RTB Publishing workspace: http://${host.includes(":") ? `[${host}]` : host}:${address.port}`);
     console.log(`Workspace source: ${relative(ROOT, WORKSPACE_FILE)}`);
     const stop = () => platform.server.close(() => process.exit(0));
     process.on("SIGINT", stop);

@@ -1,6 +1,6 @@
 # Codex Prompt — Repository Bootstrap
 
-Create or update the FounderOS Publishing Platform repository according to the specs.
+Create or update the RTB Publishing Platform repository according to the specs.
 
 Rules:
 

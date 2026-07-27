@@ -37,7 +37,7 @@ export function createPlatformServer(options = {}) {
       const url = new URL(request.url, "http://localhost");
       if (request.method === "GET" && url.pathname === "/api/session") return json(response, 200, { csrfToken });
       const index = indexService.refresh();
-      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "founderos platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot() });
+      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot() });
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
       if (request.method === "GET" && projectMatch) {
         const project = index.projects.find((item) => item.id === projectMatch[1]);
@@ -48,7 +48,7 @@ export function createPlatformServer(options = {}) {
       const workflowMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows\/([a-z-]+)$/);
       if (request.method === "POST" && workflowMatch) {
         if (request.headers["content-type"] !== "application/json") return json(response, 415, { error: "content_type", message: "Workflow requests require application/json." });
-        if (request.headers["x-founderos-csrf"] !== csrfToken) return json(response, 403, { error: "csrf", message: "Refresh the workspace before starting a workflow." });
+        if (request.headers["x-rtb-publishing-csrf"] !== csrfToken) return json(response, 403, { error: "csrf", message: "Refresh the workspace before starting a workflow." });
         const origin = request.headers.origin;
         if (!validOrigin(origin)) return json(response, 403, { error: "origin", message: "Remote origins are not allowed." });
         const input = await body(request);
@@ -59,7 +59,7 @@ export function createPlatformServer(options = {}) {
       }
       const jobAction = url.pathname.match(/^\/api\/jobs\/(JOB-[A-Z0-9-]+)\/(cancel|rerun)$/);
       if (request.method === "POST" && jobAction) {
-        if (request.headers["content-type"] !== "application/json" || request.headers["x-founderos-csrf"] !== csrfToken) return json(response, 403, { error: "job_action_denied", message: "Refresh the workspace before changing a job." });
+        if (request.headers["content-type"] !== "application/json" || request.headers["x-rtb-publishing-csrf"] !== csrfToken) return json(response, 403, { error: "job_action_denied", message: "Refresh the workspace before changing a job." });
         if (!validOrigin(request.headers.origin)) return json(response, 403, { error: "origin", message: "Remote origins are not allowed." });
         const input = await body(request);
         if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Confirm the job action first." });

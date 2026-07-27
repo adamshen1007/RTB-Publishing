@@ -13,7 +13,7 @@ Each topic contains:
 - `evidence/EVD-NNN.yaml`: a short quote, paraphrase, or observation
 - `claims/CLM-NNN.yaml`: classified statement and evidence relationships
 - `outputs/research-brief.md`: deterministic generated brief
-- `.founderos/research-state.json`: generated-output hash
+- `.rtb-publishing/research-state.json`: generated-output hash
 
 ## Claim Classifications
 
@@ -26,12 +26,12 @@ Each topic contains:
 ## Commands
 
 ```text
-founderos research create <topic> [options]
-founderos research add-source <manifest> [options]
-founderos research validate <manifest>
-founderos research build <manifest> [--dry-run] [--check] [--force]
-founderos research status <manifest>
-founderos research refresh <manifest> --as-of YYYY-MM-DD [--dry-run]
+rtb-publishing research create <topic> [options]
+rtb-publishing research add-source <manifest> [options]
+rtb-publishing research validate <manifest>
+rtb-publishing research build <manifest> [--dry-run] [--check] [--force]
+rtb-publishing research status <manifest>
+rtb-publishing research refresh <manifest> --as-of YYYY-MM-DD [--dry-run]
 ```
 
 ## Validation
@@ -60,7 +60,7 @@ source list. Claims display source IDs resolved through their evidence records.
 
 ## Ownership
 
-The YAML records are user-owned. Generated Markdown has a FounderOS ownership
+The YAML records are user-owned. Generated Markdown has a RTB Publishing ownership
 marker. Builds stop if output differs from the prior generated hash unless the
 human supplies `--force`.
 

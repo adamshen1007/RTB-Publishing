@@ -14,7 +14,7 @@ make a concrete decision without private coaching from the author.
 - Sanitized notes about comprehension, confusion, and the next action
 - A resolution decision for every blocking finding
 
-This is a content review. It is separate from the FounderOS platform pilot.
+This is a content review. It is separate from the RTB Publishing platform pilot.
 
 ## Session Steps
 

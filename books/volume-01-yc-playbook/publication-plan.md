@@ -2,14 +2,14 @@
 
 ## Decision
 
-FounderOS approved the decision to pursue public publication on 2026-07-21.
+RTB Publishing approved the decision to pursue public publication on 2026-07-21.
 This decision starts publication preparation; it does not assert that legal,
 editorial, accessibility, or beginner review has occurred.
 
-The public edition is titled *The FounderOS Playbook for AI Founders*. The
+The public edition is titled *The RTB Publishing Playbook for AI Founders*. The
 historical source-directory slug remains `volume-01-yc-playbook` to preserve
 stable repository references. Public download filenames use
-`founderos-playbook`.
+`rtb-publishing-playbook`.
 
 ## Reader and Promise
 
@@ -48,7 +48,7 @@ revise that decision before release and must record the change here.
 
 ## Rights and Independence Boundary
 
-FounderOS is the publisher. Y Combinator is one of several cited sources and
+RTB Publishing is the publisher. Y Combinator is one of several cited sources and
 did not publish, sponsor, review, or endorse the book. The publication must not
 use Y Combinator logos or imitate its visual identity.
 
@@ -64,8 +64,8 @@ replace rights clearance.
 
 The launch follows an owned-first sequence:
 
-1. Publish the canonical reading page and downloads at a stable FounderOS URL.
-2. Collect feedback through a FounderOS-controlled repository process.
+1. Publish the canonical reading page and downloads at a stable RTB Publishing URL.
+2. Collect feedback through a RTB Publishing-controlled repository process.
 3. Use one or two external channels to point readers back to the canonical page.
 4. Invite a small number of relevant communities or reviewers only after the
    owned page and feedback process work.

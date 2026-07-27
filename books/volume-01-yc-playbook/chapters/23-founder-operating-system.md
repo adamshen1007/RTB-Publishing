@@ -17,7 +17,7 @@ decision integrity should remain.
 
 The Startup Playbook connects idea, team, product, execution, growth, and
 fundraising as one company system.[^playbook] NIST’s AI RMF emphasizes ongoing
-governance, mapping, measurement, and management for AI risk.[^rmf] FounderOS
+governance, mapping, measurement, and management for AI risk.[^rmf] RTB Publishing
 synthesizes these into seven canonical records:
 
 1. Founder readiness and constraints

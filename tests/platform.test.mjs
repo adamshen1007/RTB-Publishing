@@ -23,7 +23,7 @@ test("two-project workspace produces deterministic schema-valid summaries", () =
   const first = buildWorkspaceIndex(undefined, isolatedLocalFile);
   const second = buildWorkspaceIndex(undefined, isolatedLocalFile);
   assert.deepEqual(first, second);
-  assert.deepEqual(first.projects.map((project) => project.id), ["founderos-core", "ai-launch-copilot"]);
+  assert.deepEqual(first.projects.map((project) => project.id), ["rtb-publishing-core", "ai-launch-copilot"]);
   assert.equal(first.projects[0].milestone, "M5A.3 pilot");
   first.projects.forEach((project) => validatePlatformRecord("project-summary", project));
 });
@@ -61,7 +61,7 @@ test("registry add, inspect, dry-run, and remove never delete projects", () => {
 });
 
 test("external onboarding requires an explicit local allowlist and stays read-only", () => {
-  const external = mkdtempSync("/private/tmp/founderos-external-");
+  const external = mkdtempSync("/private/tmp/rtb-publishing-external-");
   const localFile = resolve(temporaryRoot, `local-${Date.now()}.yaml`);
   writeFileSync(resolve(external, "package.json"), `${JSON.stringify({ name: "Pilot Project", description: "Local pilot repository" })}\n`);
   writeFileSync(resolve(external, "README.md"), "# Pilot Project\n");
@@ -92,7 +92,7 @@ test("external onboarding requires an explicit local allowlist and stays read-on
 });
 
 test("local workspace backup dry-runs and restores registry state only", () => {
-  const external = mkdtempSync("/private/tmp/founderos-backup-project-");
+  const external = mkdtempSync("/private/tmp/rtb-publishing-backup-project-");
   const directory = mkdtempSync(resolve(temporaryRoot, "backup-"));
   const localFile = resolve(directory, "local.yaml");
   const output = resolve(directory, "workspace-backup.json");
@@ -175,8 +175,8 @@ test("platform paths deny escape, secrets, and symbolic links", () => {
 });
 
 test("workflow allowlist is fixed and logs redact secrets", () => {
-  assert.match(workflowCommand("founderos-core", "research-validate", "JOB-TEST").join(" "), /research validate/);
-  assert.throws(() => workflowCommand("founderos-core", "git-push", "JOB-TEST"), /not allowed/);
+  assert.match(workflowCommand("rtb-publishing-core", "research-validate", "JOB-TEST").join(" "), /research validate/);
+  assert.throws(() => workflowCommand("rtb-publishing-core", "git-push", "JOB-TEST"), /not allowed/);
   assert.equal(redactLog("authorization=Bearer abc123 password=hunter2"), "authorization=[REDACTED] password=[REDACTED]");
 });
 
@@ -184,7 +184,7 @@ test("job records persist terminal state and recover interrupted work", async ()
   const directory = mkdtempSync(resolve(temporaryRoot, "jobs-"));
   try {
     const manager = new JobManager({ directory, now: () => "2026-07-13T06:00:00Z", executor: async (_command, output) => { output("token=secret-value\ncompleted"); return { exitCode: 0, output: "" }; } });
-    const job = manager.create("founderos-core", "research-validate");
+    const job = manager.create("rtb-publishing-core", "research-validate");
     await waitFor(() => manager.get(job.id).status === "passed");
     assert.doesNotMatch(manager.get(job.id).log, /secret-value/);
     const stored = JSON.parse(readFileSync(resolve(directory, `${job.id}.json`), "utf8"));
@@ -204,7 +204,7 @@ test("running jobs cancel explicitly and reruns retain lineage", async () => {
   const executor = async (_command, _output, registerCancel) => new Promise((resolvePromise) => { finish = resolvePromise; registerCancel(() => resolvePromise({ exitCode: 143, output: "terminated" })); });
   try {
     const manager = new JobManager({ directory, executor });
-    const job = manager.create("founderos-core", "research-validate");
+    const job = manager.create("rtb-publishing-core", "research-validate");
     await waitFor(() => manager.get(job.id).status === "running");
     assert.equal(manager.cancel(job.id).status, "cancelled");
     await waitFor(() => manager.active === false);
@@ -220,7 +220,7 @@ test("diagnostics and exports omit logs while retention supports dry-run", async
   const directory = mkdtempSync(resolve(temporaryRoot, "job-retention-"));
   try {
     const manager = new JobManager({ directory, now: () => "2025-01-01T00:00:00Z", executor: async () => ({ exitCode: 0, output: "password=private" }) });
-    manager.create("founderos-core", "research-validate");
+    manager.create("rtb-publishing-core", "research-validate");
     await waitFor(() => manager.list()[0].status === "passed");
     assert.equal("log" in sanitizedJobs(directory)[0], false);
     assert.equal(diagnostics(directory).jobs.total, 1);
@@ -244,11 +244,11 @@ test("local API serves state and requires CSRF plus confirmation for jobs", asyn
     assert.equal(workspace.onboarding.externalWorkflows, "disabled");
     assert.match(workspace.onboarding.nextCommand, /project onboard/);
     assert.equal(workspace.pilot.sessions.observed, 0);
-    const denied = await fetch(`${base}/api/projects/founderos-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
+    const denied = await fetch(`${base}/api/projects/rtb-publishing-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirm: true }) });
     assert.equal(denied.status, 403);
-    const unconfirmed = await fetch(`${base}/api/projects/founderos-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json", "x-founderos-csrf": "test-csrf" }, body: JSON.stringify({ confirm: false }) });
+    const unconfirmed = await fetch(`${base}/api/projects/rtb-publishing-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": "test-csrf" }, body: JSON.stringify({ confirm: false }) });
     assert.equal(unconfirmed.status, 400);
-    const accepted = await fetch(`${base}/api/projects/founderos-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json", "x-founderos-csrf": "test-csrf" }, body: JSON.stringify({ confirm: true }) });
+    const accepted = await fetch(`${base}/api/projects/rtb-publishing-core/workflows/research-validate`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": "test-csrf" }, body: JSON.stringify({ confirm: true }) });
     assert.equal(accepted.status, 202);
     assert.match((await accepted.json()).id, /^JOB-/);
   } finally { await new Promise((resolvePromise) => platform.server.close(resolvePromise)); rmSync(directory, { recursive: true, force: true }); }

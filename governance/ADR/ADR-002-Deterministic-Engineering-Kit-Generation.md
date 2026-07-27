@@ -6,14 +6,14 @@ Accepted
 
 ## Context
 
-FounderOS needs to generate starter documentation repeatedly without overwriting
+RTB Publishing needs to generate starter documentation repeatedly without overwriting
 human work or making output depend on the clock, network, or machine.
 
 ## Decision
 
 Use a versioned YAML manifest validated by JSON Schema. Render a fixed mapping of
 repository-owned templates to Markdown output. Store only generator version and
-content hashes in `.founderos/generation-state.json`.
+content hashes in `.rtb-publishing/generation-state.json`.
 
 On regeneration, overwrite only files whose current hash matches the prior
 generated hash. Treat new, unowned, or user-modified files as conflicts unless a
