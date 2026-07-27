@@ -43,6 +43,7 @@
     "Strategyzer",
     "toolchain",
     "workflows",
+    "worktree",
     "YAML"
   ]
 }
