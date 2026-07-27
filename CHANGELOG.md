@@ -128,4 +128,4 @@
 
 ## 0.1.0
 
-- Initial RTB Publishing Platform engineering kit.
+- Initial RTB Publishing Publishing Platform engineering kit.

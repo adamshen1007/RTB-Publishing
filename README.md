@@ -30,8 +30,8 @@ The complete governance rules are defined in [CONSTITUTION.md](CONSTITUTION.md).
 Clone the repository:
 
 ```bash
-git clone https://github.com/adamshen1007/RTB-Publishing.git
-cd RTB-Publishing
+git clone https://github.com/adamshen1007/RTB Publishing.git
+cd RTB Publishing
 ```
 
 Then read these documents in order:
@@ -142,7 +142,7 @@ prerequisites and individual commands.
 ## Canonical Repository Structure
 
 ```text
-RTB-Publishing/
+RTB Publishing/
 ├── governance/     # ADRs, RFCs, and policies
 ├── docs/           # Strategy, architecture, and operating guides
 ├── specs/          # Implementation contracts and engine specifications

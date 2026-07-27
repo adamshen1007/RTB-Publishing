@@ -40,8 +40,8 @@ brew install pandoc vale
 ## First Setup
 
 ```bash
-git clone https://github.com/adamshen1007/RTB-Publishing.git
-cd RTB-Publishing
+git clone https://github.com/adamshen1007/RTB Publishing.git
+cd RTB Publishing
 pnpm install
 ```
 

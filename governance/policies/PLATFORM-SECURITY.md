@@ -8,12 +8,20 @@ host, or multi-tenant deployment.
 ## Controls
 
 - Bind only to IPv4 or IPv6 loopback.
+- Enforce a strict allowlist of loopback `Host` values and configured ports
+  before routing. Reject DNS-rebinding names and forwarded-host ambiguity.
 - Keep committed project roots inside the repository. External roots require an
   absolute, explicit local allowlist entry and reject symbolic links.
 - Treat external projects as read-only and grant no workflows automatically.
 - Deny secret-shaped paths and never expose environment values through the API.
-- Require same-origin JSON requests, CSRF tokens, and explicit confirmation for
+- Require same-origin JSON requests with exact supported content types, Origin
+  and Fetch Metadata checks, session-bound CSRF tokens, an authenticated
+  short-lived local capability or session, and explicit confirmation for
   workflow jobs.
+- Bound request headers, bodies, fields, and batches; apply per-session and
+  per-operation rate limits and reject replayed command identities.
+- Keep credentials and local capability tokens out of URLs, query strings,
+  fragments, redirects, logs, and browser history.
 - Execute only fixed argument arrays with `shell: false`.
 - Limit execution to one job and retain bounded, redacted logs.
 - Recover interrupted jobs as failed rather than silently retrying them.
