@@ -2,11 +2,12 @@
 
 ## Result
 
-Completed. RFC-008 accepts the technical PDF decision required before WP98 PDF
+Blocked. RFC-008 accepts the technical PDF decision required before WP98 PDF
 renderer implementation: Prince 16.2 with `PDF/A-2a+PDF/UA-1`, validated by
 veraPDF Greenfield 1.28.2 (`2a` and `ua1`), qpdf 12.3.2, and a locked
 Ghostscript/ImageMagick visual comparison path. The decision explicitly limits
-release-producing runs to macOS Universal and Ubuntu 24.04 x86_64.
+release-producing runs to macOS Universal and Ubuntu 24.04 x86_64, and the
+required compatibility gate has not passed on either platform.
 
 ## Sources Consulted
 
@@ -39,6 +40,9 @@ release-producing runs to macOS Universal and Ubuntu 24.04 x86_64.
 - Did not claim an accessibility conformance result, completed screen-reader
   review, legal clearance, licence sufficiency, or compatibility run. Those
   remain human or platform-specific evidence gates.
+- Added checksum-pinned Eclipse Temurin JRE 21.0.11+10 artifacts for macOS
+  Intel, macOS Apple silicon, and Ubuntu x86_64. veraPDF may run only on this
+  pinned Java runtime.
 
 ## Files
 
@@ -50,12 +54,14 @@ release-producing runs to macOS Universal and Ubuntu 24.04 x86_64.
 - `tests/fixtures/publishing/pdf/semantic-book.html`
 - `tests/fixtures/publishing/pdf/compatibility-matrix.json`
 - `tests/fixtures/publishing/pdf/waiver.example.json`
+- `tests/fixtures/publishing/pdf/evidence/macos-universal-2026-07-27.json`
+- `tests/fixtures/publishing/pdf/evidence/ubuntu-24.04-x86_64-2026-07-27.json`
 - `tests/pdf-toolchain.test.mjs`
 - `cspell.json`
 
 ## Verification
 
-- Passed: `node --test tests/pdf-toolchain.test.mjs` (4 tests).
+- Passed: `node --test tests/pdf-toolchain.test.mjs` (5 tests).
 - Passed: `pnpm check:markdown`, `pnpm check:spelling`, `pnpm check:style`,
   `pnpm check:citations`, and `pnpm check:links`. The links check completed
   successfully while reporting transient network warnings for external links.
@@ -63,12 +69,27 @@ release-producing runs to macOS Universal and Ubuntu 24.04 x86_64.
   server tests could not bind `127.0.0.1` in the sandbox (`EPERM`). The focused
   WP92 test suite passes.
 
+### Compatibility execution
+
+- macOS Universal (Intel host): verified the Prince 16.2, Temurin 21.0.11+10,
+  veraPDF 1.28.2, qpdf 12.3.2, and Noto artifact hashes; rendered the semantic
+  fixture; qpdf parsed it; and veraPDF `2a` passed. veraPDF `ua1` failed with
+  two ISO 14289-1:2014 clause 7.18.1 checks. The exact cause is a Popup
+  annotation added by Prince's non-commercial watermark; it has no Contents or
+  Alt and is not nested in an Annot tag. The PDF is not release eligible.
+- Ubuntu 24.04 x86_64: Docker Desktop 29.5.3 was reachable, but
+  `ubuntu:24.04` could not be made locally available after repeated pull
+  attempts. The inspected local Linux image is Debian 12, which is not an
+  accepted substitute. No PDF was produced on this platform.
+
 ## Commit
 
-Implementation commit: `387e66d713088b772c960a31fe3b029a9b42a55d`
+Initial implementation commit: `387e66d713088b772c960a31fe3b029a9b42a55d`
 
 ## Concerns
 
-The toolchain decision is complete, but a release stays blocked until both
-supported platforms run the compatibility fixture and named humans supply the
-required accessibility-review and licence/rights evidence.
+WP92 is blocked. To unblock it, a named human must provide an appropriately
+licensed Prince `license.dat` for an unwatermarked macOS fixture run and make a
+real Ubuntu 24.04 x86_64 CI/container runtime reachable for the same verified
+fixture. Both runs must pass qpdf and veraPDF `2a`/`ua1` before the human
+accessibility-review and licence/rights gates can be considered separately.

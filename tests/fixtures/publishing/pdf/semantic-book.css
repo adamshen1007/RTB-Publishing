@@ -1,0 +1,16 @@
+@font-face {
+  font-family: "Noto Serif Fixture";
+  src: url("NotoSerif-wdth-wght.ttf") format("truetype");
+}
+
+body, table, code, pre {
+  font-family: "Noto Serif Fixture", prince-no-fallback;
+}
+
+h1 {
+  -prince-bookmark-level: 1;
+}
+
+figure, table {
+  break-inside: avoid;
+}

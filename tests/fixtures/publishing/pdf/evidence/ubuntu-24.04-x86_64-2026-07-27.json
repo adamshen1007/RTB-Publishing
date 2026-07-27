@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "fixture": "semantic-book.html",
+  "runAt": "2026-07-27T15:53:17Z",
+  "platform": {
+    "id": "ubuntu-24.04-x86_64",
+    "architecture": "x86_64"
+  },
+  "environment": {
+    "dockerDesktopVersion": "29.5.3",
+    "availableLocalLinuxImage": "speculor-api:ext-28",
+    "availableLocalLinuxImageOs": "Debian GNU/Linux 12 (bookworm)"
+  },
+  "attempt": {
+    "command": ["docker", "pull", "ubuntu:24.04"],
+    "result": "blocked",
+    "finding": "The required ubuntu:24.04 image was absent after repeated pull attempts in this environment. Docker image inspection confirmed it was not locally available. The only inspected local Linux image is Debian 12, which is not an accepted substitute for ubuntu-24.04-x86_64."
+  },
+  "inputs": {
+    "semanticBookHtmlSha256": "626c89769c81a2a6c72165b92231c20cf338e89949f954b7559dba8ee75aacd9",
+    "semanticBookCssSha256": "99b96ac100e837eda967691eb15f78666a4892d6ee107f51b533703989965cda",
+    "fontSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713"
+  },
+  "outputs": null,
+  "overallResult": "blocked-no-ubuntu-24.04-runtime"
+}

@@ -23,6 +23,10 @@ qpdf 12.3.2 to reject unreadable, encrypted, or malformed PDFs. Ghostscript
 10.07.1 rasterizes selected pages and ImageMagick 7.1.2-24 compares the
 resulting PNGs against reviewed visual baselines.
 
+veraPDF runs only on the lock-owned Eclipse Temurin JRE 21.0.11+10. The lock
+contains distinct verified JRE artifacts for macOS Intel, macOS Apple silicon,
+and Ubuntu 24.04 x86_64; an ambient `java` command is not an accepted runtime.
+
 The full, checksum-pinned input is
 [toolchain.lock.json](../../publishing/pdf/toolchain.lock.json). That lock is
 the only supported toolchain selection for Increment 1.
@@ -112,6 +116,7 @@ or an unpinned system copy fails the toolchain check.
 | Role | Tool and fixed version | Blocking result |
 | --- | --- | --- |
 | renderer | Prince 16.2 | non-zero exit or any structured-log warning |
+| Java runtime | Eclipse Temurin JRE 21.0.11+10 | missing, wrong-version, or checksum-mismatched runtime |
 | structural validator | veraPDF Greenfield 1.28.2, `--flavour ua1` | any machine-verifiable PDF/UA-1 failure |
 | archival-profile validator | veraPDF Greenfield 1.28.2, `--flavour 2a` | any PDF/A-2a failure |
 | parser / integrity check | qpdf 12.3.2 | failed `--check`, encryption, bad signature, or unreadable page tree |
@@ -195,6 +200,9 @@ invalid. The example fixture is a schema example only, not an approval.
 - [x] Tool and font artifacts have a SHA-256 or exact repository-lock reference.
 - [x] Compatibility fixtures exist for both supported platforms and are checked
   by the repository test suite.
+- [ ] Compatibility evidence passes on both supported platforms. The recorded
+  macOS demo run is blocked by its watermark and the Ubuntu 24.04 runtime was
+  unavailable; see the evidence fixtures for exact findings.
 - [x] The manual review procedure and waiver record fields are versioned.
 - [ ] A named reviewer records a passing screen-reader and visual review for a
   specific candidate. This remains a human evidence gate.
@@ -221,6 +229,7 @@ invalid. The example fixture is a schema example only, not an approval.
 - [Prince licence FAQ](https://www.princexml.com/purchase/license_faq/) — vendor licence descriptions; not legal advice.
 - [veraPDF validation](https://docs.verapdf.org/validation/) and [CLI validation profiles](https://docs.verapdf.org/cli/validation/) — PDF/A-2a and PDF/UA-1 validation flavours and machine-only PDF/UA scope.
 - [veraPDF 1.28.2 download archive](https://software.verapdf.org/releases/1.28) — locked Greenfield installer artifact.
+- [Eclipse Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10) — locked macOS and Ubuntu JRE artifacts.
 - [qpdf 12.3.2 release](https://github.com/qpdf/qpdf/releases/tag/v12.3.2) — parser release and signed checksum manifest.
 - [Ghostscript releases](https://ghostscript.com/releases/) and [Ghostscript FAQ](https://ghostscript.com/faq/index.html) — PDF rasterizer release and PNG rendering use.
 - [ImageMagick compare](https://imagemagick.org/compare/) — pixel-comparison command semantics.

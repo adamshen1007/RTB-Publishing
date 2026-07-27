@@ -8,6 +8,8 @@ const readJson = (file) => JSON.parse(readFileSync(resolve(root, file), "utf8"))
 const lock = readJson("publishing/pdf/toolchain.lock.json");
 const fixture = readJson("tests/fixtures/publishing/pdf/compatibility-matrix.json");
 const waiver = readJson("tests/fixtures/publishing/pdf/waiver.example.json");
+const macosEvidence = readJson("tests/fixtures/publishing/pdf/evidence/macos-universal-2026-07-27.json");
+const ubuntuEvidence = readJson("tests/fixtures/publishing/pdf/evidence/ubuntu-24.04-x86_64-2026-07-27.json");
 
 const sha256 = /^[a-f0-9]{64}$/;
 
@@ -27,6 +29,7 @@ test("RFC-008 locks the combined profile and every required executable", () => {
   assert.equal(lock.tools.renderer.version, "16.2");
   assert.equal(lock.tools.structuralValidator.version, "1.28.2");
   assert.equal(lock.tools.profileValidator.flavour, "2a");
+  assert.equal(lock.tools.javaRuntime.version, "21.0.11+10");
   assert.equal(lock.tools.pdfParser.version, "12.3.2");
   assert.equal(lock.tools.visualRasterizer.version, "10.07.1");
   assert.equal(lock.tools.visualComparator.version, "7.1.2-24");
@@ -35,11 +38,16 @@ test("RFC-008 locks the combined profile and every required executable", () => {
 test("PDF tool and font artifact locks contain verifiable pins", () => {
   for (const artifact of lock.tools.renderer.artifacts) assert.match(artifact.sha256, sha256);
   assert.match(lock.tools.structuralValidator.sha256, sha256);
+  for (const artifact of lock.tools.javaRuntime.artifacts) assert.match(artifact.sha256, sha256);
   assert.match(lock.tools.pdfParser.sha256, sha256);
   assert.match(lock.tools.visualRasterizer.sha256, sha256);
   assert.match(lock.fonts[0].sha256, sha256);
   assert.match(lock.tools.visualComparator.repositoryLock, /^https:\/\//);
   assert.equal(lock.fonts[0].fallback.includes("forbidden"), true);
+  assert.deepEqual(
+    lock.tools.javaRuntime.artifacts.map(({ platform, architecture }) => `${platform}:${architecture}`).sort(),
+    ["macos-universal:arm64", "macos-universal:x86_64", "ubuntu-24.04-x86_64:x86_64"]
+  );
 });
 
 test("compatibility fixture covers each and only each supported platform", () => {
@@ -70,4 +78,17 @@ test("the waiver example cannot be mistaken for an approval and has bounded fiel
     assert.ok(waiver[field], `waiver example must contain ${field}`);
   }
   assert.match(waiver.expiresAt, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("compatibility evidence preserves the actual platform blockers without claiming release eligibility", () => {
+  assert.equal(macosEvidence.platform.id, "macos-universal");
+  assert.equal(macosEvidence.demoAndLicenceStatus.releaseEligible, false);
+  assert.equal(macosEvidence.outputs.retainedPdf, false);
+  assert.equal(macosEvidence.commands.find(({ name }) => name === "render").exitCode, 0);
+  assert.equal(macosEvidence.commands.find(({ name }) => name === "parse").exitCode, 0);
+  assert.equal(macosEvidence.commands.find(({ name }) => name === "validate-pdfa-2a").compliant, true);
+  assert.equal(macosEvidence.commands.find(({ name }) => name === "validate-pdfua-1").compliant, false);
+  assert.match(macosEvidence.commands.find(({ name }) => name === "validate-pdfua-1").finding, /Popup annotation/);
+  assert.equal(ubuntuEvidence.platform.id, "ubuntu-24.04-x86_64");
+  assert.equal(ubuntuEvidence.overallResult, "blocked-no-ubuntu-24.04-runtime");
 });

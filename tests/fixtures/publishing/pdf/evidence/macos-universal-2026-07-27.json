@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "fixture": "semantic-book.html",
+  "runAt": "2026-07-27T15:53:17Z",
+  "platform": {
+    "id": "macos-universal",
+    "kernel": "Darwin 24.6.0",
+    "architecture": "x86_64"
+  },
+  "demoAndLicenceStatus": {
+    "princeVersionOutput": "Prince 16.2; Non-commercial License",
+    "mode": "non-commercial-demo",
+    "releaseEligible": false,
+    "reason": "The non-commercial watermark adds popup annotations that fail the PDF/UA-1 validator. This run is technical evidence only, not licence or accessibility evidence."
+  },
+  "artifactVerification": [
+    {
+      "name": "Prince 16.2 macOS Universal ZIP",
+      "expectedSha256": "30a14021a68c38b92c36beb2fddc62ea5425392a86d4cdc6767adde38a9af8aa",
+      "actualSha256": "30a14021a68c38b92c36beb2fddc62ea5425392a86d4cdc6767adde38a9af8aa",
+      "result": "passed"
+    },
+    {
+      "name": "Eclipse Temurin JRE 21.0.11+10 macOS x64",
+      "expectedSha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+      "actualSha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+      "result": "passed"
+    },
+    {
+      "name": "veraPDF Greenfield 1.28.2 installer",
+      "expectedSha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "actualSha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "result": "passed"
+    },
+    {
+      "name": "qpdf 12.3.2 source archive",
+      "expectedSha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+      "actualSha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+      "result": "passed"
+    },
+    {
+      "name": "Noto Serif variable normal TTF",
+      "expectedSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "actualSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "result": "passed"
+    }
+  ],
+  "inputs": {
+    "semanticBookHtmlSha256": "626c89769c81a2a6c72165b92231c20cf338e89949f954b7559dba8ee75aacd9",
+    "semanticBookCssSha256": "99b96ac100e837eda967691eb15f78666a4892d6ee107f51b533703989965cda",
+    "fontSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713"
+  },
+  "tools": {
+    "prince": "16.2 (Non-commercial License)",
+    "java": "Eclipse Temurin 21.0.11+10",
+    "verapdf": "1.28.2",
+    "qpdf": "12.3.2"
+  },
+  "commands": [
+    {
+      "name": "render",
+      "arguments": ["prince", "semantic-book.html", "--output", "semantic-book.pdf", "--pdf-profile=PDF/A-2a+PDF/UA-1", "--pdf-lang=en-US", "--no-system-fonts", "--no-artificial-fonts", "--fail-safe", "--structured-log=buffered"],
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "name": "parse",
+      "arguments": ["qpdf", "--check", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "name": "validate-pdfa-2a",
+      "arguments": ["verapdf", "--format", "json", "--flavour", "2a", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed",
+      "reportSha256": "9ed5611aff25bb32c62054a71d1126feddc5571c68ac2d001ceb552b7b4e303f",
+      "compliant": true
+    },
+    {
+      "name": "validate-pdfua-1",
+      "arguments": ["verapdf", "--format", "json", "--flavour", "ua1", "semantic-book.pdf"],
+      "exitCode": 1,
+      "result": "failed",
+      "reportSha256": "df6de57d9b8b81d2a9b685c1660aa777b53c91d5d1869cc7b0a0be9a6aad372e",
+      "compliant": false,
+      "finding": "ISO 14289-1:2014 clause 7.18.1: Prince's non-commercial watermark creates a Popup annotation that has neither Contents nor Alt and is not nested within an Annot tag."
+    }
+  ],
+  "outputs": {
+    "pdfSha256": "c7108c0221534bec305af9a6865d583a91fd1f365537512c840c71523bfdffc4",
+    "pdfBytes": 19135,
+    "retainedPdf": false,
+    "reason": "Generated binaries and validator reports stay outside Git; their hashes are retained here."
+  },
+  "overallResult": "blocked-by-demo-watermark"
+}
