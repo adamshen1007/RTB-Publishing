@@ -6,6 +6,11 @@ import { BOOK_DIR, BOOK_DIST_DIR, BUILD_DIR, ROOT, localBinary, run } from "./li
 
 const DEFAULT_OUTPUT = resolve(BUILD_DIR, "acceptance", "increment-1", "baseline", "baseline.json");
 const SOURCE_REGISTRY = resolve(BOOK_DIR, "references", "source-registry.md");
+const REQUIRED_COMMANDS = Object.freeze([
+  { id: "pnpm-check", command: "pnpm", args: ["check"] },
+  { id: "pnpm-build", command: "pnpm", args: ["build"] },
+  { id: "pnpm-verify-outputs", command: "pnpm", args: ["verify:outputs"] }
+]);
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -16,6 +21,33 @@ function commandOutput(command, args) {
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed: ${output}`);
   return output;
+}
+
+export function assertBaselinePreconditions({ dirty, commands }) {
+  if (dirty) throw new Error("Increment 1 baseline requires a clean Git worktree.");
+  const expected = new Set(REQUIRED_COMMANDS.map((command) => command.id));
+  const observed = new Map((commands ?? []).map((command) => [command.id, command]));
+  for (const id of expected) {
+    const result = observed.get(id);
+    if (!result || result.result !== "passed" || result.exitCode !== 0) {
+      throw new Error(`Increment 1 baseline requires a successful ${id} command result.`);
+    }
+  }
+}
+
+function runRequiredCommand(command) {
+  const startedAt = new Date().toISOString();
+  const result = run(command.command, command.args, { allowFailure: true, capture: true });
+  const outcome = {
+    id: command.id,
+    command: [command.command, ...command.args].join(" "),
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    exitCode: result.status ?? 1,
+    result: result.status === 0 ? "passed" : "failed"
+  };
+  if (outcome.result !== "passed") throw new Error(`${outcome.command} failed with exit code ${outcome.exitCode}.`);
+  return outcome;
 }
 
 function version(command, args = ["--version"]) {
@@ -88,10 +120,12 @@ function assertSanitized(record) {
   }
 }
 
-export function createBaselineRecord({ startedAt = new Date().toISOString() } = {}) {
+export function createBaselineRecord({ startedAt = new Date().toISOString(), commands } = {}) {
   const htmlFile = resolve(BOOK_DIST_DIR, "index.html");
   const epubFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.epub");
   const docxFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.docx");
+  const dirty = commandOutput("git", ["status", "--porcelain"]) !== "";
+  assertBaselinePreconditions({ dirty, commands });
   const inputs = canonicalInputs();
   const html = readFileSync(htmlFile, "utf8");
   const record = {
@@ -100,7 +134,7 @@ export function createBaselineRecord({ startedAt = new Date().toISOString() } = 
     startedAt,
     repository: {
       commit: commandOutput("git", ["rev-parse", "HEAD"]),
-      dirty: commandOutput("git", ["status", "--porcelain"]) !== ""
+      dirty: false
     },
     environment: {
       platform: process.platform,
@@ -118,6 +152,7 @@ export function createBaselineRecord({ startedAt = new Date().toISOString() } = 
       sourceRegistrySha256: sha256(readFileSync(SOURCE_REGISTRY))
     },
     configuration: [{ path: "package.json", sha256: sha256(readFileSync(resolve(ROOT, "package.json"))) }],
+    commands,
     outputs: [outputRecord(htmlFile), outputRecord(epubFile), outputRecord(docxFile)],
     semantics: {
       html: { sha256: sha256(normalizeHtml(html)) },
@@ -137,11 +172,19 @@ export function writeBaselineRecord(output = DEFAULT_OUTPUT, options = {}) {
   return { output: relativePath(output), record };
 }
 
+export function runBaselineCapture(output = DEFAULT_OUTPUT) {
+  const startedAt = new Date().toISOString();
+  const dirty = commandOutput("git", ["status", "--porcelain"]) !== "";
+  if (dirty) throw new Error("Increment 1 baseline requires a clean Git worktree before checks run.");
+  const commands = REQUIRED_COMMANDS.map(runRequiredCommand);
+  return writeBaselineRecord(output, { startedAt, commands });
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
     const outputFlag = process.argv.indexOf("--output");
     const output = outputFlag === -1 ? DEFAULT_OUTPUT : resolve(process.argv[outputFlag + 1]);
-    const result = writeBaselineRecord(output);
+    const result = runBaselineCapture(output);
     console.log(`Increment 1 baseline written: ${result.output}`);
     console.log(`YC chapters: ${result.record.ycPlaybook.chapterCount}`);
     console.log(`HTML semantics: ${result.record.semantics.html.sha256}`);

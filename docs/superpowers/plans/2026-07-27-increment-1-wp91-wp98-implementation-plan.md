@@ -1,11 +1,16 @@
 # Increment 1 WP91-WP98 Implementation Plan
 
-**Status:** Draft for review
+**Status:** Approved for implementation
 **Date:** 2026-07-27
 **Increment:** YC Migration and Publishing Foundation
 **Target outcome:** One reusable Book Project model takes the existing YC
 Playbook through durable Blueprint, Beta, and Publish approvals and produces a
 verified immutable HTML, PDF, and EPUB release.
+
+**Implementation authorization:** The user authorized execution on 2026-07-27.
+This approval authorizes plan execution only; it does not grant Blueprint,
+Beta, Publish, legal, accessibility, Ghost-compatibility, or public-publication
+approval. Those remain separate documented human evidence gates.
 
 ## Authority and Constraints
 
@@ -121,19 +126,20 @@ and create requirement-to-test traceability before behavior changes.
 
 ### Steps
 
-- [ ] Record the current commit, Node, pnpm, Pandoc, Vale, and Mermaid versions.
-- [ ] Run `pnpm check`, `pnpm build`, and `pnpm verify:outputs` as the baseline.
-- [ ] Remove the current full-suite test isolation flake: concurrent research
+- [x] Record the current commit, Node, pnpm, Pandoc, Vale, and Mermaid versions.
+- [x] Run `pnpm check`, `pnpm build`, and `pnpm verify:outputs` as the baseline.
+- [x] Remove the current full-suite test isolation flake: concurrent research
   fixtures can temporarily change files included in the platform live-index
   fingerprint even though the isolated platform suite passes. Use isolated
   temporary roots or serialized ownership rather than accepting retries.
-- [ ] Record the existing YC chapter count, canonical content hashes, source
+- [x] Record the existing YC chapter count, canonical content hashes, source
   registry hash, output filenames, and normalized HTML/EPUB semantic snapshot.
-- [ ] Create a requirement traceability table linking RFC/ADR clauses to
+- [x] Create a requirement traceability table linking RFC/ADR clauses to
   WP91-WP98 and acceptance-test IDs.
-- [ ] Confirm that no work package claims beta reading, legal clearance,
+- [x] Confirm that no work package claims beta reading, legal clearance,
   accessibility approval, Ghost compatibility, or public publication.
-- [ ] Review and approve the plan before WP92-WP98 implementation starts.
+- [x] Record the user's implementation authorization before WP92-WP98 start;
+  preserve all separate human and external approval gates.
 
 ### Exit Criteria
 

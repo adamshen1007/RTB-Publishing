@@ -1,9 +1,14 @@
 # Increment 1 Acceptance Test Plan
 
-**Status:** Draft for review
+**Status:** Approved for implementation
 **Date:** 2026-07-27
 **Applies to:** WP91-WP98
 **Release under test:** YC Migration and Publishing Foundation
+
+**Implementation authorization:** The user authorized execution on 2026-07-27.
+This approval does not grant Blueprint, Beta, Publish, legal, accessibility,
+Ghost-compatibility, or public-publication approval; all remain explicit human
+evidence gates.
 
 ## Purpose
 
@@ -43,8 +48,9 @@ RFC amendment explicitly changes their priority or applicability.
 Every machine report records the repository commit, dirty-state flag, platform,
 tool versions, start and finish times, command, input hashes, configuration
 hashes, result, and report-schema version. WP91 produces its sanitized baseline
-with `pnpm baseline:increment-1`; the command writes
-`build/acceptance/increment-1/baseline/baseline.json` after `pnpm build`.
+with `pnpm baseline:increment-1`; it fails unless the Git worktree is clean and
+it records successful `pnpm check`, `pnpm build`, and `pnpm verify:outputs`
+results before writing `build/acceptance/increment-1/baseline/baseline.json`.
 
 ## Acceptance Environments
 

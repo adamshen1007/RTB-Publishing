@@ -15,12 +15,16 @@ report, and release decision.
 
 ### Increment 1 — YC Migration and Publishing Foundation
 
-**Status:** Implementation plans drafted; review and approval pending
+**Status:** Implementation authorized; WP91 baseline and traceability in progress
 
 Planning artifacts:
 
 - [WP91-WP98 implementation plan](docs/superpowers/plans/2026-07-27-increment-1-wp91-wp98-implementation-plan.md)
 - [Increment 1 acceptance test plan](docs/superpowers/plans/2026-07-27-increment-1-acceptance-test-plan.md)
+
+This authorization starts the work packages only. It does not grant Blueprint,
+Beta, Publish, legal, accessibility, Ghost-compatibility, or public-publication
+approval; those decisions retain their documented human evidence gates.
 
 - Introduce reusable, versioned Book Projects and Book Blueprints.
 - Generalize project and chapter discovery beyond one volume and chapter count.

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { parse } from "yaml";
 import { ROOT } from "../scripts/lib.mjs";
@@ -89,16 +90,23 @@ test("OpenAI adapter requires explicit pricing and respects the cost ceiling", a
 });
 
 test("approval is exact, stale-safe, and required before apply", async () => {
-  const topicRoot = resolve(ROOT, "research", "topics", ".tmp-agent-tests");
+  const repository = mkdtempSync(resolve(temporaryRoot, "agent-repository-"));
+  for (const name of ["agents", "governance", "research", "schemas", "scripts", "specs"]) {
+    cpSync(resolve(ROOT, name), resolve(repository, name), { recursive: true });
+  }
+  const { applyRun: applyIsolatedRun, reviewRun: reviewIsolatedRun, runAgent: runIsolatedAgent } = await import(pathToFileURL(resolve(repository, "scripts", "agents", "runtime.mjs")).href);
+  const topicRoot = resolve(repository, "research", "topics");
   mkdirSync(topicRoot, { recursive: true });
   const topicDirectory = mkdtempSync(resolve(topicRoot, "topic-"));
-  const runDirectory = mkdtempSync(resolve(temporaryRoot, "agent-approval-"));
+  const isolatedTemporaryRoot = resolve(repository, ".tmp");
+  mkdirSync(isolatedTemporaryRoot, { recursive: true });
+  const runDirectory = mkdtempSync(resolve(isolatedTemporaryRoot, "agent-approval-"));
   rmSync(runDirectory, { recursive: true });
   try {
     cpSync(dirname(exampleSubject), topicDirectory, { recursive: true });
     const subject = resolve(topicDirectory, "research.yaml");
     const claimFile = resolve(topicDirectory, "claims", "CLM-006.yaml");
-    const claimPath = claimFile.slice(ROOT.length + 1);
+    const claimPath = claimFile.slice(repository.length + 1);
     const providerImpl = async ({ request }) => ({
       proposal: {
         schemaVersion: 1, runId: request.runId, agentId: request.agentId,
@@ -107,14 +115,14 @@ test("approval is exact, stale-safe, and required before apply", async () => {
       },
       usage: { inputTokens: 0, outputTokens: 0, estimatedCostUsd: 0 }
     });
-    await runAgent("research-reviewer", { subject, runId: "RUN-APPROVAL-001", createdAt: "2026-07-13T05:00:00Z", completedAt: "2026-07-13T05:00:01Z", output: runDirectory, providerImpl });
-    assert.throws(() => applyRun(runDirectory), /No human approval/);
-    reviewRun(runDirectory, { decision: "approved", reviewer: "Test Reviewer", reviewedAt: "2026-07-13T05:01:00Z" });
-    assert.equal(applyRun(runDirectory).changed, 1);
+    await runIsolatedAgent("research-reviewer", { subject, runId: "RUN-APPROVAL-001", createdAt: "2026-07-13T05:00:00Z", completedAt: "2026-07-13T05:00:01Z", output: runDirectory, providerImpl });
+    assert.throws(() => applyIsolatedRun(runDirectory), /No human approval/);
+    reviewIsolatedRun(runDirectory, { decision: "approved", reviewer: "Test Reviewer", reviewedAt: "2026-07-13T05:01:00Z" });
+    assert.equal(applyIsolatedRun(runDirectory).changed, 1);
     assert.equal(parse(readFileSync(claimFile, "utf8")).confidence, "medium");
-    assert.throws(() => applyRun(runDirectory), /changed/);
+    assert.throws(() => applyIsolatedRun(runDirectory), /changed/);
   } finally {
-    rmSync(topicRoot, { recursive: true, force: true });
+    rmSync(repository, { recursive: true, force: true });
     rmSync(runDirectory, { recursive: true, force: true });
   }
 });
