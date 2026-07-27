@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="author" content="Fixture Author">
+    <meta name="subject" content="PDF toolchain compatibility fixture">
+    <meta name="keywords" content="fixture, PDF, accessibility">
+    <title>PDF Toolchain Compatibility Fixture</title>
+  </head>
+  <body>
+    <nav aria-label="Table of contents">
+      <ol>
+        <li><a href="#chapter-one">Chapter one</a></li>
+      </ol>
+    </nav>
+    <main>
+      <h1 id="chapter-one">Chapter one</h1>
+      <p>Read this <a href="#table-one">internal link</a> and this <a href="https://example.com/">external link</a>.</p>
+      <ul><li>One</li><li>Two</li></ul>
+      <figure>
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'%3E%3Crect width='40' height='20' fill='navy'/%3E%3C/svg%3E" alt="A navy rectangle used by the compatibility fixture.">
+        <figcaption>Fixture figure caption</figcaption>
+      </figure>
+      <table id="table-one">
+        <caption>Fixture values</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col">Value</th></tr></thead>
+        <tbody><tr><th scope="row">First</th><td>One</td></tr></tbody>
+      </table>
+    </main>
+  </body>
+</html>

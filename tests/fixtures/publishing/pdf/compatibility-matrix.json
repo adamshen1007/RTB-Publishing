@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "fixture": "semantic-book.html",
+  "purpose": "Run this exact semantic input with the RFC-008 lock on each supported platform before release use.",
+  "expected": {
+    "profiles": ["PDF/A-2a+PDF/UA-1", "2a", "ua1"],
+    "language": "en-US",
+    "semanticElements": ["h1", "ul", "figure", "img[alt]", "table", "caption", "th[scope]"],
+    "metadata": ["title", "author", "subject", "keywords"],
+    "navigation": ["bookmark", "internal-link", "external-link"]
+  },
+  "platforms": [
+    {
+      "id": "macos-universal",
+      "status": "must-run-before-release-use",
+      "rendererArtifact": "Prince 16.2 macOS Universal",
+      "command": ["prince", "semantic-book.html", "--output", "semantic-book.pdf", "--pdf-profile=PDF/A-2a+PDF/UA-1", "--pdf-lang=en-US", "--no-system-fonts", "--no-artificial-fonts", "--fail-safe"]
+    },
+    {
+      "id": "ubuntu-24.04-x86_64",
+      "status": "must-run-before-release-use",
+      "rendererArtifact": "Prince 16.2 Ubuntu 24.04 AMD64",
+      "command": ["prince", "semantic-book.html", "--output", "semantic-book.pdf", "--pdf-profile=PDF/A-2a+PDF/UA-1", "--pdf-lang=en-US", "--no-system-fonts", "--no-artificial-fonts", "--fail-safe"]
+    }
+  ]
+}

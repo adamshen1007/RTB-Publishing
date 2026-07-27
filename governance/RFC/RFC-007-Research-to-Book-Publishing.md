@@ -129,6 +129,9 @@ tests.
 
 ### PDF Profile
 
+RFC-008 is the accepted amendment that selects the Increment 1 PDF profile and
+toolchain. Its human accessibility and legal evidence gates remain unclaimed.
+
 Before PDF implementation begins, the Increment 1 plan must explicitly select:
 
 - A named PDF accessibility and archival profile with a fixed version

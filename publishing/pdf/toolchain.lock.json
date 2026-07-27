@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "acceptedRfc": "RFC-008",
+  "generatedAt": "2026-07-27",
+  "profile": {
+    "renderer": "PDF/A-2a+PDF/UA-1",
+    "validatorFlavours": ["2a", "ua1"],
+    "documentLanguage": "en-US",
+    "byteIdentityRequiredAcrossPlatforms": false
+  },
+  "supportedPlatforms": [
+    {
+      "id": "macos-universal",
+      "role": "local-creator",
+      "architectures": ["arm64", "x86_64"],
+      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#macos-universal"
+    },
+    {
+      "id": "ubuntu-24.04-x86_64",
+      "role": "ci",
+      "architectures": ["x86_64"],
+      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#ubuntu-24.04-x86_64"
+    }
+  ],
+  "tools": {
+    "renderer": {
+      "name": "Prince",
+      "vendor": "YesLogic",
+      "version": "16.2",
+      "profile": "PDF/A-2a+PDF/UA-1",
+      "artifacts": [
+        {
+          "platform": "macos-universal",
+          "url": "https://www.princexml.com/download/prince-16.2-macos.zip",
+          "sha256": "30a14021a68c38b92c36beb2fddc62ea5425392a86d4cdc6767adde38a9af8aa"
+        },
+        {
+          "platform": "ubuntu-24.04-x86_64",
+          "url": "https://www.princexml.com/download/prince_16.2-1_ubuntu24.04_amd64.deb",
+          "sha256": "305d755ff6437e855c151920d1363970d8cc7bff1ea4006290c36ad5d8e06c69"
+        }
+      ],
+      "licenceHandling": "human-provided secret licence file; never committed or logged"
+    },
+    "structuralValidator": {
+      "name": "veraPDF Greenfield",
+      "version": "1.28.2",
+      "flavour": "ua1",
+      "url": "https://software.verapdf.org/releases/1.28/verapdf-greenfield-1.28.2-installer.zip",
+      "sha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "gpgFingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7"
+    },
+    "profileValidator": {
+      "name": "veraPDF Greenfield",
+      "version": "1.28.2",
+      "flavour": "2a",
+      "artifactReference": "tools.structuralValidator"
+    },
+    "pdfParser": {
+      "name": "qpdf",
+      "version": "12.3.2",
+      "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz",
+      "sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+      "checksumManifest": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.sha256"
+    },
+    "visualRasterizer": {
+      "name": "Ghostscript",
+      "version": "10.07.1",
+      "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/ghostscript-10.07.1.tar.gz",
+      "sha256": "2fc74362f9be6fae1b0a65d38fdcfd4f0b518cc3b07c5581fb661eb4d2e15251"
+    },
+    "visualComparator": {
+      "name": "ImageMagick",
+      "version": "7.1.2-24",
+      "repositoryLock": "https://github.com/ImageMagick/ImageMagick/releases/tag/7.1.2-24",
+      "method": "magick compare -metric AE -fuzz 1%"
+    }
+  },
+  "fonts": [
+    {
+      "family": "Noto Serif",
+      "style": "variable normal",
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf",
+      "sha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "usage": "only body, heading, table, and code face until a separately pinned face is accepted",
+      "licenceEvidence": "https://github.com/google/fonts/tree/main/ofl/notoserif",
+      "fallback": "forbidden: --no-system-fonts, --no-artificial-fonts, prince-no-fallback, and --fail-safe"
+    }
+  ],
+  "requiredRendererArguments": [
+    "--pdf-profile=PDF/A-2a+PDF/UA-1",
+    "--pdf-lang=en-US",
+    "--no-system-fonts",
+    "--no-artificial-fonts",
+    "--fail-safe",
+    "--structured-log=buffered"
+  ],
+  "verification": {
+    "sha256Method": "SHA-256 calculated from the exact downloaded artifact on 2026-07-27; installation must recalculate before use.",
+    "network": "render and validation runs are offline; downloads occur only in an explicit setup step.",
+    "license": "A lock is not a licence grant or legal conclusion. Human evidence is required before release use."
+  }
+}

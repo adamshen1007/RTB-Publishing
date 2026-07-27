@@ -26,6 +26,7 @@ when a later record narrows or supersedes them.
 | [RFC-005 — Notion Editorial Workspace](RFC/RFC-005-Notion-Editorial-Workspace.md) | Provide a private, derived Notion review workspace |
 | [RFC-006 — Research-to-Book Product Pivot](RFC/RFC-006-Research-to-Book-Product-Pivot.md) | Define the research-to-book product boundary, increments, and approval gates |
 | [RFC-007 — Research-to-Book Publishing](RFC/RFC-007-Research-to-Book-Publishing.md) | Define the HTML, PDF, EPUB, single Publish gate, release, and hosted-delivery contracts |
+| [RFC-008 — PDF Publication Profile](RFC/RFC-008-PDF-Publication-Profile.md) | Amend RFC-007 with the accepted Increment 1 PDF/A-2a + PDF/UA-1 toolchain decision; human accessibility and legal evidence remain separate gates |
 
 ## Architecture Decision Records
 
