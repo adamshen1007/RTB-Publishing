@@ -1,16 +1,17 @@
-# FounderOS Roadmap
+# RTB Publishing Roadmap
 
-FounderOS uses one milestone sequence: **M0, M1, M2, M3, M4, and M5**.
+RTB Publishing uses one milestone sequence: **M0, M1, M2, M3, M4, and M5**.
 Decimal milestone names such as M0.1–M0.3 were working-draft labels and are no
 longer part of the canonical roadmap. Each milestone must satisfy its exit
 criteria before the next milestone becomes the primary implementation focus.
 
-## Current Priority — Volume 1 Manuscript Review
+## Current Priority — Volume 1 Publication Preparation
 
-The canonical 23-chapter manuscript of *The YC Playbook for AI Founders* is
-complete for internal review. This content track uses the existing M1 publishing
-foundation; it does not create a decimal product milestone or imply a new
-platform phase.
+The canonical 23-chapter manuscript of *The RTB Publishing Playbook for AI Founders*
+is a version 0.3.0 publication candidate. The explicit decision to pursue public
+publication was made on 2026-07-21. This content track uses the existing M1
+publishing foundation; it does not create a decimal product milestone or imply
+a new platform phase.
 
 Completed work:
 
@@ -20,20 +21,25 @@ Completed work:
 - Automated chapter contract, authoring template, tests, and runbook
 - Complete Parts I–VI with worksheets, checklists, callouts, and sources
 - Reproducible HTML, EPUB, and DOCX internal-review artifacts
+- Private Notion Book Headquarters with derived pages and worksheets for all 23
+  chapters, searchable sources, review findings, release gates, and source-hash
+  freshness checks
 
-Before public release:
+Before the 0.9.0 Public Preview:
 
 - Complete substantive and copy editing by human reviewers.
 - Obtain sensitivity, accessibility, legal, and trademark review where needed.
 - Run real beginner beta reading and record observed confusion and outcomes.
-- Resolve findings, rebuild artifacts, and make an explicit publication decision.
+- Resolve blocking findings, rebuild artifacts, and record preview approval.
 
-No beta reading, legal approval, YC endorsement, or public publication is
-claimed by manuscript completion.
+Version 1.0.0 follows the Public Preview only after preview findings are
+resolved and final publication approval is recorded. No beta reading, legal
+approval, Y Combinator endorsement, public preview, or final publication is
+claimed by the decision to pursue publication.
 
 ## M0 — Strategy and Governance
 
-**Goal:** Establish the source of truth and define what FounderOS is building.
+**Goal:** Establish the source of truth and define what RTB Publishing is building.
 
 **Status:** Complete
 
@@ -133,7 +139,7 @@ Exit criteria:
 - Every proposal, verification, review decision, usage record, and lifecycle
   state is inspectable as a versioned artifact.
 
-## M5 — FounderOS Platform
+## M5 — RTB Publishing Platform
 
 **Goal:** Package proven workflows into a coherent multi-project platform.
 
@@ -165,7 +171,7 @@ allowlist; external projects remain read-only. It also adds registry backup and
 restore, clearer workflow progress and recovery guidance, and broader local
 security and browser-shell coverage. This hardening is not pilot evidence.
 
-M5A.3 is the active evidence cycle. FounderOS now reports pilot session,
+M5A.3 is the active evidence cycle. RTB Publishing now reports pilot session,
 represented-project, date-span, outcome, and task coverage while preserving a
 manual decision gate. The cycle cannot complete until genuine records span the
 published two-week threshold.

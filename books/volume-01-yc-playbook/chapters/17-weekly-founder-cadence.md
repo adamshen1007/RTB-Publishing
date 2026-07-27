@@ -17,7 +17,7 @@ week’s commitments with outcomes, not busyness.
 
 The Startup Playbook emphasizes focus, intensity, execution, and the CEO’s
 responsibilities.[^playbook] YC’s essential advice similarly joins product work
-with user contact and focused measures.[^essential] FounderOS synthesis: review
+with user contact and focused measures.[^essential] RTB Publishing synthesis: review
 those responsibilities together so one dashboard cannot hide another problem.
 
 Use six sections: user evidence, value behavior, product reliability, AI risk

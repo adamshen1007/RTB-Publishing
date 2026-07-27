@@ -1,17 +1,17 @@
-# FounderOS Worthiness Review
+# RTB Publishing Worthiness Review
 
 Version: 0.1 (Draft)
 
 ## Purpose
 
-This document determines whether FounderOS is worth building before
+This document determines whether RTB Publishing is worth building before
 investing in architecture or implementation.
 
 ## Executive Summary
 
 **Recommendation: GO**
 
-FounderOS should be an AI-native operating system for founders---not
+RTB Publishing should be an AI-native operating system for founders---not
 merely a publishing platform. Publishing is one subsystem of a broader
 platform that standardizes research, engineering, documentation,
 automation, and company-building.
@@ -101,17 +101,17 @@ architecture
 - M2 — Engineering Kit Generator
 - M3 — Research Automation
 - M4 — AI Agent Ecosystem
-- M5 — FounderOS Platform
+- M5 — RTB Publishing Platform
 
 See the root [roadmap](../../ROADMAP.md) for milestone deliverables and exit
 criteria.
 
 ## Decision
 
-FounderOS provides long-term reusable value across multiple ventures and
+RTB Publishing provides long-term reusable value across multiple ventures and
 should proceed as a modular platform with publishing as one capability
 rather than the end product.
 
 **Decision: GO**
 
-Next step: Generate the FounderOS Engineering Kit.
+Next step: Generate the RTB Publishing Engineering Kit.

@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-FounderOS is currently a pre-release documentation and specification project.
+RTB Publishing is currently a pre-release documentation and specification project.
 Only the latest version of the `main` branch is maintained.
 
 ## Reporting a Vulnerability
@@ -12,7 +12,7 @@ sensitive security issues in a public GitHub issue.
 
 Use GitHub's private vulnerability reporting flow for this repository:
 
-<https://github.com/adamshen1007/FounderOS/security/advisories/new>
+<https://github.com/adamshen1007/RTB-Publishing/security/advisories/new>
 
 Include:
 

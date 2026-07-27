@@ -1,4 +1,4 @@
-# Editorial Brief — The YC Playbook for AI Founders
+# Editorial Brief — The RTB Publishing Playbook for AI Founders
 
 ## Canonical Reader
 
@@ -26,16 +26,16 @@ The book promises a decision system, not a success formula.
 
 ## Positioning and Independence
 
-This is an independent FounderOS publication inspired by public startup
-teaching from Y Combinator and other identified primary sources. FounderOS is
-not affiliated with, endorsed by, or sponsored by Y Combinator. “YC” in the
-title describes the public body of startup guidance being studied; every
-attributed claim must remain traceable to its source.
+This is an independent RTB Publishing publication that synthesizes public startup
+teaching from Y Combinator and other identified primary sources. RTB Publishing is
+not affiliated with, endorsed by, or sponsored by Y Combinator. The public
+title uses the RTB Publishing name; every attributed claim about Y Combinator must
+remain traceable to its source.
 
 The book must distinguish:
 
 - **Sourced guidance:** a claim attributed to an identified publication;
-- **FounderOS synthesis:** a practical connection across two or more ideas; and
+- **RTB Publishing synthesis:** a practical connection across two or more ideas; and
 - **Assumption:** something the founder must test in their own context.
 
 ## Scope

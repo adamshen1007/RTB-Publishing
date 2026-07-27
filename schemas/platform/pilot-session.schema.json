@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS pilot session",
+  "title": "RTB Publishing pilot session",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "date", "projectId", "task", "outcome", "durationMinutes", "observations", "privacy"],

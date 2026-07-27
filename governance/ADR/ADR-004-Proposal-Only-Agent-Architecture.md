@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-FounderOS needs useful AI assistance without allowing probabilistic output to
+RTB Publishing needs useful AI assistance without allowing probabilistic output to
 replace Markdown, YAML, governance records, or deterministic validators as the
 source of truth.
 

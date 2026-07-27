@@ -85,7 +85,7 @@ jobs:
       - name: Upload publishing artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: founderos-yc-playbook-${{ github.sha }}
+          name: rtb-publishing-playbook-${{ github.sha }}
           path: dist/books/volume-01-yc-playbook/
           if-no-files-found: error
           retention-days: 14

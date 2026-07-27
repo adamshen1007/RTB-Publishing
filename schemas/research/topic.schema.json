@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/research/topic.schema.json",
-  "title": "FounderOS research topic",
+  "$id": "https://rtb-publishing.dev/schemas/research/topic.schema.json",
+  "title": "RTB Publishing research topic",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "topic", "research"],

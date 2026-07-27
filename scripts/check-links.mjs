@@ -73,7 +73,7 @@ async function inspectExternal(url) {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const response = await fetch(url, {
-        headers: { "user-agent": "FounderOS-Link-Checker/0.3", range: "bytes=0-1024" },
+        headers: { "user-agent": "RTB-Publishing-Link-Checker/0.3", range: "bytes=0-1024" },
         redirect: "follow",
         signal: AbortSignal.timeout(12_000),
       });

@@ -59,7 +59,7 @@ writeFileSync(combinedFile, `${sections.join("\n\n\\newpage\n\n")}\n`);
 const resourcePath = [buildDirectory, BOOK_DIR, ROOT].join(delimiter);
 const shared = [combinedFile, "--from=markdown+yaml_metadata_block", "--standalone", "--toc", `--resource-path=${resourcePath}`];
 
-console.log("FounderOS Publishing Build\n");
+console.log("RTB Publishing Build\n");
 console.log(`Input:  ${BOOK_DIR}`);
 console.log(`Output: ${BOOK_DIST_DIR}\n`);
 console.log(`✓ Metadata loaded for ${metadata.title}`);

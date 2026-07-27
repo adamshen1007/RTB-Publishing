@@ -9,10 +9,11 @@ node_modules/
 .cache/
 .tmp/
 .vale/cache/
-.founderos/agent-runs/
-.founderos/platform/jobs/
-.founderos/platform/local-workspace.yaml
-.founderos/platform/backups/
+.rtb-publishing/agent-runs/
+.rtb-publishing/platform/jobs/
+.rtb-publishing/platform/local-workspace.yaml
+.rtb-publishing/platform/backups/
+.rtb-publishing/notion/
 
 # Environment and local configuration
 .env

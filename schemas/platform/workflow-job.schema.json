@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS workflow job",
+  "title": "RTB Publishing workflow job",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "projectId", "workflow", "status", "createdAt", "updatedAt", "startedAt", "completedAt", "durationMs", "command", "log", "outputTruncated", "terminationReason"],

@@ -1,6 +1,6 @@
-# Contributing to FounderOS
+# Contributing to RTB Publishing
 
-Thank you for helping improve FounderOS. The project is currently focused on
+Thank you for helping improve RTB Publishing. The project is currently focused on
 small, milestone-scoped documentation and publishing changes.
 
 ## Before You Start

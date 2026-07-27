@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS pilot status",
+  "title": "RTB Publishing pilot status",
   "type": "object",
   "additionalProperties": false,
   "required": [

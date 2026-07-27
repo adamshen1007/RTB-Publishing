@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS project summary",
+  "title": "RTB Publishing project summary",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "name", "description", "owner", "source", "stage", "path", "milestone", "health", "signals", "workflows", "nextAction"],

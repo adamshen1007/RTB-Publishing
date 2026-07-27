@@ -4,7 +4,7 @@
 
 ```bash
 pnpm install
-pnpm founderos platform doctor
+pnpm rtb-publishing platform doctor
 pnpm platform:start
 ```
 
@@ -13,25 +13,25 @@ devices. Press `Ctrl+C` to stop it.
 
 ## What You Are Seeing
 
-The workspace reads `workspace/founderos.workspace.yaml` and derives project
+The workspace reads `workspace/rtb-publishing.workspace.yaml` and derives project
 summaries from canonical repository files. It does not copy project content
 into a database. Refreshing the page rereads the in-memory index created at
 startup; restart after changing the workspace manifest.
 
-The committed example registers FounderOS itself and AI Launch Copilot.
+The committed example registers RTB Publishing itself and AI Launch Copilot.
 Repository-contained projects use the committed registry. External repositories
 use a separate local overlay that Git ignores.
 
 ## Register Projects
 
 ```bash
-pnpm founderos platform project list
-pnpm founderos platform project add examples/my-project --dry-run
-pnpm founderos platform project add examples/my-project
-pnpm founderos platform project inspect my-project
+pnpm rtb-publishing platform project list
+pnpm rtb-publishing platform project add examples/my-project --dry-run
+pnpm rtb-publishing platform project add examples/my-project
+pnpm rtb-publishing platform project inspect my-project
 ```
 
-FounderOS detects a kit from `founderos.project.yaml` or a repository from
+RTB Publishing detects a kit from `rtb-publishing.project.yaml` or a repository from
 `package.json`.
 
 ## Import an External Repository
@@ -42,47 +42,47 @@ path with an absolute path on your computer.
 First, inspect eligibility without writing anything:
 
 ```bash
-pnpm founderos platform project onboard "/absolute/path/to/project"
+pnpm rtb-publishing platform project onboard "/absolute/path/to/project"
 ```
 
 Then review and add the explicit local permission:
 
 ```bash
-pnpm founderos platform root allow "/absolute/path/to/project" --dry-run
-pnpm founderos platform root allow "/absolute/path/to/project" --confirm
+pnpm rtb-publishing platform root allow "/absolute/path/to/project" --dry-run
+pnpm rtb-publishing platform root allow "/absolute/path/to/project" --confirm
 ```
 
 Finally, preview and perform the import:
 
 ```bash
-pnpm founderos platform project import "/absolute/path/to/project" --dry-run
-pnpm founderos platform project import "/absolute/path/to/project"
-pnpm founderos platform project list
+pnpm rtb-publishing platform project import "/absolute/path/to/project" --dry-run
+pnpm rtb-publishing platform project import "/absolute/path/to/project"
+pnpm rtb-publishing platform project list
 ```
 
 External imports require `package.json`. They appear in the dashboard as local,
-read-only projects. FounderOS does not run their scripts or grant workflows.
+read-only projects. RTB Publishing does not run their scripts or grant workflows.
 Removing an import or allowed root never deletes external files.
 
 ### Optional Cleanup — Do Not Run During Onboarding
 
 Stop after `project list` if you want the project to remain registered. Run the
-following only when you intentionally want to remove a project from FounderOS:
+following only when you intentionally want to remove a project from RTB Publishing:
 
 ```bash
-pnpm founderos platform project remove my-project --dry-run
-pnpm founderos platform project remove my-project --confirm
+pnpm rtb-publishing platform project remove my-project --dry-run
+pnpm rtb-publishing platform project remove my-project --confirm
 ```
 
 For an external project, remove its project registration before removing its
-allowed root. Removal changes only FounderOS local state and never deletes the
+allowed root. Removal changes only RTB Publishing local state and never deletes the
 project directory.
 
 ## Run a Workflow
 
-Choose an action on a project dossier and confirm it. FounderOS creates a local
+Choose an action on a project dossier and confirm it. RTB Publishing creates a local
 job, runs one fixed existing command, and records bounded output under
-`.founderos/platform/jobs/`.
+`.rtb-publishing/platform/jobs/`.
 
 Available actions are deliberately narrow:
 
@@ -100,13 +100,13 @@ new record with a parent-job reference; history is never rewritten.
 ## Diagnostics and Retention
 
 ```bash
-pnpm founderos platform diagnose --output .tmp/platform-diagnostics.json
-pnpm founderos platform jobs export --output .tmp/platform-jobs.json
-pnpm founderos platform jobs clean --older-than 30d --dry-run
-pnpm founderos platform jobs clean --older-than 30d
-pnpm founderos platform pilot check
-pnpm founderos platform pilot status
-pnpm founderos platform pilot status --json
+pnpm rtb-publishing platform diagnose --output .tmp/platform-diagnostics.json
+pnpm rtb-publishing platform jobs export --output .tmp/platform-jobs.json
+pnpm rtb-publishing platform jobs clean --older-than 30d --dry-run
+pnpm rtb-publishing platform jobs clean --older-than 30d
+pnpm rtb-publishing platform pilot check
+pnpm rtb-publishing platform pilot status
+pnpm rtb-publishing platform pilot status --json
 ```
 
 Diagnostics and exports contain status metadata but omit commands, logs,
@@ -121,7 +121,7 @@ product-need review remains required.
 
 If the server stops during a job, the next start marks that job failed with an
 interruption message. Inspect the log, correct the cause, and start a new job.
-FounderOS does not retry writes automatically.
+RTB Publishing does not retry writes automatically.
 
 The dashboard shows whether a job is queued, executing, or recorded. Failed and
 cancelled jobs include a recovery hint. A rerun always creates a new job with a
@@ -133,22 +133,22 @@ Backups contain the ignored allowlist and external-project pointers only. They
 do not copy canonical content, job logs, environment variables, or secrets.
 
 ```bash
-pnpm founderos platform backup create --dry-run
-pnpm founderos platform backup create
-pnpm founderos platform backup inspect .founderos/platform/backups/<backup-file>.json
-pnpm founderos platform backup restore .founderos/platform/backups/<backup-file>.json --dry-run
-pnpm founderos platform backup restore .founderos/platform/backups/<backup-file>.json --confirm
+pnpm rtb-publishing platform backup create --dry-run
+pnpm rtb-publishing platform backup create
+pnpm rtb-publishing platform backup inspect .rtb-publishing/platform/backups/<backup-file>.json
+pnpm rtb-publishing platform backup restore .rtb-publishing/platform/backups/<backup-file>.json --dry-run
+pnpm rtb-publishing platform backup restore .rtb-publishing/platform/backups/<backup-file>.json --confirm
 ```
 
 Restore replaces only the ignored local registry after validating that every
 allowed root and imported project still exists.
 
 To remove local history, stop the server and delete the individual files under
-`.founderos/platform/jobs/`. This does not delete canonical project content.
+`.rtb-publishing/platform/jobs/`. This does not delete canonical project content.
 
 ## Troubleshooting
 
-- **Port already in use:** run `pnpm founderos platform start --port 4311`.
+- **Port already in use:** run `pnpm rtb-publishing platform start --port 4311`.
 - **Project path denied:** use `project add` for repository-contained projects;
   use the inspect, allow, and import sequence for an external repository.
 - **Workflow unavailable:** only actions declared for that project are allowed.

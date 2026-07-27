@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/agents/proposal.schema.json",
-  "title": "FounderOS agent proposal",
+  "$id": "https://rtb-publishing.dev/schemas/agents/proposal.schema.json",
+  "title": "RTB Publishing agent proposal",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "runId", "agentId", "summary", "findings", "changes"],

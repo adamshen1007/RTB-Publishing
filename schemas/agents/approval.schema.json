@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "FounderOS human approval",
+  "title": "RTB Publishing human approval",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "runId", "decision", "reviewer", "reviewedAt", "proposalHash", "files"],

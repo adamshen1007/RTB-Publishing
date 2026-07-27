@@ -7,7 +7,7 @@ Accepted
 ## Context
 
 The internal pilot needs to inspect real projects that are not nested inside
-FounderOS. Adding machine-specific absolute paths to the committed workspace
+RTB Publishing. Adding machine-specific absolute paths to the committed workspace
 would leak local details and make clones non-portable. Automatically trusting
 external project scripts would expand the execution boundary without evidence.
 
@@ -26,6 +26,6 @@ project content through the backup workflow.
 
 - A founder can inspect real local repositories without moving or copying them.
 - Machine-specific paths and permissions do not enter version control.
-- External projects cannot execute arbitrary package scripts through FounderOS.
+- External projects cannot execute arbitrary package scripts through RTB Publishing.
 - Missing roots make validation fail closed with an actionable local error.
 - Broader execution trust requires new evidence and an accepted ADR or RFC.

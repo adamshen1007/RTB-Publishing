@@ -16,7 +16,7 @@ bad assumption. The question is not whether AI is “in the loop.” It is who i
 accountable and what happens when the system is wrong.
 
 NIST’s AI Risk Management Framework organizes risk work around governing,
-mapping, measuring, and managing.[^rmf] FounderOS applies that orientation at
+mapping, measuring, and managing.[^rmf] RTB Publishing applies that orientation at
 startup scale: map the user and consequence, measure the behavior that matters,
 set controls, and name the person who decides.
 

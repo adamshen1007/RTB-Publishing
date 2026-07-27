@@ -1,18 +1,18 @@
-# FounderOS Domain Architecture
+# RTB Publishing Domain Architecture
 
 **Milestone:** M0 — Strategy and Governance  
 **Status:** Draft
 
 ## Purpose
 
-This document defines the domain architecture for FounderOS Core using bounded contexts. It establishes ownership boundaries so future specifications, AI agents, MCP integrations, and automation workflows remain modular and maintainable.
+This document defines the domain architecture for RTB Publishing Core using bounded contexts. It establishes ownership boundaries so future specifications, AI agents, MCP integrations, and automation workflows remain modular and maintainable.
 
 ---
 
 # 1. Domain Map
 
 ```text
-FounderOS Core
+RTB Publishing Core
 
 ├── Governance
 ├── Knowledge
@@ -301,7 +301,7 @@ Primary outputs:
 
 # 3. Context Interaction Model
 
-FounderOS domains interact through events and documented contracts rather than hidden coupling.
+RTB Publishing domains interact through events and documented contracts rather than hidden coupling.
 
 ```text
 ResearchCompleted

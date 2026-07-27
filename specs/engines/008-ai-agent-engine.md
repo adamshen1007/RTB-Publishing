@@ -3,7 +3,7 @@
 ## Purpose
 
 The AI Agents Engine provides bounded, observable assistance over validated
-FounderOS artifacts without becoming a source of truth.
+RTB Publishing artifacts without becoming a source of truth.
 
 ## Responsibilities
 

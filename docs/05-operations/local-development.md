@@ -40,8 +40,8 @@ brew install pandoc vale
 ## First Setup
 
 ```bash
-git clone https://github.com/adamshen1007/FounderOS.git
-cd FounderOS
+git clone https://github.com/adamshen1007/RTB-Publishing.git
+cd RTB-Publishing
 pnpm install
 ```
 
@@ -101,9 +101,9 @@ before requesting review.
 ## Engineering Kit Commands
 
 ```bash
-pnpm founderos doctor
-pnpm founderos validate examples/ai-launch-copilot/founderos.project.yaml
-pnpm founderos generate examples/ai-launch-copilot/founderos.project.yaml --check
+pnpm rtb-publishing doctor
+pnpm rtb-publishing validate examples/ai-launch-copilot/rtb-publishing.project.yaml
+pnpm rtb-publishing generate examples/ai-launch-copilot/rtb-publishing.project.yaml --check
 ```
 
 See the [engineering-kit generator guide](engineering-kit-generator.md) for
@@ -112,9 +112,9 @@ project creation, dry runs, regeneration, and conflict recovery.
 ## Research Commands
 
 ```bash
-pnpm founderos research validate research/topics/customer-validation-before-mvp/research.yaml
-pnpm founderos research status research/topics/customer-validation-before-mvp/research.yaml
-pnpm founderos research build research/topics/customer-validation-before-mvp/research.yaml --check
+pnpm rtb-publishing research validate research/topics/customer-validation-before-mvp/research.yaml
+pnpm rtb-publishing research status research/topics/customer-validation-before-mvp/research.yaml
+pnpm rtb-publishing research build research/topics/customer-validation-before-mvp/research.yaml --check
 ```
 
 See the [research automation guide](research-automation.md) for topic creation,
@@ -123,9 +123,9 @@ source records, evidence relationships, freshness, and protected brief builds.
 ## Agent Commands
 
 ```bash
-pnpm founderos agent list
-pnpm founderos agent doctor
-pnpm founderos agent run research-reviewer \
+pnpm rtb-publishing agent list
+pnpm rtb-publishing agent doctor
+pnpm rtb-publishing agent run research-reviewer \
   --subject research/topics/customer-validation-before-mvp/research.yaml \
   --provider fake \
   --run-id RUN-LOCAL-001
@@ -138,9 +138,9 @@ proposal, or making an optional live-provider request.
 ## Founder Workspace
 
 ```bash
-pnpm founderos platform doctor
-pnpm founderos platform index
-pnpm founderos platform pilot check
+pnpm rtb-publishing platform doctor
+pnpm rtb-publishing platform index
+pnpm rtb-publishing platform pilot check
 pnpm platform:start
 ```
 
@@ -155,8 +155,8 @@ The build writes review artifacts to:
 ```text
 dist/books/volume-01-yc-playbook/
 ├── index.html
-├── yc-playbook.epub
-└── yc-playbook.docx
+├── rtb-publishing-playbook.epub
+└── rtb-publishing-playbook.docx
 ```
 
 Intermediate Markdown and rendered diagrams live under `build/`. Both

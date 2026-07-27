@@ -29,8 +29,8 @@ observed need. Requests are not evidence until they are tied to a real session.
 Check progress without converting job history into pilot evidence:
 
 ```bash
-pnpm founderos platform pilot check
-pnpm founderos platform pilot status
+pnpm rtb-publishing platform pilot check
+pnpm rtb-publishing platform pilot status
 ```
 
 The automated status can confirm record count, represented project IDs, elapsed

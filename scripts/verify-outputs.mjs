@@ -1,9 +1,15 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BOOK_DIST_DIR, BOOK_OUTPUT_NAME } from "./lib.mjs";
+import { bookMetadata } from "./book-contract.mjs";
+import { BOOK_DIR, BOOK_DIST_DIR, BOOK_OUTPUT_NAME } from "./lib.mjs";
+
+function escaped(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export function verifyOutputs() {
+  const metadata = bookMetadata(readFileSync(resolve(BOOK_DIR, "book.md"), "utf8"));
   const expected = [
     { file: resolve(BOOK_DIST_DIR, "index.html"), kind: "html", minimum: 1_000 },
     { file: resolve(BOOK_DIST_DIR, `${BOOK_OUTPUT_NAME}.epub`), kind: "zip", minimum: 2_000 },
@@ -26,7 +32,9 @@ export function verifyOutputs() {
     }
     if (output.kind === "html") {
       const html = content.toString("utf8");
-      if (!/<title>[^<]*YC Playbook for AI Founders[^<]*<\/title>/i.test(html)) failures.push(`${output.file} does not contain the canonical document title.`);
+      if (!new RegExp(`<title>[^<]*${escaped(metadata.title)}[^<]*<\\/title>`, "i").test(html)) failures.push(`${output.file} does not contain the canonical document title.`);
+      if (!new RegExp(escaped(metadata.version), "i").test(html)) failures.push(`${output.file} does not display the canonical version.`);
+      if (!new RegExp(escaped(metadata.status), "i").test(html)) failures.push(`${output.file} does not display the canonical status.`);
       if (!/<body[\s>]/i.test(html)) failures.push(`${output.file} has no HTML body.`);
       if (!/Chapter 23[^<]*Build Your AI Founder Operating System/i.test(html)) failures.push(`${output.file} does not contain the final canonical chapter.`);
       if (!/Part VI[^<]*Put the System\s+into Practice/i.test(html)) failures.push(`${output.file} does not contain canonical part dividers.`);

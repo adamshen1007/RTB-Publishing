@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canonicalChapterEntries, canonicalChapterFiles, namespaceFootnotes, validateChapter } from "../scripts/book-contract.mjs";
+import {
+  COMPLETE_MANUSCRIPT_STATUSES,
+  canonicalChapterEntries,
+  canonicalChapterFiles,
+  namespaceFootnotes,
+  validateChapter
+} from "../scripts/book-contract.mjs";
+import { BOOK_OUTPUT_NAME } from "../scripts/lib.mjs";
 
 const completeChapter = `# Chapter 2 — Test a Decision
 
@@ -74,4 +81,10 @@ test("canonical contents parser preserves exact titles", () => {
 test("footnote namespaces remain unique when chapters are combined", () => {
   const chapter = "Claim.[^source]\n\n[^source]: Source note.";
   assert.equal(namespaceFootnotes(chapter, "02"), "Claim.[^02-source]\n\n[^02-source]: Source note.");
+});
+
+test("publication preparation uses explicit public statuses and artifact naming", () => {
+  assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Publication Candidate"));
+  assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Public Preview"));
+  assert.equal(BOOK_OUTPUT_NAME, "rtb-publishing-playbook");
 });

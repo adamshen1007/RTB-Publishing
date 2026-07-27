@@ -1,20 +1,20 @@
-# FounderOS Constitution
+# RTB Publishing Constitution
 
 **Version:** 1.0  
 **Status:** Accepted
 
 ## Purpose
 
-The FounderOS Constitution defines the enduring principles that govern every
+The RTB Publishing Constitution defines the enduring principles that govern every
 project, engineering kit, AI agent, workflow, and publication created within
-the FounderOS ecosystem.
+the RTB Publishing ecosystem.
 
 It should change rarely. All other documents, specifications, and
 implementations must align with this constitution.
 
 ## Article I — Mission
 
-FounderOS exists to help founders repeatedly transform ideas into successful
+RTB Publishing exists to help founders repeatedly transform ideas into successful
 companies through structured knowledge, disciplined execution, and
 AI-assisted automation.
 
@@ -41,7 +41,7 @@ The authoritative sources of project knowledge are:
 Derived formats—including Notion pages, websites, presentations, PDF, EPUB,
 and DOCX files—are publishing outputs, not sources of truth.
 
-The root `CONSTITUTION.md` is the only canonical FounderOS constitution.
+The root `CONSTITUTION.md` is the only canonical RTB Publishing constitution.
 
 ## Article IV — Engineering Standards
 
@@ -91,13 +91,13 @@ Before publication or release:
 Research, lessons learned, templates, prompts, and reusable assets should be
 preserved for future projects.
 
-FounderOS is designed to compound value over time rather than optimize for
+RTB Publishing is designed to compound value over time rather than optimize for
 one-off execution.
 
 ## Article VIII — Continuous Improvement
 
 Projects should include retrospectives. Improvements discovered in one project
-should be evaluated for adoption across the FounderOS ecosystem.
+should be evaluated for adoption across the RTB Publishing ecosystem.
 
 ## Article IX — Governance
 
@@ -109,5 +109,5 @@ core platform commitments require human approval.
 
 ## Guiding Statement
 
-Every project built with FounderOS should leave the ecosystem stronger than it
+Every project built with RTB Publishing should leave the ecosystem stronger than it
 was before.

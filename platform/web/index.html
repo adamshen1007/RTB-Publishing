@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <title>FounderOS Workspace</title>
+  <title>RTB Publishing Workspace</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -19,7 +19,7 @@
         <p class="eyebrow">Operating ledger / M5A</p>
         <h1 id="workspace-title">Loading workspace…</h1>
       </div>
-      <p class="briefing-note">Canonical files stay in control. This view reads their state and delegates work to validated FounderOS commands.</p>
+      <p class="briefing-note">Canonical files stay in control. This view reads their state and delegates work to validated RTB Publishing commands.</p>
     </section>
     <div class="shell">
       <aside class="spine" aria-label="Milestone spine">
@@ -55,11 +55,11 @@
   <dialog id="onboarding" aria-labelledby="onboarding-title">
     <div class="dialog-head"><div><p class="eyebrow">Guided local import</p><h2 id="onboarding-title">Add an external project</h2></div><button id="close-onboarding" class="quiet-button" type="button">Close</button></div>
     <div class="onboarding-content">
-      <p>External repositories stay where they are. FounderOS reads only an explicitly allowlisted directory and never enables workflows for it automatically.</p>
+      <p>External repositories stay where they are. RTB Publishing reads only an explicitly allowlisted directory and never enables workflows for it automatically.</p>
       <ol>
-        <li><strong>Inspect</strong><code>pnpm founderos platform project onboard "/absolute/path/to/project"</code></li>
-        <li><strong>Allow</strong><code>pnpm founderos platform root allow "/absolute/path/to/project" --dry-run</code><code>pnpm founderos platform root allow "/absolute/path/to/project" --confirm</code></li>
-        <li><strong>Import</strong><code>pnpm founderos platform project import "/absolute/path/to/project" --dry-run</code><code>pnpm founderos platform project import "/absolute/path/to/project"</code></li>
+        <li><strong>Inspect</strong><code>pnpm rtb-publishing platform project onboard "/absolute/path/to/project"</code></li>
+        <li><strong>Allow</strong><code>pnpm rtb-publishing platform root allow "/absolute/path/to/project" --dry-run</code><code>pnpm rtb-publishing platform root allow "/absolute/path/to/project" --confirm</code></li>
+        <li><strong>Import</strong><code>pnpm rtb-publishing platform project import "/absolute/path/to/project" --dry-run</code><code>pnpm rtb-publishing platform project import "/absolute/path/to/project"</code></li>
       </ol>
       <p class="muted">Use the project directory itself as the allowed root. Local registry data is ignored by Git.</p>
     </div>

@@ -1,4 +1,4 @@
-# FounderOS Vision & Manifesto
+# RTB Publishing Vision & Manifesto
 
 ## Mission
 
@@ -8,7 +8,7 @@ documentation-first workflows.
 
 ## Vision
 
-FounderOS is not another productivity tool. It is a modular operating
+RTB Publishing is not another productivity tool. It is a modular operating
 system that combines knowledge management, engineering discipline, AI
 automation, publishing, and continuous learning.
 
@@ -30,5 +30,5 @@ automation, publishing, and continuous learning.
 
 ## Success
 
-FounderOS should make every new venture easier to start, operate,
+RTB Publishing should make every new venture easier to start, operate,
 document, and improve than the previous one.

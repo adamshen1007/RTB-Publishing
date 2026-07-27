@@ -4,7 +4,7 @@ This map connects each chapter to its research question and registered source
 IDs. It is a planning record, not evidence that the chapter has completed human
 editorial review.
 
-| Chapter | Research question | Primary source IDs | FounderOS synthesis to test |
+| Chapter | Research question | Primary source IDs | RTB Publishing synthesis to test |
 | --- | --- | --- | --- |
 | 01 | Why does learning speed matter under uncertainty? | YC-01, YC-02, YC-06 | AI should shorten execution, not replace judgment |
 | 02 | What personal and team conditions justify starting? | YC-05, YC-10, YC-12 | Readiness is a decision with explicit costs |
@@ -35,7 +35,7 @@ editorial review.
 - Every chapter must use at least one mapped primary source when it makes an
   external claim.
 - A chapter may omit external claims, but its Sources section must say that the
-  guidance is FounderOS synthesis and link to the concepts it builds upon.
+  guidance is RTB Publishing synthesis and link to the concepts it builds upon.
 - AI chapters require both startup evidence and risk-management context when a
   recommendation affects users or consequential decisions.
 - Examples must be explicitly hypothetical unless the registered source

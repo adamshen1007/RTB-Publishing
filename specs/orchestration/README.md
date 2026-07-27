@@ -1,4 +1,4 @@
-# FounderOS Engine Interaction and Orchestration
+# RTB Publishing Engine Interaction and Orchestration
 
 The [engine interaction specification](engine-interaction.md) defines the M0
 interaction model, human approval gates, failure rules, and the minimal

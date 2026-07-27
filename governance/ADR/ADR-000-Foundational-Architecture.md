@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-FounderOS requires a long-lived architecture that preserves knowledge,
+RTB Publishing requires a long-lived architecture that preserves knowledge,
 supports AI-assisted automation, and avoids vendor lock-in. Its canonical
 content must remain portable, reviewable, and reproducible even when individual
 tools change.

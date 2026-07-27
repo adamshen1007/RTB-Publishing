@@ -8,7 +8,7 @@ contain provider, model, reviewer, usage, filenames, and content-derived hashes.
 
 ## Rules
 
-- Unsanitized runs are stored under `.founderos/agent-runs/` and ignored by Git.
+- Unsanitized runs are stored under `.rtb-publishing/agent-runs/` and ignored by Git.
 - The runtime does not persist the combined prompt or full input file content.
 - Requests retain file paths, byte counts, and SHA-256 hashes for auditability.
 - OpenAI requests set `store: false`; provider-side legal or abuse retention is

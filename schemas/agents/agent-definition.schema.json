@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://founderos.dev/schemas/agents/agent-definition.schema.json",
-  "title": "FounderOS agent definition",
+  "$id": "https://rtb-publishing.dev/schemas/agents/agent-definition.schema.json",
+  "title": "RTB Publishing agent definition",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "id", "name", "status", "purpose", "prompt", "model", "permissions", "limits", "outputSchema"],

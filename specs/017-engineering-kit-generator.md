@@ -6,7 +6,7 @@ Define the M2 contract for creating and regenerating standard engineering kits.
 
 ## Inputs
 
-- A `founderos.project.yaml` manifest conforming to schema version 1
+- A `rtb-publishing.project.yaml` manifest conforming to schema version 1
 - The canonical `default` templates under `templates/engineering-kit/`
 - Optional CLI safety flags
 
@@ -48,7 +48,7 @@ The default kit contains:
 ## Ownership Rules
 
 - The YAML manifest is user-owned.
-- Generated Markdown begins with the FounderOS ownership marker.
+- Generated Markdown begins with the RTB Publishing ownership marker.
 - Generation state contains deterministic hashes, not user content.
 - A modified generated file is protected as user-owned work.
 - `--force` is the only supported destructive override.
@@ -56,7 +56,7 @@ The default kit contains:
 ## Path Rules
 
 - Output is relative to the manifest.
-- Output must resolve inside the FounderOS repository.
+- Output must resolve inside the RTB Publishing repository.
 - Repository-root and absolute output are invalid.
 - Existing symbolic-link path segments are invalid.
 - Template output paths are fixed by the selected template.

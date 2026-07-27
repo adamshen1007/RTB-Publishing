@@ -70,7 +70,7 @@ async function openDossier(project) {
 
 async function jobAction(job, action) {
   if (!window.confirm(`${action === "cancel" ? "Cancel" : "Run again from"} ${job.id}?`)) return;
-  const response = await fetch(`/api/jobs/${job.id}/${action}`, { method: "POST", headers: { "content-type": "application/json", "x-founderos-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
+  const response = await fetch(`/api/jobs/${job.id}/${action}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
   const result = await response.json(); if (!response.ok) return showNotice(result.message); showNotice(""); await refresh();
 }
 
@@ -82,7 +82,7 @@ async function runWorkflow(project, workflow, button) {
   if (!window.confirm(`Start “${workflowLabel(workflow)}” for ${project.name}? The result will be recorded locally.`)) return;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-founderos-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
+    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
     const result = await response.json(); if (!response.ok) throw new Error(result.message); showNotice(""); await refresh();
   } catch (error) { showNotice(error.message); } finally { button.disabled = false; }
 }

@@ -25,6 +25,6 @@
 
 ## Source of Truth
 
-`founderos.project.yaml` controls generated content. Edit the manifest and run
-`pnpm founderos generate path/to/founderos.project.yaml`. User edits to generated
+`rtb-publishing.project.yaml` controls generated content. Edit the manifest and run
+`pnpm rtb-publishing generate path/to/rtb-publishing.project.yaml`. User edits to generated
 files are protected and require explicit review before replacement.

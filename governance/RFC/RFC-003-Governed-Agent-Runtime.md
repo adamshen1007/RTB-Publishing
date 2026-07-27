@@ -6,7 +6,7 @@ Accepted for M4 implementation
 
 ## Summary
 
-FounderOS will add a local, provider-neutral runtime for bounded AI assistance.
+RTB Publishing will add a local, provider-neutral runtime for bounded AI assistance.
 Agents consume canonical artifacts and emit schema-valid proposals into a run
 package. They do not edit, commit, push, publish, browse, or execute commands.
 
@@ -25,7 +25,7 @@ limits, proposal, verification results, token use, estimated cost, and status.
 The runtime supports a deterministic fake provider for tests and examples. A
 real OpenAI adapter is optional, uses the Responses API with strict structured
 outputs, disables response storage, and receives no tools. Operators must
-explicitly supply the model and current token prices; FounderOS does not embed
+explicitly supply the model and current token prices; RTB Publishing does not embed
 pricing assumptions that will become stale.
 
 ## Approval Protocol
@@ -55,7 +55,7 @@ endpoint for that run.
 Local run packages may contain canonical input content in transit to a
 provider. Only hashes and metadata are retained in `request.json`; prompts are
 not persisted. Unsanitized local runs remain ignored under
-`.founderos/agent-runs/`. A deliberately sanitized example may be committed.
+`.rtb-publishing/agent-runs/`. A deliberately sanitized example may be committed.
 
 ## Deferred Work
 

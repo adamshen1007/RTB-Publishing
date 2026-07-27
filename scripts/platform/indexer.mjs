@@ -44,7 +44,7 @@ function repositorySummary(project, workspace) {
   const pkg = JSON.parse(readFileSync(resolve(base.absolute, "package.json"), "utf8"));
   const roadmap = roadmapState();
   return {
-    schemaVersion: 1, id: project.id, name: "FounderOS", description: pkg.description, source: project.source,
+    schemaVersion: 1, id: project.id, name: "RTB Publishing", description: pkg.description, source: project.source,
     owner: workspace.workspace.owner, stage: "platform", path: base.relative, health: "attention",
     milestone: roadmap.next,
     signals: {
@@ -86,7 +86,7 @@ function externalRepositorySummary(project, workspace, allowedRoots) {
     health: "attention",
     signals: {
       researchTopics: externalFiles(resolve(base.absolute, "research"), (file) => file.endsWith("research.yaml")).length,
-      agentRuns: externalFiles(resolve(base.absolute, ".founderos", "agent-runs"), (file) => file.endsWith("summary.json")).length,
+      agentRuns: externalFiles(resolve(base.absolute, ".rtb-publishing", "agent-runs"), (file) => file.endsWith("summary.json")).length,
       documents: externalFiles(base.absolute, (file) => extname(file) === ".md").length
     },
     workflows: [],
@@ -106,7 +106,7 @@ export class WorkspaceIndex {
   refresh() {
     try {
       const next = buildWorkspaceIndex(this.file, this.localFile);
-      const tracked = [resolve(ROOT, "ROADMAP.md"), resolve(ROOT, "package.json"), resolve(this.file), ...listFiles(resolve(ROOT, "research"), (file) => /\.(ya?ml|json|md)$/.test(file)), ...listFiles(resolve(ROOT, "examples"), (file) => /(founderos\.project\.yaml|\/(proposal|verification|approval|summary)\.json)$/.test(file))].filter(existsSync);
+      const tracked = [resolve(ROOT, "ROADMAP.md"), resolve(ROOT, "package.json"), resolve(this.file), ...listFiles(resolve(ROOT, "research"), (file) => /\.(ya?ml|json|md)$/.test(file)), ...listFiles(resolve(ROOT, "examples"), (file) => /(rtb-publishing\.project\.yaml|\/(proposal|verification|approval|summary)\.json)$/.test(file))].filter(existsSync);
       const fingerprint = tracked.sort().map((file) => `${file}:${createHash("sha256").update(readFileSync(file)).digest("hex")}`).join("|");
       const hash = createHash("sha256").update(JSON.stringify(next)).update(fingerprint).digest("hex");
       if (hash !== this.hash) { this.current = next; this.hash = hash; this.generation += 1; }
@@ -117,7 +117,7 @@ export class WorkspaceIndex {
 }
 
 export function researchDetail(projectId) {
-  if (projectId !== "founderos-core") return { topics: [] };
+  if (projectId !== "rtb-publishing-core") return { topics: [] };
   const topicFiles = listFiles(resolve(ROOT, "research", "topics"), (file) => file.endsWith("research.yaml"));
   return { topics: topicFiles.map((file) => {
     const data = loadResearch(file);
@@ -126,7 +126,7 @@ export function researchDetail(projectId) {
 }
 
 export function agentRunDetail(projectId) {
-  if (projectId !== "founderos-core") return { runs: [] };
+  if (projectId !== "rtb-publishing-core") return { runs: [] };
   const files = listFiles(resolve(ROOT, "examples", "agent-runs"), (file) => file.endsWith("summary.json"));
   return { runs: files.map((file) => {
     const directory = resolve(file, "..");

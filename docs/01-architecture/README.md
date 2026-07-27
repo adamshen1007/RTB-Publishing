@@ -1,4 +1,4 @@
-# FounderOS Architecture
+# RTB Publishing Architecture
 
 These documents form the M0 architecture baseline:
 
@@ -8,7 +8,7 @@ These documents form the M0 architecture baseline:
 4. [Repository structure](repository-structure.md)
 
 The domain architecture defines ownership boundaries. The capability
-architecture defines the value FounderOS must deliver. Detailed engine
+architecture defines the value RTB Publishing must deliver. Detailed engine
 contracts live under [`specs/engines`](../../specs/engines), and interaction
 rules live under [`specs/orchestration`](../../specs/orchestration).
 

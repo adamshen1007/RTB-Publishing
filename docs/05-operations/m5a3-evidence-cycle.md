@@ -22,8 +22,8 @@ substitute for pilot sessions.
 ## Status Command
 
 ```bash
-pnpm founderos platform pilot status
-pnpm founderos platform pilot status --json
+pnpm rtb-publishing platform pilot status
+pnpm rtb-publishing platform pilot status --json
 ```
 
 The report distinguishes observed values from required values and lists missing

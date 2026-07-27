@@ -18,7 +18,7 @@ situation, outcome, and route to reach them.
 
 YC’s essential advice recommends focus and direct work with early customers,
 while Paul Graham describes deliberately narrow markets and manual recruiting
-as ways to get an early system moving.[^essential][^scale] FounderOS synthesis:
+as ways to get an early system moving.[^essential][^scale] RTB Publishing synthesis:
 choose the segment where every conversation and delivery teaches you about the
 same core workflow.
 

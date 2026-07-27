@@ -17,7 +17,7 @@ alternative, the people involved, and the consequence.
 
 YC’s Startup School includes user conversations as a core early-founder topic,
 and YC’s user-observation guidance frames early design as a way to understand
-users.[^school][^observation] FounderOS turns that guidance into a simple rule:
+users.[^school][^observation] RTB Publishing turns that guidance into a simple rule:
 collect stories before forecasts.
 
 Ask, “Tell me about the last time this happened.” Follow with “What did you do

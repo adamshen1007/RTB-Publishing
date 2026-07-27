@@ -13,6 +13,13 @@ export const REQUIRED_SECTIONS = [
   "Sources"
 ];
 
+export const COMPLETE_MANUSCRIPT_STATUSES = [
+  "Internal Review",
+  "Publication Candidate",
+  "Public Preview",
+  "Published"
+];
+
 const placeholderPattern = /\b(TODO|TBD|FIXME|citation needed|add (public )?sources?)\b/i;
 
 export function canonicalChapterFiles(contents) {
@@ -84,7 +91,7 @@ export function validateBook({ bookDirectory, chapterFiles }) {
     for (const failure of validateChapter(file, content, expectedTitle)) failures.push(`${file}: ${failure}`);
   }
   const metadata = bookMetadata(readFileSync(resolve(bookDirectory, "book.md"), "utf8"));
-  if (["Internal Review", "Release Candidate", "Published"].includes(metadata.status)) {
+  if (COMPLETE_MANUSCRIPT_STATUSES.includes(metadata.status)) {
     for (const file of planned) if (!actual.includes(file)) failures.push(`${file}: missing from review manuscript`);
   }
   return { actual, planned, failures, status: metadata.status };

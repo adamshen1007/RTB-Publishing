@@ -2,7 +2,7 @@
 
 ## What It Does
 
-The FounderOS generator turns one small YAML manifest into a consistent starter
+The RTB Publishing generator turns one small YAML manifest into a consistent starter
 kit. It creates Markdown for strategy, product requirements, architecture,
 milestones, verification, and changes. It does not invent research evidence or
 approve product decisions.
@@ -13,16 +13,16 @@ Complete the repository setup in [local development](local-development.md),
 then check the generator:
 
 ```bash
-pnpm founderos doctor
+pnpm rtb-publishing doctor
 ```
 
 ## Create Your First Project
 
-Run this command from the FounderOS repository root and replace the example
+Run this command from the RTB Publishing repository root and replace the example
 values:
 
 ```bash
-pnpm founderos create customer-interview-copilot \
+pnpm rtb-publishing create customer-interview-copilot \
   --name "Customer Interview Copilot" \
   --description "A workspace for planning and reviewing customer interviews." \
   --owner "Your Name" \
@@ -33,13 +33,13 @@ pnpm founderos create customer-interview-copilot \
 This creates `projects/customer-interview-copilot/` with:
 
 ```text
-founderos.project.yaml
+rtb-publishing.project.yaml
 README.md
 CHANGELOG.md
 docs/strategy/
 governance/ADR/
 planning/
-.founderos/generation-state.json
+.rtb-publishing/generation-state.json
 ```
 
 The YAML manifest is yours to edit. The generated Markdown begins with an
@@ -49,7 +49,7 @@ human changes.
 ## Validate Before Generating
 
 ```bash
-pnpm founderos validate projects/customer-interview-copilot/founderos.project.yaml
+pnpm rtb-publishing validate projects/customer-interview-copilot/rtb-publishing.project.yaml
 ```
 
 Validation checks required values, the project slug, supported stage, template,
@@ -60,22 +60,22 @@ and output path. It writes nothing.
 After changing the manifest, preview the plan:
 
 ```bash
-pnpm founderos generate \
-  projects/customer-interview-copilot/founderos.project.yaml \
+pnpm rtb-publishing generate \
+  projects/customer-interview-copilot/rtb-publishing.project.yaml \
   --dry-run
 ```
 
 Then apply it:
 
 ```bash
-pnpm founderos generate projects/customer-interview-copilot/founderos.project.yaml
+pnpm rtb-publishing generate projects/customer-interview-copilot/rtb-publishing.project.yaml
 ```
 
 Actions are reported as `create`, `update`, `replace`, or `unchanged`.
 
 ## Understand Conflict Protection
 
-If you edit a generated document, FounderOS treats it as human-owned work and
+If you edit a generated document, RTB Publishing treats it as human-owned work and
 stops. Review the changed file and choose one of these approaches:
 
 1. Preserve the human change by moving it into the manifest or a user-owned
@@ -84,7 +84,7 @@ stops. Review the changed file and choose one of these approaches:
 3. Replace the change only after review by adding `--force`.
 
 ```bash
-pnpm founderos generate projects/customer-interview-copilot/founderos.project.yaml --force
+pnpm rtb-publishing generate projects/customer-interview-copilot/rtb-publishing.project.yaml --force
 ```
 
 `--force` replaces every conflicting standard output. Commit or back up valuable
@@ -104,10 +104,10 @@ are out of sync. `pnpm check` includes the same check.
 ## Command Reference
 
 ```text
-pnpm founderos create <slug> [options]
-pnpm founderos validate [manifest]
-pnpm founderos generate [manifest] [--dry-run] [--check] [--force]
-pnpm founderos doctor
+pnpm rtb-publishing create <slug> [options]
+pnpm rtb-publishing validate [manifest]
+pnpm rtb-publishing generate [manifest] [--dry-run] [--check] [--force]
+pnpm rtb-publishing doctor
 ```
 
-Run `pnpm founderos --help` for create options and supported product stages.
+Run `pnpm rtb-publishing --help` for create options and supported product stages.
