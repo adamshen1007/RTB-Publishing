@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import yauzl from "yauzl";
 import { BOOK_DIR, BOOK_DIST_DIR, BUILD_DIR, ROOT, localBinary, run } from "./lib.mjs";
 
 const DEFAULT_OUTPUT = resolve(BUILD_DIR, "acceptance", "increment-1", "baseline", "baseline.json");
@@ -33,6 +34,18 @@ export function assertBaselinePreconditions({ dirty, commands }) {
       throw new Error(`Increment 1 baseline requires a successful ${id} command result.`);
     }
   }
+}
+
+export function readRepositorySnapshot(execute = commandOutput) {
+  return {
+    commit: execute("git", ["rev-parse", "HEAD"]),
+    dirty: execute("git", ["status", "--porcelain"]) !== ""
+  };
+}
+
+export function assertStableRepositorySnapshot(start, end) {
+  if (start.dirty || end.dirty) throw new Error("Increment 1 baseline requires a clean Git worktree throughout capture.");
+  if (start.commit !== end.commit) throw new Error(`Increment 1 baseline revision changed during capture: ${start.commit} -> ${end.commit}.`);
 }
 
 function runRequiredCommand(command) {
@@ -80,24 +93,111 @@ export function normalizeHtml(markup) {
 }
 
 export function normalizeEpubDocument(markup) {
-  return normalizeHtml(markup)
-    .replace(/<\?xml[^]*?\?>/g, "")
-    .replace(/\s+xmlns(?::\w+)?="[^"]+"/g, "")
-    .replace(/<dc:date\b[^>]*>[^<]*<\/dc:date>/g, "<dc:date>[build-time]</dc:date>")
-    .replace(/<meta property="dcterms:modified">[^<]*<\/meta>/g, "<meta property=\"dcterms:modified\">[build-time]</meta>")
-    .trim();
+  const tokens = normalizeHtml(markup).match(/<[^>]*>|[^<]+/g) ?? [];
+  const normalized = [];
+  const metadataText = [];
+  for (const token of tokens) {
+    const tag = parseXmlTag(token);
+    if (!tag) {
+      const activeMetadata = metadataText.at(-1);
+      normalized.push(activeMetadata?.kind === "replace" ? "[build-time]" : activeMetadata ? "" : token);
+      continue;
+    }
+    if (tag.end) {
+      const activeMetadata = metadataText.at(-1);
+      if (activeMetadata?.name === tag.name) {
+        metadataText.pop();
+        if (activeMetadata.kind === "drop") continue;
+      }
+      normalized.push(`</${tag.name}>`);
+      continue;
+    }
+    const attributes = tag.attributes.filter((attribute) => !attribute.name.startsWith("xmlns"));
+    const property = attributes.find((attribute) => attribute.name === "property")?.value;
+    const isBuildDate = tag.name === "dc:date";
+    const isModified = tag.name === "meta" && property === "dcterms:modified";
+    const canonicalAttributes = attributes
+      .filter((attribute) => !(isBuildDate && attribute.name === "content"))
+      .filter((attribute) => !(isModified && attribute.name === "content"))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (isBuildDate) {
+      normalized.push(serializeXmlTag({ ...tag, attributes: canonicalAttributes, selfClosing: false }));
+      normalized.push("[build-time]");
+      normalized.push(`</${tag.name}>`);
+      if (!tag.selfClosing) metadataText.push({ name: tag.name, kind: "drop" });
+      continue;
+    }
+    if (isModified) {
+      canonicalAttributes.push({ name: "content", value: "[build-time]" });
+      canonicalAttributes.sort((left, right) => left.name.localeCompare(right.name));
+      normalized.push(serializeXmlTag({ ...tag, attributes: canonicalAttributes, selfClosing: true }));
+      if (!tag.selfClosing) metadataText.push({ name: tag.name, kind: "drop" });
+      continue;
+    }
+    normalized.push(serializeXmlTag({ ...tag, attributes: canonicalAttributes }));
+  }
+  return normalized.join("").trim();
 }
 
-function epubEntries(epubFile) {
-  return commandOutput("unzip", ["-Z1", epubFile])
-    .split(/\r?\n/)
-    .filter((entry) => /\.(?:xhtml|html|ncx|opf)$/i.test(entry))
-    .sort();
+function parseXmlTag(token) {
+  if (!token.startsWith("<") || token.startsWith("<?") || token.startsWith("<!")) return null;
+  const end = /^<\/([\w:.-]+)\s*>$/.exec(token);
+  if (end) return { name: end[1], end: true, selfClosing: false, attributes: [] };
+  const start = /^<([\w:.-]+)([\s\S]*?)(\/?)>$/.exec(token);
+  if (!start) return null;
+  const attributes = [];
+  const source = start[2].trim();
+  const attributePattern = /([\w:.-]+)\s*=\s*(["'])(.*?)\2/g;
+  let match;
+  while ((match = attributePattern.exec(source))) attributes.push({ name: match[1], value: match[3] });
+  if (source.replace(attributePattern, "").trim()) return null;
+  return { name: start[1], end: false, selfClosing: start[3] === "/", attributes };
 }
 
-function epubSemantics(epubFile) {
-  const entries = epubEntries(epubFile).map((entry) => {
-    const content = commandOutput("unzip", ["-p", epubFile, entry]);
+function serializeXmlTag(tag) {
+  const attributes = tag.attributes.map((attribute) => ` ${attribute.name}="${attribute.value}"`).join("");
+  return `<${tag.name}${attributes}${tag.selfClosing ? " />" : ">"}`;
+}
+
+export function readEpubEntries(epubFile) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    yauzl.open(epubFile, { lazyEntries: true, validateEntrySizes: true }, (error, archive) => {
+      if (error) return rejectPromise(error);
+      const entries = [];
+      let settled = false;
+      const reject = (reason) => {
+        if (settled) return;
+        settled = true;
+        archive.close();
+        rejectPromise(reason);
+      };
+      archive.on("error", reject);
+      archive.on("entry", (entry) => {
+        if (/\/$/.test(entry.fileName) || !/\.(?:xhtml|html|ncx|opf)$/i.test(entry.fileName)) return archive.readEntry();
+        if (entry.uncompressedSize > 8 * 1024 * 1024) return reject(new Error(`EPUB entry exceeds 8 MiB: ${entry.fileName}`));
+        archive.openReadStream(entry, (streamError, stream) => {
+          if (streamError) return reject(streamError);
+          const chunks = [];
+          stream.on("data", (chunk) => chunks.push(chunk));
+          stream.on("error", reject);
+          stream.on("end", () => {
+            entries.push({ entry: entry.fileName, content: Buffer.concat(chunks).toString("utf8") });
+            archive.readEntry();
+          });
+        });
+      });
+      archive.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolvePromise(entries.sort((left, right) => left.entry.localeCompare(right.entry)));
+      });
+      archive.readEntry();
+    });
+  });
+}
+
+async function epubSemantics(epubFile) {
+  const entries = (await readEpubEntries(epubFile)).map(({ entry, content }) => {
     return { entry, sha256: sha256(normalizeEpubDocument(content)) };
   });
   return { entries, sha256: sha256(JSON.stringify(entries)) };
@@ -122,12 +222,12 @@ function assertSanitized(record) {
   }
 }
 
-export function createBaselineRecord({ startedAt = new Date().toISOString(), commands } = {}) {
+export async function createBaselineRecord({ startedAt = new Date().toISOString(), commands, repositoryStart, readSnapshot = readRepositorySnapshot } = {}) {
   const htmlFile = resolve(BOOK_DIST_DIR, "index.html");
   const epubFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.epub");
   const docxFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.docx");
-  const dirty = commandOutput("git", ["status", "--porcelain"]) !== "";
-  assertBaselinePreconditions({ dirty, commands });
+  const start = repositoryStart ?? readSnapshot();
+  assertBaselinePreconditions({ dirty: start.dirty, commands });
   const inputs = canonicalInputs();
   const html = readFileSync(htmlFile, "utf8");
   const record = {
@@ -135,8 +235,10 @@ export function createBaselineRecord({ startedAt = new Date().toISOString(), com
     command: "pnpm baseline:increment-1",
     startedAt,
     repository: {
-      commit: commandOutput("git", ["rev-parse", "HEAD"]),
-      dirty: false
+      commit: start.commit,
+      dirty: false,
+      start,
+      end: null
     },
     environment: {
       platform: process.platform,
@@ -158,35 +260,42 @@ export function createBaselineRecord({ startedAt = new Date().toISOString(), com
     outputs: [outputRecord(htmlFile), outputRecord(epubFile), outputRecord(docxFile)],
     semantics: {
       html: { sha256: sha256(normalizeHtml(html)) },
-      epub: epubSemantics(epubFile)
+      epub: await epubSemantics(epubFile)
     },
     result: "passed"
   };
+  const end = readSnapshot();
+  assertStableRepositorySnapshot(start, end);
+  record.repository.end = end;
   record.finishedAt = new Date().toISOString();
   assertSanitized(record);
   return record;
 }
 
-export function writeBaselineRecord(output = DEFAULT_OUTPUT, options = {}) {
-  const record = createBaselineRecord(options);
+export async function writeBaselineRecord(output = DEFAULT_OUTPUT, options = {}) {
+  const record = await createBaselineRecord(options);
   mkdirSync(resolve(output, ".."), { recursive: true });
   writeFileSync(output, `${JSON.stringify(record, null, 2)}\n`);
   return { output: relativePath(output), record };
 }
 
-export function runBaselineCapture(output = DEFAULT_OUTPUT) {
+export async function runBaselineCapture(output = DEFAULT_OUTPUT, {
+  readSnapshot = readRepositorySnapshot,
+  runCommand = runRequiredCommand,
+  writeRecord = writeBaselineRecord
+} = {}) {
   const startedAt = new Date().toISOString();
-  const dirty = commandOutput("git", ["status", "--porcelain"]) !== "";
-  if (dirty) throw new Error("Increment 1 baseline requires a clean Git worktree before checks run.");
-  const commands = REQUIRED_COMMANDS.map(runRequiredCommand);
-  return writeBaselineRecord(output, { startedAt, commands });
+  const repositoryStart = readSnapshot();
+  if (repositoryStart.dirty) throw new Error("Increment 1 baseline requires a clean Git worktree before checks run.");
+  const commands = REQUIRED_COMMANDS.map(runCommand);
+  return writeRecord(output, { startedAt, commands, repositoryStart, readSnapshot });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   try {
     const outputFlag = process.argv.indexOf("--output");
     const output = outputFlag === -1 ? DEFAULT_OUTPUT : resolve(process.argv[outputFlag + 1]);
-    const result = runBaselineCapture(output);
+    const result = await runBaselineCapture(output);
     console.log(`Increment 1 baseline written: ${result.output}`);
     console.log(`YC chapters: ${result.record.ycPlaybook.chapterCount}`);
     console.log(`HTML semantics: ${result.record.semantics.html.sha256}`);
