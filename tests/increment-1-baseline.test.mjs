@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertBaselinePreconditions } from "../scripts/record-increment-1-baseline.mjs";
+import { assertBaselinePreconditions, normalizeEpubDocument } from "../scripts/record-increment-1-baseline.mjs";
 
 const passedCommands = [
   { id: "pnpm-check", exitCode: 0, result: "passed" },
@@ -13,4 +13,10 @@ test("Increment 1 baseline requires a clean worktree and all required commands",
   assert.throws(() => assertBaselinePreconditions({ dirty: true, commands: passedCommands }), /clean Git worktree/);
   assert.throws(() => assertBaselinePreconditions({ dirty: false, commands: passedCommands.slice(0, 2) }), /pnpm-verify-outputs/);
   assert.throws(() => assertBaselinePreconditions({ dirty: false, commands: [...passedCommands.slice(0, 2), { id: "pnpm-verify-outputs", exitCode: 1, result: "failed" }] }), /pnpm-verify-outputs/);
+});
+
+test("EPUB semantic snapshots exclude build-time metadata", () => {
+  const first = '<dc:date id="epub-date">2026-07-27T14:45:00Z</dc:date><meta property="dcterms:modified">2026-07-27T14:45:00Z</meta>';
+  const second = '<dc:date id="epub-date">2026-07-27T15:00:00Z</dc:date><meta property="dcterms:modified">2026-07-27T15:00:00Z</meta>';
+  assert.equal(normalizeEpubDocument(first), normalizeEpubDocument(second));
 });

@@ -83,6 +83,8 @@ export function normalizeEpubDocument(markup) {
   return normalizeHtml(markup)
     .replace(/<\?xml[^]*?\?>/g, "")
     .replace(/\s+xmlns(?::\w+)?="[^"]+"/g, "")
+    .replace(/<dc:date\b[^>]*>[^<]*<\/dc:date>/g, "<dc:date>[build-time]</dc:date>")
+    .replace(/<meta property="dcterms:modified">[^<]*<\/meta>/g, "<meta property=\"dcterms:modified\">[build-time]</meta>")
     .trim();
 }
 
