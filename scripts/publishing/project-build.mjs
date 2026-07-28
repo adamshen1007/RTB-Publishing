@@ -13,7 +13,7 @@ import { verifyFormats } from "./verify.mjs";
 import { verifyReleaseDirectory } from "./verify-release.mjs";
 import { registerReleaseCandidate, reserveReleaseIdentity } from "./release-registry.mjs";
 import { loadPublishApproval } from "./approval-store.mjs";
-import { evaluateReleasePolicies } from "./policies.mjs";
+import { evaluateReleasePolicies, pendingReleasePolicies } from "./policies.mjs";
 import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
 import { streamResourceFixture } from "./resource-proof.mjs";
@@ -29,11 +29,12 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     const outputs = { html: resolve(release, filenameFor(project, "html")), pdf: resolve(release, filenameFor(project, "pdf")), epub: resolve(release, filenameFor(project, "epub")) };
     renderHtml(snapshot, outputs.html); renderEpub(snapshot, outputs.epub); const pdf = renderPdf(snapshot, outputs.pdf, { env, tools }); verifySnapshot(project, snapshot, tools);
     const verification = await verifyFormats({ project, snapshotMarkdown: snapshot.markdown, outputs, pdfTools: pdf.tools, pdfDerived: pdf.derived, sourceFingerprint: snapshot.record.sourceFingerprint, env }); writeJson(resolve(release, "verification.json"), verification);
-    const policies = evaluateReleasePolicies(project, { sourceFingerprint: snapshot.record.sourceFingerprint, artifacts: verification.artifacts }), bundle = retainSnapshot(snapshot, release);
+    const policies = pendingReleasePolicies(), bundle = retainSnapshot(snapshot, release);
     const candidate = createCandidate({ projectId: project.id, lifecycleVersion, sourceFingerprint: snapshot.record.sourceFingerprint, snapshot: { authority: snapshot.record.authority, canonicalSnapshotHash: snapshot.record.canonicalSnapshotHash, repository: snapshot.record.materials.repository, files: snapshot.record.files, materials: snapshot.record.materials, bundle, ...(resourceProof ? { resourceProof } : {}) }, verification, policies }); writeJson(resolve(release, "candidate.json"), candidate); registerReleaseCandidate(project.legacyRoot, candidate);
+    const releasePolicies = evaluateReleasePolicies(project, candidate);
     let manifest = null, approval = null;
-    if (approvalId) { approval = loadPublishApproval(project.legacyRoot, approvalId, candidate); manifest = createManifest(candidate, approval); reserveReleaseIdentity(project.legacyRoot, manifest); writeJson(resolve(release, "manifest.json"), manifest); }
-    verifyReleaseDirectory(release, candidate, { manifest, approval }); if (resourceReport) writeJson(resourceReport, resourceProof); return { project, snapshot, outputs, verification, candidate, manifest, release };
+    if (approvalId) { approval = loadPublishApproval(project.legacyRoot, approvalId, candidate); manifest = createManifest(candidate, approval, { releasePolicies }); reserveReleaseIdentity(project.legacyRoot, manifest); writeJson(resolve(release, "manifest.json"), manifest); }
+    verifyReleaseDirectory(release, candidate, { manifest, approval, releasePolicies }); if (resourceReport) writeJson(resourceReport, resourceProof); return { project, snapshot, outputs, verification, candidate, releasePolicies, manifest, release };
   } catch (error) { rmSync(release, { recursive: true, force: true }); throw error; }
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) { const options = argumentsOf(process.argv.slice(2)), result = await buildRelease(resolveBookProject(options.project), { lifecycleVersion: options.lifecycleVersion, approvalId: options.approvalId, resourceFixture: options.resourceFixture, resourceReport: options.resourceReport, env: process.env }); console.log(`✓ Verified HTML, PDF, and EPUB candidate ${result.candidate.candidateHash}`); console.log(`✓ ${result.release}`); if (!result.manifest) console.log("! Final manifest not created: exact human Publish approval and named manual reviews remain required."); }

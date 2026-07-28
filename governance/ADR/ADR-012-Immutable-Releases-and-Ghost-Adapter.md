@@ -42,8 +42,8 @@ release-candidate envelope and calculates its SHA-256 hash. The envelope binds:
 - Required HTML, PDF, and EPUB formats
 - Validator profiles, versions, configurations, and results
 - Renderer, template, policy, configuration, and dependency-lock hashes
-- Rights, accessibility, citation, link, quality-policy, and release-integrity
-  results
+- Machine-derived rights, accessibility, citation, link, quality-policy, and
+  release-integrity results
 - Lifecycle version, versioned hosted-access policy, build run, and creation
   evidence
 
@@ -57,6 +57,24 @@ staging-attempt ID, reservation, idempotency key, expected pointer revision, or
 evidence authority. A changed artifact, checksum, source, format, validator
 result, rights or quality result, lifecycle version, or access policy requires
 a new candidate envelope, hash, and Publish decision.
+
+The three human release-review decisions are the deliberate exception to
+candidate-envelope storage. They are append-only local SQLite evidence linked
+to an already registered candidate, not canonical manuscript input and not
+fields hashed into that candidate. Each record redundantly binds the exact
+candidate hash, source fingerprint, and HTML, PDF, and EPUB artifact hashes;
+the service resolves those values from the registered candidate and resolves
+the human reviewer from the authenticated server session. A browser cannot
+author any binding or reviewer identity. An approved rights and brand review
+also records a truthful, non-empty qualified reviewer role.
+
+Release eligibility is a server-side join of the exact current candidate and
+the latest valid record for each fixed review kind. Wrong-candidate, stale,
+rejected, incomplete, or corrupt evidence fails closed. The Publish approval
+binds the candidate and the resulting zero-blocking-findings decision in the
+durable lifecycle ledger. This separation prevents a review record from
+changing the source fingerprint or candidate it is intended to approve while
+retaining an exact auditable binding at Publish.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest

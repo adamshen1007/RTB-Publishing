@@ -54,6 +54,14 @@ Markdown and Git remain the authority for authored publication content.
 Generated artifacts, build intermediates, release manifests, Ghost, and object
 storage are derived and cannot write canonical content.
 
+Human release decisions are durable operational evidence, not authored
+publication content. The three fixed release reviews -- migration visual,
+PDF screen-reader and visual, and rights and brand -- are append-only local
+SQLite records under `.rtb-state/`. They are excluded from the canonical
+source snapshot and source fingerprint. A review therefore cannot invalidate
+the source identity it records or require its own bytes to be hashed into that
+identity.
+
 One build resolves an immutable source snapshot containing:
 
 - Project and edition configuration
@@ -187,7 +195,7 @@ versioned, immutable release-candidate envelope. It records:
 - The complete required format set
 - Validator profiles, versions, configurations, and machine-readable results
 - Renderer, template, font, sanitizer, policy, and dependency-lock hashes
-- Rights, citations, links, visual provenance, accessibility,
+- Machine-derived rights, citations, links, visual provenance, accessibility,
   quality-policy, and release-integrity results
 - Lifecycle version, versioned hosted-access policy, build run, and creation
   evidence
@@ -196,6 +204,23 @@ The pipeline calculates a SHA-256 hash over the canonical serialization of the
 complete envelope. The human Publish action binds that exact envelope hash and
 lifecycle version and fails closed unless that lifecycle has a current Beta
 approval. Any material change requires a new envelope, hash, and approval.
+
+The candidate envelope does not embed the three mutable human release-review
+decisions. After a candidate is registered, the review service resolves its
+source fingerprint and HTML, PDF, and EPUB hashes from that server-side
+record, resolves the human identity from the authenticated local session, and
+appends the decision to SQLite. Browser input cannot supply a candidate,
+fingerprint, artifact hash, reviewer identity, or lifecycle binding. Rights
+approval additionally requires a truthful, non-empty qualified reviewer role.
+
+Release policy evaluation joins the latest evidence for each fixed review kind
+to that exact registered candidate and rechecks every redundant source and
+artifact binding. Evidence for another candidate, including one with similar
+content or a stale lifecycle version, does not satisfy the policy. The
+server-created Publish binding records zero blocking findings for the exact
+candidate; changing candidate material creates another identity and returns
+the reviews to pending. This operational join breaks the self-reference cycle
+without weakening the Publish gate or making review evidence canonical input.
 
 The final manifest required by ADR-012 derives from the approved envelope. It
 must preserve every material field exactly and may add only the Publish

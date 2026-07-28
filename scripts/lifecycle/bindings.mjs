@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { openStateDatabase } from "../state/database.mjs";
+import { evaluateReleasePolicies } from "../publishing/policies.mjs";
 
 const hash = (value) => createHash("sha256").update(Buffer.isBuffer(value) || typeof value === "string" ? value : JSON.stringify(value, Object.keys(value).sort())).digest("hex");
 
@@ -14,10 +15,10 @@ export class CanonicalLifecycleBindingProvider {
     const database = openStateDatabase(this.databaseFile);
     try {
       if (gate === "beta") { const row = database.prepare("SELECT bindings_json FROM lifecycle_material_bindings WHERE project_id = ? AND kind = 'beta' ORDER BY created_at DESC, id DESC LIMIT 1").get(this.approvalProjectId); return row ? { available: true, bindings: JSON.parse(row.bindings_json) } : { available: false, message: "Beta is unavailable until a verified Notion review snapshot is registered." }; }
-      const candidate = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, candidate_hash DESC LIMIT 1").get(this.book.id);
+      const candidate = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(this.book.id);
       if (!candidate) return { available: false, message: "Publish is unavailable until a verified release candidate is registered." };
-      const value = JSON.parse(candidate.candidate_json), approvals = database.prepare("SELECT gate, bindings_json FROM lifecycle_approvals WHERE project_id = ? AND decision = 'approved' AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations) ORDER BY created_at DESC").all(this.approvalProjectId), binding = (kind) => JSON.parse(approvals.find((item) => item.gate === kind)?.bindings_json ?? "null");
-      return { available: true, bindings: { releaseCandidateHash: value.candidateHash, candidateLifecycleVersion: value.lifecycleVersion, blockingFindings: value.policies.releaseEligible ? 0 : 1, blueprint: binding("blueprint"), beta: binding("beta") } };
+      const value = JSON.parse(candidate.candidate_json), approvals = database.prepare("SELECT gate, bindings_json FROM lifecycle_approvals WHERE project_id = ? AND decision = 'approved' AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations) ORDER BY created_at DESC").all(this.approvalProjectId), binding = (kind) => JSON.parse(approvals.find((item) => item.gate === kind)?.bindings_json ?? "null"), releasePolicies = evaluateReleasePolicies(this.book, value, { databaseFile: this.databaseFile });
+      return { available: true, bindings: { releaseCandidateHash: value.candidateHash, candidateLifecycleVersion: value.lifecycleVersion, blockingFindings: releasePolicies.releaseEligible ? 0 : 1, blueprint: binding("blueprint"), beta: binding("beta") } };
     } finally { database.close(); }
   }
 }
