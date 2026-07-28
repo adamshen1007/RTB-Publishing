@@ -118,14 +118,16 @@ test("GHO-006: pointer reconciliation distrusts authenticated advisory events an
   assert.equal(adapter.authoritativeReads, 1, "reconciliation must read state rather than trust event payloads");
 });
 
-test("GHO-007: scans every committed/current spike file and a non-empty reviewed Git range", () => {
+test("GHO-007: scans every committed/current spike file and the latest Ghost-changing reviewed range", () => {
   const committedFiles = git(["ls-tree", "-r", "--name-only", "HEAD", "--", ...SPIKE_SCOPE]).trim().split("\n").filter(Boolean).sort();
   assert.deepEqual(committedFiles, [...SPIKE_SCOPE].sort(), "committed spike scope must include docs, fixtures, schema, harness, and tests");
   const committedScope = committedFiles.map((file) => git(["show", `HEAD:${file}`])).join("\n");
   const workingScope = SPIKE_SCOPE.map(read).join("\n");
-  const reviewBase = git(["rev-parse", "HEAD^"]).trim();
-  const reviewedDiff = git(["diff", "--no-ext-diff", `${reviewBase}..HEAD`, "--", ...SPIKE_SCOPE]);
-  assert.match(reviewedDiff, /diff --git/, "reviewed Git range must not be an empty working-tree diff");
+  const reviewedCommit = git(["log", "-1", "--format=%H", "HEAD", "--", ...SPIKE_SCOPE]).trim();
+  assert.match(reviewedCommit, /^[a-f0-9]{40}$/, "a committed Ghost spike change must be available for review");
+  const reviewBase = git(["rev-parse", `${reviewedCommit}^`]).trim();
+  const reviewedDiff = git(["diff", "--no-ext-diff", `${reviewBase}..${reviewedCommit}`, "--", ...SPIKE_SCOPE]);
+  assert.match(reviewedDiff, /diff --git/, "latest Ghost-changing reviewed range must not be empty");
   const scanned = `${committedScope}\n${workingScope}\n${reviewedDiff}`;
   assert.doesNotMatch(scanned, /(?:api[_-]?key|access[_-]?token|admin[_-]?key|client[_-]?secret|password|secret)\s*[:=]\s*["']?(?!none\b|not-|synthetic)/i);
   assert.doesNotMatch(scanned, /@(?!example\.test\b)[a-z0-9.-]+\.[a-z]{2,}/i);
