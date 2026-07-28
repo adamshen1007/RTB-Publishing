@@ -91,8 +91,13 @@ pending material after write, verification, or process interruption; they
 cannot consume a different identity. No separate reservation API accepts a
 caller-created manifest.
 
-The lock order is project writer lock, then SQLite immediate transaction. No
-code waits for the project lock while holding a database transaction. Relevant
+The lock order is workspace output lock, project writer lock, then SQLite
+immediate transaction. Every command that can change shared `build/` or
+`dist/` material takes the workspace lock first, including builds,
+finalization, and clean. A nested project lock may then protect that project's
+canonical and ledger boundaries. Held project authority is rejected unless
+the caller also proves the enclosing live workspace authority. No code waits
+for either filesystem lock while holding a database transaction. Relevant
 filesystem material is derived and re-confirmed under that lock immediately
 before commit. Direct external editor writes cannot be prevented by SQLite or
 the cooperative lock, so any mismatch observed by the stability recheck causes
@@ -102,15 +107,19 @@ Held-lock authority is a process-private live handle, not a caller-supplied
 path or owner string. It is accepted only for the exact project root that
 created it. Release is idempotent and removes the lock file only when its inode,
 process, and random owner still match, so a stale or repeated release cannot
-unlink a successor writer's lock. Clean and every local build output mutator
-use this same lock boundary.
+unlink a successor writer's lock. This hierarchy ensures a workspace clean
+cannot race a build or finalization whose project root is nested below it.
 
 The release build holds that lock while it renders in unique staging,
 registers and promotes the candidate, finalizes, and performs the last
 verification. The previously promoted directory remains intact until the new
 staging directory passes exact verification. Promotion uses a same-filesystem
-directory rename with a deterministic prior-directory backup; a retry first
-repairs an interrupted rename and never deletes the only legacy evidence. It
+directory rename with a deterministic prior-directory backup and durable phase
+marker. The backup remains until the promoted directory passes exact
+post-rename verification. A verification failure removes the unverified tree
+and restores the prior release; restart recovery interprets the marker and
+does the same before retrying. Only a verified phase permits backup deletion.
+It
 passes explicit held-lock authority into finalization; the finalization
 operation never recursively acquires the lock. A legacy `reserved` identity
 without a finalization record may be adopted only when its deterministic
@@ -126,11 +135,15 @@ the immutable release bytes. Current distribution eligibility and revocation
 are separate mutable product decisions.
 
 Databases upgraded from the earlier finalization schema reconcile missing
-completion-time approval facts only when the retained completed identity,
-registered candidate, exact manifest, approval, and invalidation timestamps
-prove that approval was current at completion. Ambiguous or already-invalid
-evidence remains preserved and fails with an explicit operator-reconciliation
-requirement; migration never guesses historical authority.
+completion-time approval facts only when every redundant authority agrees:
+completed identity fields, registered candidate project/hash/source/artifacts
+and lifecycle, normalized manifest JSON and checksum, exact human approval and
+bindings, candidate-plus-one approval lifecycle, zero blocking findings,
+historical review-policy hash, required Beta binding, and approval/invalidation
+timestamps. Ambiguous, mismatched, or already-invalid evidence remains
+preserved and fails with an explicit operator-reconciliation requirement;
+migration never trusts a manifest-owned assertion alone or guesses historical
+authority.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest

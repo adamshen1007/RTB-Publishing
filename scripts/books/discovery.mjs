@@ -66,6 +66,7 @@ function projectFromManifest(manifestFile, { workspaceRoot = ROOT, preferCanonic
     pointerVersion: resolved.pointerVersion,
     outputProfiles: manifest.output_profiles.map((profile) => ({ ...profile, filename: basename(profile.path) })),
     workspacePath: safeRelative(workspace, legacyRoot),
+    workspaceRoot: workspace,
   };
 }
 

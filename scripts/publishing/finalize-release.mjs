@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock, assertLiveProjectLock } from "../state/project-lock.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock } from "../state/project-lock.mjs";
 import { loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
@@ -74,11 +74,17 @@ function complete(database, root, project, releaseDirectory, manifest, beforeCom
 }
 
 /** Sole authority for preparing, writing, verifying, and completing a release manifest. */
-export async function finalizeRelease({ root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldLock = null }) {
+export async function finalizeRelease(options) {
+  const { root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldWorkspaceLock = null, heldLock = null } = options;
+  const workspaceRoot = options.workspaceRoot ?? project.workspaceRoot ?? root;
+  if (heldLock && !heldWorkspaceLock) throw new Error("Held project lock authority requires the enclosing workspace output lock to preserve lock order.");
+  if (heldWorkspaceLock) assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
   if (heldLock) assertLiveProjectLock(heldLock, root);
-  const lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-finalization-${process.pid}` });
+  const workspaceLock = heldWorkspaceLock ?? await acquireWorkspaceOutputLock(workspaceRoot, { ownerId: `publication-finalization-output-${process.pid}` });
+  let lock;
   let database;
   try {
+    lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-finalization-${process.pid}` });
     database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
     const prepared = prepare(database, project, candidateHash, approvalId, legacyReleaseDirectory, hooks.beforePrepareCommit);
     (hooks.writeManifest ?? writeJsonAtomic)(resolve(releaseDirectory, "manifest.json"), prepared.manifest);
@@ -87,5 +93,5 @@ export async function finalizeRelease({ root, project, candidateHash, approvalId
       complete(database, root, project, releaseDirectory, prepared.manifest, hooks.beforeCompleteCommit);
     } else verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ?").get(candidateHash).candidate_json), { manifest: prepared.manifest });
     return { manifest: prepared.manifest };
-  } finally { database?.close(); if (!heldLock) lock.release(); }
+  } finally { database?.close(); if (!heldLock) lock?.release(); if (!heldWorkspaceLock) workspaceLock.release(); }
 }

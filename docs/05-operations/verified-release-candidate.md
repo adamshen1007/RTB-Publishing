@@ -60,12 +60,14 @@ record. Only completed durable finalization verifies as a release. RTB
 Publishing does not claim hosted activation or subscriber delivery in
 Increment 1.
 
-The build uses a unique staging directory while holding the project writer
-lock. It does not remove the existing promoted release. After registration,
-finalization, and exact verification succeed, it atomically promotes staging
-and verifies the promoted directory again. `pnpm clean` and other build output
-writers use the same lock, so they wait or fail before changing publication
-bytes rather than racing finalization.
+The build first holds the workspace output lock and then the nested project
+writer lock. It uses a unique staging directory and does not remove the
+existing promoted release. After registration and finalization, it verifies
+staging, records a durable promotion marker, and atomically renames staging.
+The prior release backup remains until the promoted directory passes exact
+verification again. Failure or restart restores that backup before retrying.
+`pnpm clean` and other build output writers take the same workspace lock, so a
+clean at repository root cannot race a build under a nested book directory.
 
 An older `reserved` identity is adopted only when its exact candidate, current
 real approval and policy, current Beta, and existing manifest all reproduce.
@@ -76,7 +78,9 @@ eligibility or revocation is a separate product decision.
 
 When upgrading a database created before completion-time approval facts were
 stored, verification backfills those facts only if the completed identity,
-candidate, manifest, approval, and timestamps prove the approval was current
-at completion. If the proof is ambiguous, stop and preserve the directory and
-database. The explicit reconciliation error means a human must review the old
-evidence or create a new candidate and approval; do not delete the old release.
+candidate source/artifacts/lifecycle, manifest JSON/checksum, historical review
+policy, exact human approval bindings, required Beta binding, and timestamps
+all prove the approval was current at completion. If any redundant field
+differs, stop and preserve the directory and database. The explicit
+reconciliation error means a human must review the old evidence or create a
+new candidate and approval; do not delete the old release.

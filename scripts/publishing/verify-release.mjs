@@ -1,20 +1,39 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fileHash, stable } from "./common.mjs";
+import { fileHash, materialHash, stable } from "./common.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { verifyManifestChecksum } from "./manifest.mjs";
 import { resolveBookProject } from "../books/discovery.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
 import { acquireProjectLockImmediate, assertLiveProjectLock } from "../state/project-lock.mjs";
+import { RELEASE_REVIEW_KINDS } from "./release-review-store.mjs";
+
+function reviewRecord(row) { return { schemaVersion: 1, id: row.id, projectId: row.project_id, kind: row.kind, decision: row.decision, candidateHash: row.candidate_hash, sourceFingerprint: row.source_fingerprint, artifactHashes: { html: row.html_sha256, pdf: row.pdf_sha256, epub: row.epub_sha256 }, reviewer: { type: "human", id: row.reviewer_id, ...(row.qualified_role ? { qualifiedRole: row.qualified_role } : {}) }, createdAt: row.created_at }; }
+function historicalPolicyHash(database, candidate, completedAt) {
+  const rows = database.prepare("SELECT * FROM release_reviews WHERE project_id = ? AND candidate_hash = ? AND created_at <= ? ORDER BY created_at DESC, rowid DESC").all(candidate.projectId, candidate.candidateHash, completedAt), latest = new Map();
+  for (const row of rows) if (!latest.has(row.kind)) latest.set(row.kind, row);
+  if (RELEASE_REVIEW_KINDS.some((kind) => latest.get(kind)?.decision !== "approved")) return null;
+  const evidence = RELEASE_REVIEW_KINDS.map((kind) => reviewRecord(latest.get(kind)));
+  const exact = evidence.every((record) => record.projectId === candidate.projectId && record.candidateHash === candidate.candidateHash && record.sourceFingerprint === candidate.sourceFingerprint && ["html", "pdf", "epub"].every((format) => record.artifactHashes[format] === candidate.artifacts[format].sha256) && record.reviewer.id.length >= 2) && evidence.find((record) => record.kind === "rights-and-brand-review")?.reviewer.qualifiedRole;
+  return exact ? materialHash({ schemaVersion: 1, candidateHash: candidate.candidateHash, manualReviews: Object.fromEntries(RELEASE_REVIEW_KINDS.map((kind) => [kind, "approved"])), evidence }) : null;
+}
 
 function reconcileApprovalFacts(database, record, identity, approval, candidate, manifest) {
   if (!record) return record;
   if (record?.completed_while_current === 1) return record;
   const invalidation = approval && database.prepare("SELECT created_at FROM lifecycle_approval_invalidations WHERE approval_id = ?").get(approval.id);
-  const registeredCandidate = database.prepare("SELECT 1 FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(candidate.candidateHash, candidate.projectId);
+  const candidateRow = database.prepare("SELECT * FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(candidate.candidateHash, candidate.projectId), registeredCandidate = candidateRow && JSON.parse(candidateRow.candidate_json);
   const bindings = approval ? JSON.parse(approval.bindings_json) : null;
-  const provable = record && identity && approval && registeredCandidate && record.completed_at && approval.created_at <= record.completed_at && (!invalidation || invalidation.created_at > record.completed_at) && manifest.approval?.id === approval.id && manifest.approval.actor?.type === approval.actor_type && manifest.approval.actor?.id === approval.actor_id && manifest.approval.lifecycleVersion === bindings?.candidateLifecycleVersion && record.manifest_json === JSON.stringify(manifest);
+  const betaApproval = bindings?.beta && database.prepare("SELECT * FROM lifecycle_approvals WHERE project_id = ? AND gate = 'beta' AND decision = 'approved' AND explicit_confirmation = 1 AND actor_type = 'human' AND bindings_json = ? AND created_at <= ? ORDER BY created_at DESC LIMIT 1").get(candidate.projectId, JSON.stringify(bindings.beta), approval?.created_at ?? "");
+  const betaInvalidation = betaApproval && database.prepare("SELECT created_at FROM lifecycle_approval_invalidations WHERE approval_id = ?").get(betaApproval.id);
+  const policyHash = record.completed_at ? historicalPolicyHash(database, candidate, record.completed_at) : null;
+  const exactIdentity = identity && identity.release_id === record.release_id && identity.project_id === candidate.projectId && identity.candidate_hash === candidate.candidateHash && identity.approval_id === approval?.id && identity.status === "completed";
+  const exactCandidate = registeredCandidate && stable(registeredCandidate) === stable(candidate) && registeredCandidate.projectId === candidate.projectId && registeredCandidate.candidateHash === candidate.candidateHash && registeredCandidate.lifecycleVersion === candidate.lifecycleVersion && registeredCandidate.sourceFingerprint === candidate.sourceFingerprint && stable(registeredCandidate.artifacts) === stable(candidate.artifacts);
+  const exactApproval = approval?.actor_type === "human" && approval.actor_id && approval.lifecycle_version === candidate.lifecycleVersion + 1 && bindings?.releaseCandidateHash === candidate.candidateHash && bindings?.candidateLifecycleVersion === candidate.lifecycleVersion && bindings?.blockingFindings === 0 && bindings?.releasePolicyHash === policyHash && manifest.approval?.releasePolicyHash === policyHash;
+  const exactBeta = betaApproval && (!betaInvalidation || betaInvalidation.created_at > record.completed_at) && /^[a-f0-9]{64}$/.test(bindings.beta.betaSnapshotHash ?? "") && /^[a-f0-9]{64}$/.test(bindings.beta.policyResultsHash ?? "");
+  const exactRecord = record.project_id === candidate.projectId && record.candidate_hash === candidate.candidateHash && record.approval_id === approval?.id && record.release_id === manifest.releaseId && record.manifest_hash === manifest.manifestHash && record.manifest_json === JSON.stringify(manifest);
+  const provable = exactRecord && exactIdentity && exactCandidate && exactApproval && exactBeta && record.completed_at && approval.created_at <= record.completed_at && (!invalidation || invalidation.created_at > record.completed_at) && manifest.approval?.id === approval.id && manifest.approval.actor?.type === approval.actor_type && manifest.approval.actor?.id === approval.actor_id && manifest.approval.lifecycleVersion === candidate.lifecycleVersion;
   if (!provable) throw new Error("Completed release requires approval-facts reconciliation; existing evidence cannot prove that the exact Publish approval was current at completion.");
   database.exec("BEGIN IMMEDIATE");
   try {
@@ -41,11 +60,12 @@ export function verifyReleaseDirectory(directory, candidate, { manifest, root, h
   let database;
   try {
     database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
-    let record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ? AND project_id = ? AND candidate_hash = ? AND manifest_hash = ? AND status = 'completed'").get(manifest.releaseId, candidate.projectId, candidate.candidateHash, manifest.manifestHash);
+    let record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ? AND status = 'completed'").get(manifest.releaseId);
     const identity = database.prepare("SELECT * FROM release_identities WHERE release_id = ? AND approval_id = ? AND status = 'completed'").get(manifest.releaseId, manifest.approval?.id);
     const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ? AND project_id = ? AND gate = 'publish' AND decision = 'approved' AND explicit_confirmation = 1").get(manifest.approval?.id, candidate.projectId);
     record = reconcileApprovalFacts(database, record, identity, approval, candidate, manifest);
-    const historicalApproval = approval && record?.completed_while_current === 1 && record.approval_actor_type === approval.actor_type && record.approval_actor_id === approval.actor_id && record.approval_created_at === approval.created_at && record.approval_lifecycle_version === approval.lifecycle_version && record.approval_bindings_json === approval.bindings_json && record.completed_at >= approval.created_at;
+    const recordExact = record?.project_id === candidate.projectId && record.candidate_hash === candidate.candidateHash && record.manifest_hash === manifest.manifestHash;
+    const historicalApproval = approval && recordExact && record?.completed_while_current === 1 && record.approval_actor_type === approval.actor_type && record.approval_actor_id === approval.actor_id && record.approval_created_at === approval.created_at && record.approval_lifecycle_version === approval.lifecycle_version && record.approval_bindings_json === approval.bindings_json && record.completed_at >= approval.created_at;
     if (!record || record.manifest_json !== JSON.stringify(manifest) || !identity || !historicalApproval) throw new Error("Release verification requires the exact completed durable finalization, identity, and completion-time ledger Publish approval facts.");
     return true;
   } finally { database?.close(); if (!heldLock) lock.release(); }

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
-import { acquireProjectLock, assertLiveProjectLock, projectLockPath } from "../scripts/state/project-lock.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, projectLockPath } from "../scripts/state/project-lock.mjs";
 import { cleanOutputs } from "../scripts/clean.mjs";
 
 test("project lock authority rejects forged, wrong-root, and released handles", async () => {
@@ -31,15 +31,16 @@ test("double release cannot unlink a successor lock", async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("clean waits for the publication lock before removing outputs", async () => {
-  const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-clean-")), buildDirectory = resolve(root, "build"), distributionDirectory = resolve(root, "dist");
+test("clean waits for a nested project's workspace output lock before removing outputs", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-clean-")), projectRoot = resolve(root, "books", "nested"), buildDirectory = resolve(root, "build"), distributionDirectory = resolve(root, "dist");
   try {
-    mkdirSync(buildDirectory); mkdirSync(distributionDirectory); writeFileSync(resolve(distributionDirectory, "release.pdf"), "published evidence");
-    const publication = await acquireProjectLock(root);
+    mkdirSync(projectRoot, { recursive: true }); mkdirSync(buildDirectory); mkdirSync(distributionDirectory); writeFileSync(resolve(distributionDirectory, "release.pdf"), "published evidence");
+    const workspace = await acquireWorkspaceOutputLock(root), publication = await acquireProjectLock(projectRoot);
+    assert.equal(assertLiveWorkspaceOutputLock(workspace, root), workspace);
     const cleaning = cleanOutputs({ root, buildDirectory, distributionDirectory });
     await new Promise((done) => setTimeout(done, 50));
     assert.equal(existsSync(distributionDirectory), true, "clean must not mutate output while finalization owns the lock");
-    publication.release(); await cleaning;
+    publication.release(); workspace.release(); await cleaning;
     assert.equal(existsSync(buildDirectory), false); assert.equal(existsSync(distributionDirectory), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

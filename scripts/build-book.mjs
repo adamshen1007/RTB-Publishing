@@ -5,7 +5,7 @@ import { assembleBook, projectOutputPath } from "./books/assemble.mjs";
 import { resolveBookProject } from "./books/discovery.mjs";
 import { verifyOutputs } from "./verify-outputs.mjs";
 import { buildRelease } from "./publishing/project-build.mjs";
-import { acquireProjectLockImmediate } from "./state/project-lock.mjs";
+import { acquireProjectLockImmediate, acquireWorkspaceOutputLockImmediate } from "./state/project-lock.mjs";
 export { buildRelease };
 
 export function outputDispatch(project) {
@@ -14,10 +14,12 @@ export function outputDispatch(project) {
     return profile;
   });
 }
-export function buildProject(project, { buildRoot = BUILD_DIR, outputRoot = resolve(DIST_DIR, "books") } = {}) {
-  const lock = acquireProjectLockImmediate(project.legacyRoot ?? ROOT, { ownerId: `book-build-${process.pid}` });
+export function buildProject(project, { buildRoot = BUILD_DIR, outputRoot = resolve(DIST_DIR, "books"), workspaceRoot = project.workspaceRoot ?? ROOT } = {}) {
+  const workspaceLock = acquireWorkspaceOutputLockImmediate(workspaceRoot, { ownerId: `book-build-output-${process.pid}` });
+  let lock;
   const buildDirectory = resolve(buildRoot, project.id); const diagramsDirectory = resolve(buildDirectory, "diagrams"); const outputDirectory = resolve(outputRoot, project.id); const combinedFile = resolve(buildDirectory, "combined.md");
   try {
+    lock = acquireProjectLockImmediate(project.legacyRoot ?? ROOT, { ownerId: `book-build-${process.pid}` });
     rmSync(buildDirectory, { recursive: true, force: true }); rmSync(outputDirectory, { recursive: true, force: true }); mkdirSync(diagramsDirectory, { recursive: true }); mkdirSync(outputDirectory, { recursive: true });
     const assembled = assembleBook(project, { diagramsDirectory }); writeFileSync(combinedFile, assembled.markdown);
     const shared = [combinedFile, "--from=markdown+yaml_metadata_block", "--standalone", "--toc", `--resource-path=${[buildDirectory, project.root, ROOT].join(delimiter)}`];
@@ -31,7 +33,7 @@ export function buildProject(project, { buildRoot = BUILD_DIR, outputRoot = reso
   } catch (error) {
     rmSync(outputDirectory, { recursive: true, force: true });
     throw error;
-  } finally { lock.release(); }
+  } finally { lock?.release(); workspaceLock.release(); }
 }
 if (import.meta.url === new URL(process.argv[1], "file:").href) {
   const project = resolveBookProject(process.argv[2]);

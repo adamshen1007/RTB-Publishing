@@ -154,17 +154,35 @@ test("migration-007 completed finalizations backfill exact historical approval f
   } finally { item.dispose(); }
 });
 
-test("migration-007 finalizations require explicit reconciliation when prior approval currency is unprovable", async () => {
-  const item = releaseFixture(2);
-  try {
-    const { book, published } = await publishable(item), directory = releaseDirectory(item, "migration-007-unsafe");
-    const { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
-    const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+test("migration-007 backfill rejects every independently corrupted redundant authority", async (context) => {
+  const bindingMutation = (change) => (database, approval) => { const bindings = JSON.parse(approval.bindings_json); change(bindings); database.prepare("UPDATE lifecycle_approvals SET bindings_json = ? WHERE id = ?").run(JSON.stringify(bindings), approval.id); };
+  const candidateMutation = (change) => (database) => { const row = database.prepare("SELECT * FROM release_candidates").get(), candidate = JSON.parse(row.candidate_json); change(candidate); database.prepare("UPDATE release_candidates SET candidate_json = ? WHERE candidate_hash = ?").run(JSON.stringify(candidate), row.candidate_hash); };
+  const cases = {
+    "identity project": (db) => db.prepare("UPDATE release_identities SET project_id = 'wrong-project'").run(),
+    "identity status": (db) => db.prepare("UPDATE release_identities SET status = 'reserved'").run(),
+    "candidate source": candidateMutation((candidate) => { candidate.sourceFingerprint = "0".repeat(64); }),
+    "candidate artifact": candidateMutation((candidate) => { candidate.artifacts.pdf.sha256 = "0".repeat(64); }),
+    "approval actor": (db, approval) => db.prepare("UPDATE lifecycle_approvals SET actor_type = 'agent' WHERE id = ?").run(approval.id),
+    "approval timestamp": (db, approval) => db.prepare("UPDATE lifecycle_approvals SET created_at = '2999-01-01T00:00:00.000Z' WHERE id = ?").run(approval.id),
+    "approval lifecycle": (db, approval) => db.prepare("UPDATE lifecycle_approvals SET lifecycle_version = lifecycle_version + 2 WHERE id = ?").run(approval.id),
+    "candidate binding": bindingMutation((bindings) => { bindings.releaseCandidateHash = "0".repeat(64); }),
+    "policy binding": bindingMutation((bindings) => { bindings.releasePolicyHash = "0".repeat(64); }),
+    "blocking findings": bindingMutation((bindings) => { bindings.blockingFindings = 1; }),
+    "Beta binding": bindingMutation((bindings) => { bindings.beta.betaSnapshotHash = "0".repeat(64); }),
+    "historical review policy": (db) => { db.exec("DROP TRIGGER release_reviews_no_update"); db.prepare("UPDATE release_reviews SET decision = 'rejected' WHERE kind = 'migration-visual-review'").run(); },
+    "manifest JSON": (db) => db.prepare("UPDATE release_finalizations SET manifest_json = '{}'").run(),
+    "manifest hash": (db) => db.prepare("UPDATE release_finalizations SET manifest_hash = ?").run("0".repeat(64)),
+    "finalization project": (db) => db.prepare("UPDATE release_finalizations SET project_id = 'wrong-project'").run(),
+    "pre-completion invalidation": (db, approval) => db.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)").run("INV-MIGRATION-007", approval.id, approval.project_id, "pre-completion invalidation", approval.created_at),
+  };
+  for (const [name, mutate] of Object.entries(cases)) await context.test(name, async () => {
+    const item = releaseFixture(2);
     try {
-      const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(published.approval.id);
-      database.prepare("UPDATE release_finalizations SET approval_actor_type = NULL, approval_actor_id = NULL, approval_created_at = NULL, approval_lifecycle_version = NULL, approval_bindings_json = NULL, completed_while_current = 0").run();
-      database.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)").run("INV-MIGRATION-007", approval.id, approval.project_id, "pre-completion invalidation", approval.created_at);
-    } finally { database.close(); }
-    assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest, root: item.root }), /requires approval-facts reconciliation/);
-  } finally { item.dispose(); }
+      const { book, published } = await publishable(item), directory = releaseDirectory(item, `migration-007-${name.replaceAll(" ", "-")}`), { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+      const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+      try { const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(published.approval.id); database.prepare("UPDATE release_finalizations SET approval_actor_type = NULL, approval_actor_id = NULL, approval_created_at = NULL, approval_lifecycle_version = NULL, approval_bindings_json = NULL, completed_while_current = 0").run(); mutate(database, approval); }
+      finally { database.close(); }
+      assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest, root: item.root }), /requires approval-facts reconciliation/);
+    } finally { item.dispose(); }
+  });
 });
