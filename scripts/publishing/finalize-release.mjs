@@ -1,41 +1,14 @@
 import { readFileSync } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, assertPinnedDirectory, assertPinnedEntry, pinPhysicalDirectory, pinPhysicalEntry } from "../state/project-lock.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock } from "../state/project-lock.mjs";
 import { assertFutureExpiry, loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
 import { assertCurrentReleasePolicies, evaluateReleasePolicies } from "./policies.mjs";
-import { releaseTreeInventory, verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
-import { openCanonicalPromotion } from "./promotion-state.mjs";
-import { assertCurrentProjectIdentity, pinnedProjectCanonicalHash, resolveBookProject } from "../books/discovery.mjs";
-
-const liveVerifiedPromotions = new WeakSet();
-function inside(root, path) { const value = relative(resolve(root), resolve(path)); return value !== ".." && !value.startsWith(`..${sep}`); }
-function pinPromotionOutput(authority, candidate) {
-  const inventory = releaseTreeInventory(authority.target, candidate, { manifest: JSON.parse(readFileSync(resolve(authority.target, "manifest.json"), "utf8")) });
-  const ancestors = [resolve(authority.workspace, "dist"), resolve(authority.workspace, "dist", "releases"), authority.immutableRoot, resolve(authority.immutableRoot, candidate.projectId), authority.target].map((path) => pinPhysicalEntry(path, "directory"));
-  const directories = inventory.filter((item) => item.type === "directory").map((item) => pinPhysicalEntry(resolve(authority.target, item.path), "directory"));
-  const files = inventory.filter((item) => item.type === "file").map((item) => pinPhysicalEntry(resolve(authority.target, item.path), "file"));
-  return { inventory, ancestors, directories, files, target: authority.target, candidate };
-}
-function assertPromotionOutput(output) { for (const identity of [...output.ancestors, ...output.directories]) assertPinnedEntry(identity, "directory"); for (const identity of output.files) assertPinnedEntry(identity, "file"); const manifest = JSON.parse(readFileSync(resolve(output.target, "manifest.json"), "utf8")), current = releaseTreeInventory(output.target, output.candidate, { manifest }); if (JSON.stringify(current) !== JSON.stringify(output.inventory)) throw new Error("Verified release tree inventory changed after it was pinned."); return true; }
-
-function assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock }) {
-  if (!heldWorkspaceLock || !heldLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
-  assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
-  assertLiveProjectLock(heldLock, root);
-  const workspaceIdentity = pinPhysicalDirectory(workspaceRoot), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, projectRoot = projectIdentity.path, declaredWorkspace = pinPhysicalDirectory(project.workspaceRoot ?? "").path, declaredProject = resolve(workspace, project.workspacePath ?? "");
-  if (declaredWorkspace !== workspace || declaredProject !== projectRoot || resolve(project.legacyRoot) !== projectRoot || !inside(workspace, projectRoot)) throw new Error("Book Project is not the exact discovered project inside the locked workspace.");
-  assertNoSymlinkPath(workspace, projectRoot, { allowMissing: false });
-  const discovered = resolveBookProject(projectRoot, { workspaceRoot: workspace });
-  if (pinnedProjectCanonicalHash(discovered) !== pinnedProjectCanonicalHash(project)) throw new Error("Book Project identity does not match current workspace discovery.");
-  if (manifest.projectId !== project.id) throw new Error("Manifest project does not match the locked discovered Book Project.");
-  const immutableRoot = resolve(workspace, "dist", "releases", "immutable"), target = resolve(immutableRoot, project.id, manifest.releaseId);
-  assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, target);
-  return { workspace, workspaceIdentity, projectRoot, projectIdentity, immutableRoot, target };
-}
+import { verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
+export { promoteFinalizedRelease } from "./promotion-state.mjs";
 
 function buildManifest(candidate, approval, releasePolicies) {
   verifyCandidate(candidate);
@@ -90,41 +63,6 @@ function prepare(database, project, candidateHash, approvalId, legacyReleaseDire
   } catch (error) { if (database.inTransaction) database.exec("ROLLBACK"); throw error; }
 }
 
-function complete(database, root, project, releaseDirectory, manifest, capability, beforeCommit, currentTime = () => Date.now()) {
-  const workspaceIdentity = pinPhysicalDirectory(project.workspaceRoot ?? ""), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, immutableRoot = resolve(workspace, "dist", "releases", "immutable");
-  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); capability?.promotion?.assertStable(); assertPromotionOutput(capability.outputIdentity); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
-  if (!capability || !liveVerifiedPromotions.has(capability) || capability.workspaceRoot !== workspace || capability.workspaceIdentity.dev !== workspaceIdentity.dev || capability.workspaceIdentity.ino !== workspaceIdentity.ino || capability.immutableRoot !== immutableRoot || capability.projectRoot !== projectIdentity.path || capability.projectIdentity.dev !== projectIdentity.dev || capability.projectIdentity.ino !== projectIdentity.ino || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ?").get(manifest.releaseId);
-    if (!record || record.manifest_hash !== manifest.manifestHash || record.manifest_json !== JSON.stringify(manifest)) throw new Error("Pending finalization does not match the exact manifest material.");
-    if (record.status === "completed") { database.exec("COMMIT"); return; }
-    const stored = JSON.parse(readFileSync(resolve(releaseDirectory, "manifest.json"), "utf8"));
-    if (JSON.stringify(stored) !== record.manifest_json) throw new Error("Written manifest does not match pending durable finalization material.");
-    const candidate = JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(record.candidate_hash, project.id).candidate_json);
-    const approval = loadPublishApprovalFromDatabase(database, record.approval_id, candidate, { now: currentTime() });
-    const approvedBeta = JSON.parse(database.prepare("SELECT bindings_json FROM lifecycle_approvals WHERE id = ?").get(record.approval_id).bindings_json).beta;
-    assertCurrentBetaApproval(database, project.id, approvedBeta, currentTime());
-    if (!currentBetaMatches(project, approvedBeta)) throw new Error("Pending finalization no longer has current exact Beta material.");
-    const policies = evaluateReleasePolicies(project, candidate, { database });
-    if (policies.releasePolicyHash !== approval.releasePolicyHash || !policies.releaseEligible) throw new Error("Pending finalization no longer has current exact release policy or approval.");
-    verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
-    beforeCommit?.();
-    const freshProject = assertCurrentProjectIdentity(project); capability.promotion.assertStable(); assertPromotionOutput(capability.outputIdentity);
-    const freshApproval = loadPublishApprovalFromDatabase(database, record.approval_id, candidate, { now: currentTime() });
-    assertCurrentBetaApproval(database, project.id, approvedBeta, currentTime());
-    if (!currentBetaMatches(freshProject, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization completion commit.");
-    const freshPolicies = evaluateReleasePolicies(freshProject, candidate, { database });
-    if (freshPolicies.releasePolicyHash !== freshApproval.releasePolicyHash || !freshPolicies.releaseEligible) throw new Error("Pending finalization no longer has current exact release policy or approval.");
-    verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
-    if (!liveVerifiedPromotions.delete(capability)) throw new Error("Verified promotion capability was already consumed.");
-    const approvalRow = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(record.approval_id);
-    database.prepare("UPDATE release_finalizations SET status = 'completed', completed_at = ?, approval_actor_type = ?, approval_actor_id = ?, approval_created_at = ?, approval_lifecycle_version = ?, approval_bindings_json = ?, completed_while_current = 1 WHERE release_id = ? AND status = 'pending'").run(new Date().toISOString(), approvalRow.actor_type, approvalRow.actor_id, approvalRow.created_at, approvalRow.lifecycle_version, approvalRow.bindings_json, record.release_id);
-    database.prepare("UPDATE release_identities SET status = 'completed' WHERE release_id = ? AND status = 'pending'").run(record.release_id);
-    database.exec("COMMIT"); durableCheckpoint(database);
-  } catch (error) { if (database.inTransaction) database.exec("ROLLBACK"); throw error; }
-}
-
 /** Sole authority for preparing, writing, verifying, and completing a release manifest. */
 export async function finalizeRelease(options) {
   const { root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldWorkspaceLock = null, heldLock = null } = options;
@@ -144,73 +82,4 @@ export async function finalizeRelease(options) {
     verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(candidateHash, project.id).candidate_json), { manifest: prepared.manifest });
     return { manifest: prepared.manifest, status: prepared.status };
   } finally { database?.close(); if (!heldLock) lock?.release(); if (!heldWorkspaceLock) workspaceLock.release(); }
-}
-
-/** Complete a prepared finalization only after its immutable target was promoted and verified. */
-async function completeFinalizedRelease(options) {
-  const { root, project, releaseDirectory, manifest, capability, hooks = {}, heldWorkspaceLock = null, heldLock = null } = options;
-  const workspaceRoot = options.workspaceRoot ?? project.workspaceRoot ?? root;
-  if (heldLock && !heldWorkspaceLock) throw new Error("Held project lock authority requires the enclosing workspace output lock to preserve lock order.");
-  if (heldWorkspaceLock) assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
-  if (heldLock) assertLiveProjectLock(heldLock, root);
-  const workspaceLock = heldWorkspaceLock ?? await acquireWorkspaceOutputLock(workspaceRoot, { ownerId: `publication-completion-output-${process.pid}` });
-  let lock;
-  let database;
-  try {
-    lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-completion-${process.pid}` });
-    database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
-    complete(database, root, project, releaseDirectory, manifest, capability, hooks.beforeCompleteCommit, hooks.now);
-    return { manifest, status: "completed" };
-  } finally { database?.close(); if (!heldLock) lock?.release(); if (!heldWorkspaceLock) workspaceLock.release(); }
-}
-
-/** Sole promotion/completion boundary; no caller can mint completion authority. */
-export async function promoteFinalizedRelease(options) {
-  const { root, workspaceRoot, project, candidate, manifest, token, hooks = {}, heldWorkspaceLock, heldLock } = options;
-  if (!heldWorkspaceLock || !heldLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
-  assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root);
-  if (Object.hasOwn(options, "outputRoot") || Object.hasOwn(options, "promotionInput")) throw new Error("Callers cannot select an immutable promotion output root.");
-  const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
-  if (!token) throw new Error("Immutable release promotion requires its build transaction token.");
-  const promotionInput = { outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, token };
-  const promotion = openCanonicalPromotion({ workspaceRoot, projectRoot: root, project, candidate, manifest, releaseId: manifest.releaseId, token, workspaceLock: heldWorkspaceLock, projectLock: heldLock, hook: hooks.promotionBoundary });
-  let context, verifiedOutputIdentity;
-  for (const recovered of promotion.recoverPending()) if (recovered.state === "completion-required") context = recovered.context;
-  const target = authority.target;
-  if (!context) context = promotion.begin();
-  try {
-    await hooks.beforePromotionVerification?.({ release: target, promotion: context });
-    verifyReleaseDirectoryMaterial(target, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
-    verifiedOutputIdentity = pinPromotionOutput(authority, candidate);
-    await hooks.afterPromotionVerification?.({ release: target, promotion: context });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable();
-    if (context.phase !== "material-verified") context = promotion.markMaterialVerified();
-    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context, outputIdentity: verifiedOutputIdentity, promotion };
-    liveVerifiedPromotions.add(capability);
-    await completeFinalizedRelease({ root, workspaceRoot, project, releaseDirectory: target, manifest, capability, heldWorkspaceLock, heldLock, hooks });
-    await hooks.afterLedgerCompletion?.({ release: target, promotion: context });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); assertPromotionOutput(capability.outputIdentity);
-    context = promotion.markLedgerCompleted();
-    verifyReleaseDirectory(target, candidate, { manifest, root, heldLock, immutableRoot: promotionInput.outputRoot, workspaceRoot, heldWorkspaceLock });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); assertPromotionOutput(capability.outputIdentity); promotion.commit();
-    return target;
-  } catch (error) {
-    context = promotion.context();
-    let transactionStillAuthoritative = true;
-    try { assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); } catch { transactionStillAuthoritative = false; }
-    if (!transactionStillAuthoritative) { const failure = new Error("Promotion authority was lost; recovery is required and no cleanup mutation was attempted.", { cause: error }); failure.recoveryRequired = true; throw failure; }
-    let ledgerCompleted = false;
-    const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
-    try {
-      const record = database.prepare("SELECT status, manifest_hash FROM release_finalizations WHERE release_id = ?").get(manifest.releaseId);
-      ledgerCompleted = record?.status === "completed" && record.manifest_hash === manifest.manifestHash;
-    } finally { database.close(); }
-    // A process can fail after the database commit but before the ledger marker.
-    // Preserve the verified target in that case so the next locked retry can
-    // durably record ledger-completed and finish promotion cleanup.
-    let outputStillAuthoritative = true;
-    if (verifiedOutputIdentity) { try { assertPromotionOutput(verifiedOutputIdentity); } catch { outputStillAuthoritative = false; } }
-    if (!ledgerCompleted && context?.phase !== "ledger-completed" && outputStillAuthoritative && transactionStillAuthoritative) promotion.rollback();
-    throw error;
-  }
 }

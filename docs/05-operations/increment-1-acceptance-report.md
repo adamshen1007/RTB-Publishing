@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 276/276 passed in the final local quality run.
+- Repository tests: 333/333 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -84,28 +84,38 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Release verification uses an exact recursive inventory with no hidden-file
   filtering. Tests reject root and nested hidden extras, ordinary nested extras,
   unexpected directories, missing files, and file/directory type swaps.
-- Catch recovery validates closed marker schema version 2 and its recorded
-  recursive transaction evidence before reconstructing private coordinator
+- Catch recovery first requires an exact active SQLite promotion-transaction
+  binding for project, release, candidate, manifest, token, phase, marker hash,
+  and evidence hash. It then validates closed marker schema version 2 and its
+  recorded recursive transaction evidence before reconstructing private coordinator
   state. It accepts only the marker-bound pre-state or an allowed exact
   intent-phase post-state and never adopts a wholesale live snapshot.
   Every rename, removal, created directory, and owned marker write validates
   its exact expected post-state before authority advances. Direct calls, unsafe
   exports, mutation-window replacement, or lock-parent loss are mutation-free
   and explicitly require recovery.
+- The promotion module exports only the high-level finalization operation.
+  Completed ledger pairs are verification-only and cannot enter any promotion
+  mutator. Six unbound, forged, stale, and mismatched binding boundaries fail
+  without recovery mutation; 46 phase-boundary real-ledger cases cover begin,
+  rollback, and commit with alternating prior/no-prior targets.
 - Stale locks fail closed without automatic reclaim. Three simultaneous stale
   waiters preserve the lock and admit no writer; rapid live-lock release with
   three contenders admits at most one successor without reclaim artifacts.
   Canonical identity tests cover assets, research, hard links, and final byte
   changes. Final Publish and Beta expiry are checked again after the last hook.
 - Generic builds recursively inventory and flush every generation file and
-  directory, revalidate the complete staging tree before rename and the exact
-  destination afterward, preserve destination collisions, flush
+  directory, exclusively reserve and materialize the destination without
+  replacement, revalidate the exact destination afterward, preserve last-gap
+  collisions and replaced reservations, flush
   both rename parents, and prove the fsynced temporary pointer inode and bytes
   remain exact after rename and pointer-parent flush. Preview resolves on every
   request, opens without following links, reads descriptor-only, and rechecks
   descriptor, path, and pointer under the workspace lock. Retention keeps
   current plus two predecessors and transactionally quarantines recursively
-  pinned older generations while rechecking the pointer before every move.
+  pinned older generations under project/token durable evidence while
+  rechecking the pointer before every move. Synchronous retention performs no
+  irreversible quarantine deletion and never removes shared GC evidence.
   Crash, in-place edit, replacement, clean-exclusion, staging collision, pointer
   switch, and GC restoration tests preserve complete generations without
   trusting successor paths.

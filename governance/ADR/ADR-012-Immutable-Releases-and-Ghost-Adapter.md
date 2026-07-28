@@ -178,26 +178,31 @@ caller's side from live bytes. The final completion boundary rechecks current
 Publish and Beta validity and expiry using a fresh time after the last hook.
 
 Generic builds publish one complete generation containing both build material
-and rendered output. They durably move the verified generation into a retained
-generation namespace, then atomically switch a private, symlink-free metadata
+and rendered output. They exclusively reserve a new UUID directory, create
+every child with no-replace semantics, verify the exact material and owned
+directory identities, then atomically switch a private, symlink-free metadata
 pointer. Failures before the switch leave the prior pair current; failures
 after it preserve the complete new pair. No path deletes the prior good
 generation while activating a replacement.
 Before visibility changes, every generation file is flushed and every
-generation directory is flushed bottom-up; after the generation rename both
-the source staging parent and destination generation parent are flushed. RTB
+generation directory is flushed bottom-up; after materialization the staging
+and destination generation parents are flushed. RTB
 flushes and pins the owned temporary pointer bytes and inode, renames it,
 flushes the pointer parent, then proves `.current` is still that exact inode and
 bytes before declaring the switch complete. The complete recursive staging
 identity and bytes are checked before and after flush, immediately before
-rename, and at the destination; a collision is preserved rather than adopted or
-deleted. Preview opens the selected file without following symbolic links,
+reservation, and at the destination; a last-gap collision or replaced
+reservation is preserved rather than adopted or deleted. Preview opens the
+selected file without following symbolic links,
 reads only from the pinned descriptor, then rechecks descriptor, path, and
 pointer while holding the workspace output lock, so build, retention, and clean
 cannot replace or delete served bytes midway. A successful build retains current
 plus two complete predecessors under both build locks. Retention is a
-pointer-aware quarantine transaction: it rechecks the exact pointer before each
-recursive generation move and restores all moves if the pointer changes. These
+pointer-aware quarantine transaction: it writes project-and-token-scoped
+durable evidence, rechecks the exact pointer before each recursive generation
+move, restores all moves if the pointer changes, and never removes shared or
+other-project evidence. Synchronous retention does not irreversibly delete the
+quarantine; deletion requires a separate bounded cleanup design. These
 durability guarantees depend on the local filesystem
 honoring file and directory `fsync`; unsupported network or virtual filesystems
 are outside the release guarantee.
@@ -223,11 +228,15 @@ that phase completes the exact new release. Each rollback phase is idempotent,
 so a second crash cannot activate unverified bytes or delete a restored prior
 release.
 
-Every promotion mutation is private to a coordinator constructed only after the
-sole public boundary validates both still-live lock handles, canonical project
+Every promotion mutation is private to a coordinator constructed only inside
+the sole exported high-level operation after it validates both still-live lock
+handles, canonical project
 identity, and exact durable candidate, manifest, identity, and finalization
-rows. Recovery validates the closed marker schema and its exact recursive
-transaction evidence before reconstructing coordinator state. Direct helper
+rows. Every durable marker phase is also transactionally bound in SQLite to its
+token, candidate, manifest, phase, marker hash, evidence hash, and active or
+terminal status. Recovery reads that trusted binding before marker bytes and
+validates the closed schema and exact recursive transaction evidence before
+reconstructing coordinator state. Direct helper
 calls, copied objects, unsafe re-exports, and
 marker, backup, quarantine, target, or parent replacement fail before any
 rename, removal, directory creation, or marker write.

@@ -117,7 +117,12 @@ closed schema containing the phase, project/release IDs, random UUID token,
 prior-target flag, and exact recursive identity-and-byte evidence for every
 transaction path except the marker itself. Recovery derives only the recorded
 pre-state or the one exact post-state allowed by an interrupted intent phase;
-it never adopts a live filesystem snapshot. All paths are derived from trusted
+it never adopts a live filesystem snapshot. Before reading marker evidence,
+recovery requires the token, phase, marker hash, and evidence hash to match the
+active `promotion_transactions` row bound to the exact candidate, manifest,
+identity, and finalization. An unbound crash-window marker, forged token, stale
+phase, changed evidence, or database mismatch fails without cleanup mutation.
+All paths are derived from trusted
 roots; malformed, mismatched, traversal, symbolic-link, or copied replacement
 state is rejected without filesystem mutation. Immutable verification also requires
 the exact derived `immutable/<project>/<release-id>` path, real-path
@@ -130,7 +135,8 @@ Promotion recovery and cleanup also require the original lock authority and
 pinned `.promotion-state`, marker, backup, quarantine, target, and parent
 identities. If any is replaced, RTB reports that recovery is required and
 preserves both the successor namespace and existing evidence without mutation.
-Every promotion mutator is private to this boundary. The sole public entry
+Every promotion mutator is private to this boundary. The module exports only
+the high-level `promoteFinalizedRelease` operation. That sole public entry
 validates both live locks, canonical project identity, and the exact durable
 candidate, manifest, identity, and finalization rows before constructing the
 coordinator. Recovery validates marker-bound evidence before reconstructing
@@ -141,6 +147,8 @@ validation-to-advance window makes the error recovery-required. Direct calls,
 public re-exports,
 copied objects, and marker, backup, or quarantine replacement are rejected
 without adopting the replacement.
+Completed identity/finalization pairs enter verification-only handling: they
+cannot begin, recover, roll back, commit, or otherwise mutate promotion state.
 
 Dead-process lock files are not reclaimed automatically. Because pathname
 rename and removal cannot provide a safe three-actor ownership transfer, stale

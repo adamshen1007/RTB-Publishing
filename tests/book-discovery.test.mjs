@@ -198,7 +198,7 @@ test("generation retention keeps current plus two complete predecessors", () => 
 });
 
 test("generic generation publication rejects staging drift and destination races", async (context) => {
-  for (const scenario of ["staging-file", "destination-before-check", "destination-before-rename"]) await context.test(scenario, () => {
+  for (const scenario of ["staging-file", "destination-before-check", "destination-before-rename", "reservation-replaced"]) await context.test(scenario, () => {
     const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-fence-${scenario}-`));
     try {
       cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
@@ -208,8 +208,10 @@ test("generic generation publication rejects staging drift and destination races
         ? { beforeGenerationReady: ({ staging }) => writeFileSync(resolve(staging, "late-file"), "replacement") }
         : scenario === "destination-before-check"
           ? { beforeGenerationReady: ({ generation }) => { collision = generation; mkdirSync(generation, { recursive: true }); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } }
-          : { beforeGenerationRename: ({ generation }) => { collision = generation; mkdirSync(generation, { recursive: true }); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } };
-      assert.throws(() => buildProject(project, { ...options, hooks }), /tree contents changed|destination (already exists|changed before rename)/);
+          : scenario === "destination-before-rename"
+            ? { beforeGenerationRename: ({ generation }) => { collision = generation; mkdirSync(generation, { recursive: true }); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } }
+            : { afterGenerationMaterialized: ({ generation }) => { collision = generation; renameSync(generation, `${generation}.owned`); mkdirSync(generation); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } };
+      assert.throws(() => buildProject(project, { ...options, hooks }), /tree contents changed|tree identity changed|destination (already exists|changed before (rename|reservation))/);
       assert.equal(readFileSync(baseline.generationPointer).equals(pointerBytes), true);
       if (collision) assert.equal(readFileSync(resolve(collision, "successor-proof"), "utf8"), "untouched");
     } finally { rmSync(root, { recursive: true, force: true }); }
@@ -230,4 +232,17 @@ test("generation retention restores quarantined generations when the pointer cha
       for (const generation of before) assert.ok(existsSync(resolve(generationRoot, generation)), `preexisting generation ${generation} must not be deleted`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+});
+
+test("generation retention recovers only its scoped durable transaction and preserves other evidence", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-recovery-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+    const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id);
+    for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+    const other = resolve(outputRoot, ".gc", "other-project", randomUUID()); mkdirSync(other, { recursive: true }); writeFileSync(resolve(other, "proof"), "untouched"); let injected = false;
+    assert.throws(() => buildProject(project, { ...options, hooks: { durability: (event) => { if (!injected && event === "before-fsync-generation-gc-transaction-parent") { injected = true; throw new Error("gc-transaction-fsync-failure"); } } } }), /gc-transaction-fsync-failure/);
+    const projectGc = resolve(outputRoot, ".gc", project.id), transactionRoot = resolve(projectGc, readdirSync(projectGc)[0]), transactionFile = resolve(transactionRoot, "transaction.json"); assert.equal(JSON.parse(readFileSync(transactionFile, "utf8")).status, "moving");
+    buildProject(project, options); assert.equal(JSON.parse(readFileSync(transactionFile, "utf8")).status, "restored"); assert.equal(readFileSync(resolve(other, "proof"), "utf8"), "untouched"); assert.equal(existsSync(transactionRoot), true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

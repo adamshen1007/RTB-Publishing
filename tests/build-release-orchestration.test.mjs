@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -19,7 +20,7 @@ import { acquireProjectLock, acquireWorkspaceOutputLock } from "../scripts/state
 import { resolveBookProject } from "../scripts/books/discovery.mjs";
 import { initializeSnapshots, materializeSnapshot, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
 
-test("promotion module exposes only its durable canonical-finalization boundary", async () => { const module = await import("../scripts/publishing/promotion-state.mjs"); assert.deepEqual(Object.keys(module), ["openCanonicalPromotion"]); for (const name of ["createPromotionCoordinator", "authorizePromotion", "beginPromotion", "commitPromotion", "recoverPromotion", "rollbackPromotion"]) assert.equal(name in module, false); });
+test("promotion module exposes only its high-level canonical-finalization boundary", async () => { const module = await import("../scripts/publishing/promotion-state.mjs"); assert.deepEqual(Object.keys(module), ["promoteFinalizedRelease"]); for (const name of ["openCanonicalPromotion", "createPromotionCoordinator", "authorizePromotion", "beginPromotion", "commitPromotion", "recoverPromotion", "rollbackPromotion"]) assert.equal(name in module, false); });
 
 function fixture({ snapshots = false } = {}) {
   const workspaceRoot = realpathSync(mkdtempSync(resolve(tmpdir(), "rtb-real-build-"))), legacyRoot = resolve(workspaceRoot, "books", "nested");
@@ -308,6 +309,58 @@ test("marker-bound recovery rejects a copied target after an interrupted rename"
     const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
     try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
     finally { database.close(); }
+  } finally { item.dispose(); }
+});
+
+test("durable promotion binding rejects forged, stale, and mismatched markers before recovery mutation", async (context) => {
+  for (const kind of ["unbound-marker-window", "forged-token", "forged-phase", "forged-evidence", "database-mismatch", "stale-prior-marker"]) await context.test(kind, async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`binding-${kind}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate); let marker, preparedBytes;
+      const crash = (message) => { const error = new Error(message); error.recoveryRequired = true; throw error; };
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { promotionBoundary: (event, state) => {
+        if (kind === "unbound-marker-window" && event === "after-atomic-marker-prepared") { marker = state.marker; crash("preserve-unbound-marker"); }
+        if (event === "after-marker-prepared") { marker = state.marker; preparedBytes = readFileSync(marker); if (kind !== "stale-prior-marker") crash("preserve-bound-marker"); }
+        if (kind === "stale-prior-marker" && event === "after-marker-backup-intent") { writeFileSync(marker, preparedBytes); crash("preserve-stale-marker"); }
+      } } }), /preserve-/);
+      const original = marker, value = JSON.parse(readFileSync(original, "utf8"));
+      if (kind === "forged-token") { const forged = original.replace(value.token, randomUUID()); renameSync(original, forged); marker = forged; }
+      if (kind === "forged-phase") { value.phase = value.phase === "prepared" ? "backup-intent" : "prepared"; writeFileSync(marker, `${JSON.stringify(value)}\n`); }
+      if (kind === "forged-evidence") { value.evidence = [...value.evidence].reverse(); writeFileSync(marker, `${JSON.stringify(value)}\n`); }
+      if (kind === "database-mismatch") { const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.prepare("UPDATE promotion_transactions SET marker_hash = ? WHERE token = ?").run("0".repeat(64), value.token); } finally { database.close(); } }
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /durable transaction binding|does not match|malformed or mismatched/);
+      assert.equal(existsSync(marker), true, "untrusted marker evidence must remain untouched");
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); } finally { database.close(); }
+    } finally { item.dispose(); }
+  });
+});
+
+const promotionBeginEvents = ["before-marker-prepared", "after-marker-prepared", "before-marker-backup-intent", "after-marker-backup-intent", "before-old-to-backup", "after-old-to-backup", "before-marker-backup-complete", "after-marker-backup-complete", "before-marker-activate-intent", "after-marker-activate-intent", "before-staging-to-target", "after-staging-to-target", "before-marker-activate-complete", "after-marker-activate-complete"];
+const promotionRollbackEvents = ["before-marker-rollback-quarantine-intent", "after-marker-rollback-quarantine-intent", "before-target-quarantine", "after-target-quarantine", "before-marker-rollback-quarantine-complete", "after-marker-rollback-quarantine-complete", "before-marker-rollback-restore-intent", "after-marker-rollback-restore-intent", "before-backup-restore", "after-backup-restore", "before-marker-rollback-restore-complete", "after-marker-rollback-restore-complete", "before-marker-rollback-cleanup-intent", "after-marker-rollback-cleanup-intent", "before-quarantine-cleanup", "after-quarantine-cleanup", "before-marker-rollback-cleanup-complete", "after-marker-rollback-cleanup-complete", "before-marker-cleanup", "after-marker-cleanup"];
+const promotionCommitEvents = ["before-marker-material-verified", "after-marker-material-verified", "before-marker-ledger-completed", "after-marker-ledger-completed", "before-marker-commit-cleanup-intent", "after-marker-commit-cleanup-intent", "before-backup-cleanup", "after-backup-cleanup", "before-marker-commit-cleanup-complete", "after-marker-commit-cleanup-complete", "before-marker-cleanup", "after-marker-cleanup"];
+
+test("every durable promotion crash phase recovers through the high-level real-ledger boundary", async (context) => {
+  const cases = [...promotionBeginEvents.map((event) => ["begin", event]), ...promotionRollbackEvents.map((event) => ["rollback", event]), ...promotionCommitEvents.map((event) => ["commit", event])];
+  for (let index = 0; index < cases.length; index += 1) await context.test(`${cases[index][0]}:${cases[index][1]}`, async () => {
+    const [stage, fault] = cases[index], item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`crash-${stage}-${index}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), releaseId = `REL-${materialHash({ candidateHash: candidateOnly.candidate.candidateHash, approvalId: approval.id }).slice(0, 20).toUpperCase()}`;
+      if (index % 2 === 1) { const prior = resolve(item.releaseRoot, "immutable", item.project.id, releaseId); mkdirSync(prior, { recursive: true }); writeFileSync(resolve(prior, "prior-proof"), "prior"); }
+      let fired = false; const hooks = { promotionBoundary: (event) => { if (event === fault && !fired) { fired = true; throw new Error(`crash:${fault}`); } }, ...(stage === "rollback" ? { afterPromotionVerification: () => { throw new Error("force-rollback"); } } : {}) };
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks }), /crash:|force-rollback/); assert.equal(fired, true, `expected ${fault} to execute`);
+      const completed = await buildRelease(item.project, { ...base, approvalId: approval.id }); assert.equal(existsSync(completed.release), true); verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") });
+    } finally { item.dispose(); }
+  });
+});
+
+test("completed release retries are verification-only and cannot enter promotion mutation", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("completed-verification-only") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), completed = await buildRelease(item.project, { ...base, approvalId: approval.id }), targetIdentity = statSync(completed.release), databaseBefore = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); let transactions;
+    try { transactions = databaseBefore.prepare("SELECT token, marker_hash, evidence_hash, phase, status FROM promotion_transactions ORDER BY token").all(); } finally { databaseBefore.close(); }
+    let promotionHookCalled = false; const repeated = await buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { promotionBoundary: () => { promotionHookCalled = true; throw new Error("completed-row-mutated"); }, beforePromotionVerification: () => { promotionHookCalled = true; throw new Error("completed-row-reverified-through-mutation"); } } });
+    assert.equal(repeated.release, completed.release); assert.equal(promotionHookCalled, false); const afterIdentity = statSync(repeated.release); assert.equal(afterIdentity.dev, targetIdentity.dev); assert.equal(afterIdentity.ino, targetIdentity.ino);
+    const databaseAfter = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.deepEqual(databaseAfter.prepare("SELECT token, marker_hash, evidence_hash, phase, status FROM promotion_transactions ORDER BY token").all(), transactions); } finally { databaseAfter.close(); }
   } finally { item.dispose(); }
 });
 

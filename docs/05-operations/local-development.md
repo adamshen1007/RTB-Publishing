@@ -82,10 +82,11 @@ pointer before returning bytes under the workspace output lock. It never falls
 back to an older conventional output directory. If the pointer
 is missing or invalid, rebuild instead of selecting generation files by hand.
 The successful build keeps the current generation and two complete
-predecessors. Older generations first move into a private quarantine while the
-exact pointer is rechecked before every move. Any pointer change restores all
-moved generations; deletion occurs only after the transaction remains stable
-while both build locks are held.
+predecessors. Older generations first move into a project-and-token-scoped
+private quarantine with a durable transaction record while the exact pointer is
+rechecked before every move. Any pointer change restores all moved generations.
+The synchronous build does not delete quarantined generations; retained
+evidence awaits a separately reviewed bounded cleanup policy.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux
 filesystems that implement file and directory `fsync`. It cannot promise

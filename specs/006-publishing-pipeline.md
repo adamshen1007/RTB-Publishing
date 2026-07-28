@@ -58,10 +58,12 @@ resolves it for every request while holding the workspace output lock. It opens
 the selected regular file without following symbolic links, pins the descriptor
 identity, reads only from that descriptor, then rechecks the descriptor, path,
 and pointer before returning bytes. A successful build retains the current
-generation and two complete predecessors; cleanup runs only under the workspace
-and project locks. Retention rechecks the exact pointer before every move,
-quarantines complete recursively pinned generations transactionally, and
-restores every moved generation if the pointer changes.
+generation and two complete predecessors; retention runs only under the
+workspace and project locks. It rechecks the exact pointer before every move,
+writes a project-and-token-scoped durable transaction record, and quarantines
+complete recursively pinned generations. A pointer change restores every move.
+Quarantined generations are not irreversibly deleted in this synchronous path;
+their evidence remains isolated for a separately reviewed cleanup policy.
 
 The generic `buildProject` API has no separate `buildRoot`: build intermediates
 are deliberately co-located with their rendered files so a pointer can never
@@ -77,7 +79,9 @@ canonical `build/publishing` workspace.
 - A missing, malformed, replaced, or concurrently edited current pointer fails
   preview rather than serving a conventional or stale output directory.
 - Staging drift, destination collision, or a generation path replacement fails
-  before pointer publication and never removes the colliding successor.
+  before pointer publication. Publication exclusively reserves the UUID
+  directory and materializes every child with no-replace creation; it never
+  removes an unverified destination or colliding successor.
 - Confirmed broken internal or external links fail; transient remote failures
   are reported separately.
 
