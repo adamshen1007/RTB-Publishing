@@ -128,9 +128,12 @@ identities. If any is replaced, RTB reports that recovery is required and
 preserves both the successor namespace and existing evidence without mutation.
 Every promotion mutator is internal to this boundary and requires a
 process-private branded authority that binds both still-live locks and the
-pinned transaction. Recovery validates the fixed marker schema before minting
-that authority. Direct calls, public re-exports, copied authority objects, and
-marker, backup, or quarantine replacement are rejected before mutation.
+pinned recursive transaction identities and bytes. Recovery validates the fixed
+marker schema before creating the private coordinator. Each owned rename,
+removal, directory creation, and temporary-marker rename proves its exact
+post-state before the coordinator advances. Direct calls, public re-exports,
+copied objects, and marker, backup, or quarantine replacement are rejected
+without adopting the replacement.
 
 Dead-process lock files are not reclaimed automatically. Because pathname
 rename and removal cannot provide a safe three-actor ownership transfer, stale

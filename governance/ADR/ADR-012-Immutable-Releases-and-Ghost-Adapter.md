@@ -184,13 +184,17 @@ pointer. Failures before the switch leave the prior pair current; failures
 after it preserve the complete new pair. No path deletes the prior good
 generation while activating a replacement.
 Before visibility changes, every generation file is flushed and every
-generation directory is flushed bottom-up; after the generation rename its
-parent is flushed. The temporary pointer, renamed pointer, and pointer parent
-are then flushed in order. Preview resolves only the validated `.current`
-pointer and never falls back to a conventional output directory. These
-durability guarantees depend on the local filesystem honoring file and
-directory `fsync`; unsupported network or virtual filesystems are outside the
-release guarantee.
+generation directory is flushed bottom-up; after the generation rename both
+the source staging parent and destination generation parent are flushed. RTB
+flushes and pins the owned temporary pointer bytes and inode, renames it,
+flushes the pointer parent, then proves `.current` is still that exact inode and
+bytes before declaring the switch complete. Preview resolves the pointer for
+every request and captures response bytes while holding the workspace output
+lock, so build, retention, and clean cannot delete a served generation midway.
+A successful build retains current plus two complete predecessors under both
+build locks. These durability guarantees depend on the local filesystem
+honoring file and directory `fsync`; unsupported network or virtual filesystems
+are outside the release guarantee.
 
 The release build holds that lock while it renders in unique staging,
 registers the candidate, finalizes approved material, and performs the last

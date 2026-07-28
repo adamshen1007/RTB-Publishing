@@ -1,118 +1,106 @@
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, dirname, relative, resolve, sep } from "node:path";
-import { writeJsonAtomic } from "./common.mjs";
-import { assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertPinnedEntry, pinPhysicalEntry } from "../state/project-lock.mjs";
+import { assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertPinnedEntry, pinPhysicalDirectory, pinPhysicalEntry } from "../state/project-lock.mjs";
 
 const PHASES = new Set(["prepared", "backup-intent", "backup-complete", "activate-intent", "activate-complete", "material-verified", "ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete", "rollback-quarantine-intent", "rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"]);
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const exactKeys = (value, keys) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join("\0") === [...keys].sort().join("\0");
 const event = (hook, name, context) => hook?.(name, context);
-const authorities = new WeakMap();
 function syncDirectory(directory) { const fd = openSync(directory, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } }
-function ensureDirectory(directory) { mkdirSync(directory, { recursive: true }); syncDirectory(directory); if (dirname(directory) !== directory && existsSync(dirname(directory))) syncDirectory(dirname(directory)); }
-function durableRename(source, target) { renameSync(source, target); syncDirectory(dirname(source)); if (dirname(target) !== dirname(source)) syncDirectory(dirname(target)); }
-function durableRemove(path, options = {}) { rmSync(path, options); syncDirectory(dirname(path)); }
-function guard(authority, context) { const state = authorities.get(authority); if (!state || state.context.outputRoot !== context.outputRoot || state.context.projectId !== context.projectId || state.context.releaseId !== context.releaseId || state.context.token !== context.token) throw new Error("Promotion mutation requires exact live branded recovery authority."); assertLiveWorkspaceOutputLock(state.workspaceLock, state.workspaceRoot); assertLiveProjectLock(state.projectLock, state.projectRoot); assertPromotionTransaction(state.transaction); return state; }
-function refresh(authority, context) { const state = authorities.get(authority); state.context = context; state.transaction = pinPromotionTransaction(context); }
-function rename(context, source, target, authority) { guard(authority, context); if (context.testOnlySkipDurability) renameSync(source, target); else durableRename(source, target); refresh(authority, context); }
-function remove(context, path, options = {}, authority) { guard(authority, context); if (context.testOnlySkipDurability) rmSync(path, options); else durableRemove(path, options); refresh(authority, context); }
-function ensure(context, directory, authority) { guard(authority, context); if (context.testOnlySkipDurability) mkdirSync(directory, { recursive: true }); else ensureDirectory(directory); refresh(authority, context); }
 function safeIdentity(projectId, releaseId, token) { if (!SAFE_ID.test(projectId) || !SAFE_ID.test(releaseId) || !UUID.test(token)) throw new Error("Promotion identity must use safe project/release IDs and a cryptographically random UUID token."); }
-function safeExisting(path) { if (existsSync(path) && lstatSync(path).isSymbolicLink()) throw new Error("Promotion paths cannot be symbolic links."); }
 function inside(root, path) { const value = relative(resolve(root), resolve(path)); return value !== ".." && !value.startsWith(`..${sep}`); }
-
-export function promotionContext(input) {
-  const { outputRoot, projectId, releaseId, token } = input;
-  safeIdentity(projectId, releaseId, token);
+function digest(bytes) { return createHash("sha256").update(bytes).digest("hex"); }
+function pathRecord(path, { recursive = false } = {}) {
+  if (!existsSync(path)) return Object.freeze({ path, missing: true });
+  const entry = lstatSync(path); if (entry.isSymbolicLink()) throw new Error(`Promotion paths cannot be symbolic links: ${path}`);
+  if (entry.isFile()) { if (entry.nlink !== 1) throw new Error(`Promotion file must be private: ${path}`); const bytes = readFileSync(path); return Object.freeze({ path, missing: false, type: "file", identity: pinPhysicalEntry(path, "file"), hash: digest(bytes), bytes: bytes.length }); }
+  if (!entry.isDirectory()) throw new Error(`Promotion path has an unsupported type: ${path}`);
+  const children = recursive ? readdirSync(path).sort().map((name) => pathRecord(resolve(path, name), { recursive: true })) : null;
+  return Object.freeze({ path, missing: false, type: "directory", identity: pinPhysicalEntry(path, "directory"), children });
+}
+function assertRecord(record, { at = record.path } = {}) {
+  if (record.missing) { if (existsSync(at)) throw new Error(`Promotion transaction identity changed: ${at}`); return; }
+  const current = pinPhysicalEntry(at, record.type); if (current.dev !== record.identity.dev || current.ino !== record.identity.ino) throw new Error(`Promotion transaction identity changed: ${at}`);
+  if (record.type === "file") { const bytes = readFileSync(at); if (bytes.length !== record.bytes || digest(bytes) !== record.hash) throw new Error(`Promotion transaction bytes changed: ${at}`); return; }
+  if (!record.children) return;
+  const names = readdirSync(at).sort(); if (names.length !== record.children.length) throw new Error(`Promotion transaction contents changed: ${at}`);
+  for (let index = 0; index < names.length; index += 1) { if (basename(record.children[index].path) !== names[index]) throw new Error(`Promotion transaction contents changed: ${at}`); assertRecord(record.children[index], { at: resolve(at, names[index]) }); }
+}
+function contextFor(input) {
+  const { outputRoot, projectId, releaseId, token } = input; safeIdentity(projectId, releaseId, token);
   const root = resolve(outputRoot), stagingRoot = resolve(root, ".staging"), stateRoot = resolve(root, ".promotion-state"), projectRoot = resolve(root, projectId);
-  const context = { outputRoot: root, projectId, releaseId, token, staging: resolve(stagingRoot, `${projectId}-${token}`), target: resolve(projectRoot, releaseId), backup: resolve(stateRoot, `${projectId}-${releaseId}-${token}.backup`), quarantine: resolve(stateRoot, `${projectId}-${releaseId}-${token}.quarantine`), marker: resolve(stateRoot, `${projectId}-${releaseId}-${token}.json`), testOnlySkipDurability: input.testOnlySkipDurability === true };
+  const context = { outputRoot: root, projectId, releaseId, token, staging: resolve(stagingRoot, `${projectId}-${token}`), target: resolve(projectRoot, releaseId), backup: resolve(stateRoot, `${projectId}-${releaseId}-${token}.backup`), quarantine: resolve(stateRoot, `${projectId}-${releaseId}-${token}.quarantine`), marker: resolve(stateRoot, `${projectId}-${releaseId}-${token}.json`) };
   if (![context.staging, context.target, context.backup, context.quarantine, context.marker].every((path) => inside(root, path))) throw new Error("Promotion paths escape the trusted output root.");
   return context;
 }
-
-function validatePaths(context) { for (const path of [context.outputRoot, dirname(context.staging), dirname(context.target), dirname(context.marker), context.staging, context.target, context.backup, context.quarantine, context.marker]) safeExisting(path); }
-export function pinPromotionTransaction(context) {
-  validatePaths(context);
-  const paths = [...new Set([context.outputRoot, dirname(context.staging), dirname(context.target), dirname(context.marker), context.staging, context.target, context.backup, context.quarantine, context.marker])];
-  return paths.map((path) => existsSync(path) ? { path, missing: false, expected: lstatSync(path).isDirectory() ? "directory" : "file", identity: pinPhysicalEntry(path, lstatSync(path).isDirectory() ? "directory" : "file") } : { path, missing: true });
-}
-export function assertPromotionTransaction(authority) {
-  for (const entry of authority) {
-    if (entry.missing) { if (existsSync(entry.path)) throw new Error(`Promotion transaction identity changed: ${entry.path}`); }
-    else assertPinnedEntry(entry.identity, entry.expected);
-  }
-  return true;
-}
-export function authorizePromotion(context, { workspaceRoot, projectRoot, workspaceLock, projectLock }) { assertLiveWorkspaceOutputLock(workspaceLock, workspaceRoot); assertLiveProjectLock(projectLock, projectRoot); const authority = Object.freeze({}); authorities.set(authority, { context, workspaceRoot, projectRoot, workspaceLock, projectLock, transaction: pinPromotionTransaction(context) }); return authority; }
+function transactionPaths(context) { return [...new Set([context.outputRoot, dirname(context.staging), dirname(context.target), dirname(context.marker), context.staging, context.target, context.backup, context.quarantine, context.marker])]; }
+function snapshot(context) { const ownedTrees = new Set([context.staging, context.target, context.backup, context.quarantine]); return transactionPaths(context).map((path) => pathRecord(path, { recursive: ownedTrees.has(path) })); }
+function assertSnapshot(records) { for (const record of records) assertRecord(record); }
+function validateUnchanged(records, changed) { for (const record of records) if (!changed.has(record.path)) assertRecord(record); }
+function readMarker(context) { const value = JSON.parse(readFileSync(context.marker, "utf8")); if (!exactKeys(value, ["schemaVersion", "projectId", "releaseId", "token", "phase", "hadPrior"]) || value.schemaVersion !== 1 || value.projectId !== context.projectId || value.releaseId !== context.releaseId || value.token !== context.token || !PHASES.has(value.phase) || typeof value.hadPrior !== "boolean") throw new Error("Promotion recovery marker is malformed or mismatched; no filesystem mutation was performed."); return { ...context, phase: value.phase, hadPrior: value.hadPrior }; }
 function markerValue(context, phase, hadPrior) { return { schemaVersion: 1, projectId: context.projectId, releaseId: context.releaseId, token: context.token, phase, hadPrior }; }
-function writeMarker(context, phase, hadPrior, authority, hook) { guard(authority, context); event(hook, `before-marker-${phase}`, context); guard(authority, context); ensure(context, dirname(context.marker), authority); guard(authority, context); if (context.testOnlySkipDurability) writeFileSync(context.marker, `${JSON.stringify(markerValue(context, phase, hadPrior))}\n`); else { writeJsonAtomic(context.marker, markerValue(context, phase, hadPrior)); syncDirectory(dirname(context.marker)); } const next = { ...context, phase, hadPrior }; refresh(authority, next); const transaction = authorities.get(authority).transaction; try { event(hook, `after-marker-${phase}`, next); } catch (error) { error.promotionContext = next; error.promotionTransactionAuthority = transaction; throw error; } return next; }
-function readMarker(context) {
-  const value = JSON.parse(readFileSync(context.marker, "utf8"));
-  if (!exactKeys(value, ["schemaVersion", "projectId", "releaseId", "token", "phase", "hadPrior"]) || value.schemaVersion !== 1 || value.projectId !== context.projectId || value.releaseId !== context.releaseId || value.token !== context.token || !PHASES.has(value.phase) || typeof value.hadPrior !== "boolean") throw new Error("Promotion recovery marker is malformed or mismatched; no filesystem mutation was performed.");
-  return { ...context, phase: value.phase, hadPrior: value.hadPrior };
-}
-function removeMarker(context, authority, hook) { event(hook, "before-marker-cleanup", context); remove(context, context.marker, { force: true }, authority); event(hook, "after-marker-cleanup", context); }
 
-export function beginPromotion(input, authority, hook) {
-  let context = promotionContext(input); validatePaths(context);
-  guard(authority, context);
-  if (!existsSync(context.staging)) throw new Error("Promotion staging directory is missing.");
-  if (existsSync(context.marker) || existsSync(context.backup) || existsSync(context.quarantine)) throw new Error("Promotion state already exists; recover it before starting another transaction.");
-  ensure(context, dirname(context.target), authority);
-  const hadPrior = existsSync(context.target);
-  context = writeMarker(context, "prepared", hadPrior, authority, hook);
-  context = writeMarker(context, "backup-intent", hadPrior, authority, hook);
-  event(hook, "before-old-to-backup", context); if (hadPrior) rename(context, context.target, context.backup, authority); event(hook, "after-old-to-backup", context);
-  context = writeMarker(context, "backup-complete", hadPrior, authority, hook);
-  context = writeMarker(context, "activate-intent", hadPrior, authority, hook);
-  event(hook, "before-staging-to-target", context); rename(context, context.staging, context.target, authority); event(hook, "after-staging-to-target", context);
-  return writeMarker(context, "activate-complete", hadPrior, authority, hook);
-}
-
-export function markPromotionMaterialVerified(context, authority, hook) { validatePaths(context); return writeMarker(context, "material-verified", context.hadPrior, authority, hook); }
-export function markPromotionLedgerCompleted(context, authority, hook) { validatePaths(context); return writeMarker(context, "ledger-completed", context.hadPrior, authority, hook); }
-export function commitPromotion(context, authority, hook) { guard(authority, context); if (context.phase !== "ledger-completed") throw new Error("Promotion cleanup requires durable ledger completion authority."); context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, authority, hook); event(hook, "before-backup-cleanup", context); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }, authority); event(hook, "after-backup-cleanup", context); context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, authority, hook); removeMarker(context, authority, hook); return context; }
-
-export function rollbackPromotion(context, authority, hook) {
-  validatePaths(context);
-  guard(authority, context);
-  context = writeMarker(context, "rollback-quarantine-intent", context.hadPrior, authority, hook);
-  event(hook, "before-target-quarantine", context); if (existsSync(context.target) && !existsSync(context.quarantine)) rename(context, context.target, context.quarantine, authority); event(hook, "after-target-quarantine", context);
-  context = writeMarker(context, "rollback-quarantine-complete", context.hadPrior, authority, hook);
-  context = writeMarker(context, "rollback-restore-intent", context.hadPrior, authority, hook);
-  event(hook, "before-backup-restore", context); if (context.hadPrior && existsSync(context.backup) && !existsSync(context.target)) rename(context, context.backup, context.target, authority); event(hook, "after-backup-restore", context);
-  context = writeMarker(context, "rollback-restore-complete", context.hadPrior, authority, hook);
-  context = writeMarker(context, "rollback-cleanup-intent", context.hadPrior, authority, hook);
-  event(hook, "before-quarantine-cleanup", context); if (existsSync(context.quarantine)) remove(context, context.quarantine, { recursive: true, force: true }, authority); if (existsSync(context.staging)) remove(context, context.staging, { recursive: true, force: true }, authority); event(hook, "after-quarantine-cleanup", context);
-  context = writeMarker(context, "rollback-cleanup-complete", context.hadPrior, authority, hook); removeMarker(context, authority, hook); return context;
-}
-
-function finishRollback(context, authority, hook) {
-  const early = new Set(["prepared", "backup-intent"]);
-  if (early.has(context.phase) && !existsSync(context.backup)) { if (existsSync(context.staging)) remove(context, context.staging, { recursive: true, force: true }, authority); removeMarker(context, authority, hook); return context; }
-  if (!["rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"].includes(context.phase)) {
-    context = writeMarker(context, "rollback-quarantine-intent", context.hadPrior, authority, hook);
-    if (existsSync(context.target) && !existsSync(context.quarantine)) rename(context, context.target, context.quarantine, authority);
-    context = writeMarker(context, "rollback-quarantine-complete", context.hadPrior, authority, hook);
+function createEngine(initial, locks, hook) {
+  let context = initial, authority = snapshot(initial);
+  function guard() { assertLiveWorkspaceOutputLock(locks.workspaceLock, locks.workspaceRoot); assertLiveProjectLock(locks.projectLock, locks.projectRoot); assertSnapshot(authority); }
+  function advance(next = context) { context = next; authority = snapshot(context); return context; }
+  function renameOwned(source, target, label) {
+    guard(); const before = authority, sourceRecord = pathRecord(source, { recursive: true }), targetRecord = pathRecord(target); if (sourceRecord.missing || !targetRecord.missing) throw new Error(`Promotion ${label} requires one pinned source and a missing destination.`);
+    renameSync(source, target); syncDirectory(dirname(source)); if (dirname(target) !== dirname(source)) syncDirectory(dirname(target)); event(hook, `after-atomic-${label}`, context);
+    validateUnchanged(before, new Set([source, target])); assertRecord({ path: source, missing: true }); assertRecord(sourceRecord, { at: target }); advance();
   }
-  if (!["rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"].includes(context.phase)) {
-    context = writeMarker(context, "rollback-restore-intent", context.hadPrior, authority, hook);
-    if (context.hadPrior && existsSync(context.backup) && !existsSync(context.target)) rename(context, context.backup, context.target, authority);
-    context = writeMarker(context, "rollback-restore-complete", context.hadPrior, authority, hook);
+  function removeOwned(path, options, label) {
+    guard(); const before = authority, owned = pathRecord(path); if (owned.missing) return;
+    rmSync(path, options); syncDirectory(dirname(path)); event(hook, `after-atomic-${label}`, context);
+    validateUnchanged(before, new Set([path])); assertRecord({ path, missing: true }); advance();
   }
-  context = writeMarker(context, "rollback-cleanup-intent", context.hadPrior, authority, hook);
-  if (existsSync(context.quarantine)) remove(context, context.quarantine, { recursive: true, force: true }, authority); if (existsSync(context.staging)) remove(context, context.staging, { recursive: true, force: true }, authority);
-  context = writeMarker(context, "rollback-cleanup-complete", context.hadPrior, authority, hook); removeMarker(context, authority, hook); return context;
+  function ensureOwned(directory, label) {
+    guard(); const before = authority; if (existsSync(directory)) { assertRecord(pathRecord(directory)); return; }
+    const missing = []; let cursor = directory; while (!existsSync(cursor)) { missing.push(cursor); cursor = dirname(cursor); } const ancestor = pathRecord(cursor); mkdirSync(directory, { recursive: true, mode: 0o700 }); syncDirectory(directory); syncDirectory(cursor); const created = missing.map((path) => pathRecord(path)); event(hook, `after-atomic-${label}`, context);
+    assertRecord(ancestor); validateUnchanged(before, new Set(missing)); for (const record of created) assertRecord(record); advance();
+  }
+  function writeMarker(phase, hadPrior) {
+    guard(); event(hook, `before-marker-${phase}`, context); guard(); ensureOwned(dirname(context.marker), `ensure-marker-parent-${phase}`); guard();
+    const before = authority, value = markerValue(context, phase, hadPrior), bytes = Buffer.from(`${JSON.stringify(value)}\n`), temporary = `${context.marker}.${process.pid}.${Date.now()}.tmp`; if (existsSync(temporary)) throw new Error("Promotion marker temporary path already exists.");
+    const fd = openSync(temporary, "wx", 0o600); try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); } const owned = pathRecord(temporary); if (owned.hash !== digest(bytes) || owned.bytes !== bytes.length) throw new Error("Promotion marker temporary bytes changed before rename.");
+    renameSync(temporary, context.marker); syncDirectory(dirname(context.marker)); event(hook, `after-atomic-marker-${phase}`, context);
+    validateUnchanged(before, new Set([context.marker])); assertRecord({ path: temporary, missing: true }); assertRecord(owned, { at: context.marker }); const next = { ...context, phase, hadPrior }; advance(next); event(hook, `after-marker-${phase}`, context); return context;
+  }
+  function removeMarker() { event(hook, "before-marker-cleanup", context); removeOwned(context.marker, { force: true }, "marker-cleanup"); event(hook, "after-marker-cleanup", context); }
+  function rollbackFromCurrent() {
+    guard(); context = writeMarker("rollback-quarantine-intent", context.hadPrior); event(hook, "before-target-quarantine", context); if (existsSync(context.target) && !existsSync(context.quarantine)) renameOwned(context.target, context.quarantine, "target-quarantine"); event(hook, "after-target-quarantine", context);
+    context = writeMarker("rollback-quarantine-complete", context.hadPrior); context = writeMarker("rollback-restore-intent", context.hadPrior); event(hook, "before-backup-restore", context); if (context.hadPrior && existsSync(context.backup) && !existsSync(context.target)) renameOwned(context.backup, context.target, "backup-restore"); event(hook, "after-backup-restore", context);
+    context = writeMarker("rollback-restore-complete", context.hadPrior); context = writeMarker("rollback-cleanup-intent", context.hadPrior); event(hook, "before-quarantine-cleanup", context); if (existsSync(context.quarantine)) removeOwned(context.quarantine, { recursive: true, force: true }, "quarantine-cleanup"); if (existsSync(context.staging)) removeOwned(context.staging, { recursive: true, force: true }, "staging-cleanup"); event(hook, "after-quarantine-cleanup", context);
+    context = writeMarker("rollback-cleanup-complete", context.hadPrior); removeMarker(); return context;
+  }
+  function finishRollback() {
+    const early = new Set(["prepared", "backup-intent"]); if (early.has(context.phase) && !existsSync(context.backup)) { if (existsSync(context.staging)) removeOwned(context.staging, { recursive: true, force: true }, "staging-cleanup"); removeMarker(); return context; }
+    if (!["rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"].includes(context.phase)) { context = writeMarker("rollback-quarantine-intent", context.hadPrior); if (existsSync(context.target) && !existsSync(context.quarantine)) renameOwned(context.target, context.quarantine, "target-quarantine"); context = writeMarker("rollback-quarantine-complete", context.hadPrior); }
+    if (!["rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"].includes(context.phase)) { context = writeMarker("rollback-restore-intent", context.hadPrior); if (context.hadPrior && existsSync(context.backup) && !existsSync(context.target)) renameOwned(context.backup, context.target, "backup-restore"); context = writeMarker("rollback-restore-complete", context.hadPrior); }
+    context = writeMarker("rollback-cleanup-intent", context.hadPrior); if (existsSync(context.quarantine)) removeOwned(context.quarantine, { recursive: true, force: true }, "quarantine-cleanup"); if (existsSync(context.staging)) removeOwned(context.staging, { recursive: true, force: true }, "staging-cleanup"); context = writeMarker("rollback-cleanup-complete", context.hadPrior); removeMarker(); return context;
+  }
+  return {
+    begin() { guard(); if (!existsSync(context.staging)) throw new Error("Promotion staging directory is missing."); if (existsSync(context.marker) || existsSync(context.backup) || existsSync(context.quarantine)) throw new Error("Promotion state already exists; recover it before starting another transaction."); ensureOwned(dirname(context.target), "ensure-target-parent"); const hadPrior = existsSync(context.target); context = writeMarker("prepared", hadPrior); context = writeMarker("backup-intent", hadPrior); event(hook, "before-old-to-backup", context); if (hadPrior) renameOwned(context.target, context.backup, "old-to-backup"); event(hook, "after-old-to-backup", context); context = writeMarker("backup-complete", hadPrior); context = writeMarker("activate-intent", hadPrior); event(hook, "before-staging-to-target", context); renameOwned(context.staging, context.target, "staging-to-target"); event(hook, "after-staging-to-target", context); return writeMarker("activate-complete", hadPrior); },
+    markMaterialVerified() { return writeMarker("material-verified", context.hadPrior); },
+    markLedgerCompleted() { return writeMarker("ledger-completed", context.hadPrior); },
+    commit() { guard(); if (context.phase !== "ledger-completed") throw new Error("Promotion cleanup requires durable ledger completion authority."); context = writeMarker("commit-cleanup-intent", context.hadPrior); event(hook, "before-backup-cleanup", context); if (existsSync(context.backup)) removeOwned(context.backup, { recursive: true, force: true }, "backup-cleanup"); event(hook, "after-backup-cleanup", context); context = writeMarker("commit-cleanup-complete", context.hadPrior); removeMarker(); return context; },
+    rollback() { return rollbackFromCurrent(); },
+    recover() { guard(); if (!existsSync(context.marker)) return { state: "none", context }; context = readMarker(context); authority = snapshot(context); guard(); if (context.phase === "material-verified") return { state: "completion-required", context }; if (["ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete"].includes(context.phase)) { if (context.phase === "ledger-completed") context = writeMarker("commit-cleanup-intent", context.hadPrior); if (existsSync(context.backup)) removeOwned(context.backup, { recursive: true, force: true }, "backup-cleanup"); if (context.phase !== "commit-cleanup-complete") context = writeMarker("commit-cleanup-complete", context.hadPrior); removeMarker(); return { state: "committed", context }; } context = finishRollback(); return { state: "rolled-back", context }; },
+    assertStable() { guard(); return true; }, context() { return { ...context }; }, paths() { return { ...context }; },
+  };
 }
 
-export function authorizePromotionRecovery(input, options) { const trusted = promotionContext(input); validatePaths(trusted); if (!existsSync(trusted.marker)) return { state: "none", context: trusted, authority: authorizePromotion(trusted, options) }; const context = readMarker(trusted); validatePaths(context); return { state: "ready", context, authority: authorizePromotion(context, options) }; }
-export function recoverPromotion(input, authority, hook) {
-  const trusted = promotionContext(input); validatePaths(trusted); guard(authority, trusted); if (!existsSync(trusted.marker)) return { state: "none", context: trusted };
-  let context = readMarker(trusted); validatePaths(context); guard(authority, context);
-  if (context.phase === "material-verified") return { state: "completion-required", context };
-  if (["ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete"].includes(context.phase)) { if (context.phase === "ledger-completed") context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, authority, hook); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }, authority); if (context.phase !== "commit-cleanup-complete") context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, authority, hook); removeMarker(context, authority, hook); return { state: "committed", context }; }
-  context = finishRollback(context, authority, hook); return { state: "rolled-back", context };
-}
+function markerContexts(outputRoot, projectId, releaseId) { const root = resolve(outputRoot, ".promotion-state"); if (!existsSync(root)) return []; const entry = lstatSync(root); if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("Promotion state root is unsafe."); return readdirSync(root).filter((name) => name.startsWith(`${projectId}-${releaseId}-`) && name.endsWith(".json")).sort().map((name) => { const token = basename(name, ".json").slice(`${projectId}-${releaseId}-`.length); return contextFor({ outputRoot, projectId, releaseId, token }); }); }
 
-export function promotionMarkers(outputRoot, projectId, releaseId, { testOnlySkipDurability = false } = {}) { if (!SAFE_ID.test(projectId) || !SAFE_ID.test(releaseId)) throw new Error("Unsafe promotion identity."); const root = resolve(outputRoot, ".promotion-state"); if (!existsSync(root)) return []; safeExisting(root); return readdirSync(root).filter((name) => name.startsWith(`${projectId}-${releaseId}-`) && name.endsWith(".json")).sort().map((name) => { const token = basename(name, ".json").slice(`${projectId}-${releaseId}-`.length); return promotionContext({ outputRoot, projectId, releaseId, token, testOnlySkipDurability }); }); }
+export function createPromotionCoordinator({ workspaceRoot, projectRoot, project, releaseId, token, workspaceLock, projectLock, hook }) {
+  const projectId = project?.id;
+  if (!SAFE_ID.test(projectId) || !SAFE_ID.test(releaseId)) throw new Error("Unsafe promotion identity."); assertLiveWorkspaceOutputLock(workspaceLock, workspaceRoot); assertLiveProjectLock(projectLock, projectRoot);
+  const workspace = pinPhysicalDirectory(workspaceRoot).path, physicalProject = pinPhysicalDirectory(projectRoot).path, declaredProject = pinPhysicalDirectory(project.legacyRoot).path, rel = relative(workspace, physicalProject); if (rel === ".." || rel.startsWith(`..${sep}`) || declaredProject !== physicalProject) throw new Error("Promotion project must be the declared project inside the locked workspace.");
+  const outputRoot = resolve(workspace, "dist", "releases", "immutable"), locks = { workspaceRoot: workspace, projectRoot: physicalProject, workspaceLock, projectLock }, initial = contextFor({ outputRoot, projectId, releaseId, token }); let engine = createEngine(initial, locks, hook);
+  return Object.freeze({
+    begin() { return engine.begin(); }, markMaterialVerified() { return engine.markMaterialVerified(); }, markLedgerCompleted() { return engine.markLedgerCompleted(); }, commit() { return engine.commit(); }, rollback() { return engine.rollback(); }, assertStable() { return engine.assertStable(); }, context() { return engine.context(); }, paths() { return engine.paths(); },
+    recoverPending({ rollbackCompletionRequired = false } = {}) { const results = []; for (const pending of markerContexts(outputRoot, projectId, releaseId)) { const markerRecord = pathRecord(pending.marker); const recoveredContext = readMarker(pending); assertRecord(markerRecord); engine = createEngine(recoveredContext, locks, hook); const recovered = engine.recover(); if (recovered.state === "completion-required" && rollbackCompletionRequired) { engine.rollback(); results.push({ state: "rolled-back", context: engine.context() }); } else results.push(recovered); } return results; },
+  });
+}

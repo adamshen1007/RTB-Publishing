@@ -8,7 +8,7 @@ import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
 import { assertCurrentReleasePolicies, evaluateReleasePolicies } from "./policies.mjs";
 import { releaseTreeInventory, verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
-import { assertPromotionTransaction, authorizePromotion, authorizePromotionRecovery, beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, pinPromotionTransaction, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "./promotion-state.mjs";
+import { createPromotionCoordinator } from "./promotion-state.mjs";
 import { assertCurrentProjectIdentity, pinnedProjectCanonicalHash, resolveBookProject } from "../books/discovery.mjs";
 
 const liveVerifiedPromotions = new WeakSet();
@@ -92,7 +92,7 @@ function prepare(database, project, candidateHash, approvalId, legacyReleaseDire
 
 function complete(database, root, project, releaseDirectory, manifest, capability, beforeCommit, currentTime = () => Date.now()) {
   const workspaceIdentity = pinPhysicalDirectory(project.workspaceRoot ?? ""), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, immutableRoot = resolve(workspace, "dist", "releases", "immutable");
-  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); assertPromotionOutput(capability.outputIdentity); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
+  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); capability?.promotion?.assertStable(); assertPromotionOutput(capability.outputIdentity); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
   if (!capability || !liveVerifiedPromotions.has(capability) || capability.workspaceRoot !== workspace || capability.workspaceIdentity.dev !== workspaceIdentity.dev || capability.workspaceIdentity.ino !== workspaceIdentity.ino || capability.immutableRoot !== immutableRoot || capability.projectRoot !== projectIdentity.path || capability.projectIdentity.dev !== projectIdentity.dev || capability.projectIdentity.ino !== projectIdentity.ino || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
   database.exec("BEGIN IMMEDIATE");
   try {
@@ -110,7 +110,7 @@ function complete(database, root, project, releaseDirectory, manifest, capabilit
     if (policies.releasePolicyHash !== approval.releasePolicyHash || !policies.releaseEligible) throw new Error("Pending finalization no longer has current exact release policy or approval.");
     verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
     beforeCommit?.();
-    const freshProject = assertCurrentProjectIdentity(project); assertPromotionOutput(capability.outputIdentity);
+    const freshProject = assertCurrentProjectIdentity(project); capability.promotion.assertStable(); assertPromotionOutput(capability.outputIdentity);
     const freshApproval = loadPublishApprovalFromDatabase(database, record.approval_id, candidate, { now: currentTime() });
     assertCurrentBetaApproval(database, project.id, approvedBeta, currentTime());
     if (!currentBetaMatches(freshProject, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization completion commit.");
@@ -173,39 +173,31 @@ export async function promoteFinalizedRelease(options) {
   const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
   if (!token) throw new Error("Immutable release promotion requires its build transaction token.");
   const promotionInput = { outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, token };
-  let context, promotionAuthority, transactionAuthority, verifiedOutputIdentity;
-  const pending = promotionMarkers(promotionInput.outputRoot, project.id, manifest.releaseId);
-  for (const marker of pending) {
-    const authorized = authorizePromotionRecovery(marker, { workspaceRoot, projectRoot: root, workspaceLock: heldWorkspaceLock, projectLock: heldLock }); promotionAuthority = authorized.authority;
-    const recovered = recoverPromotion(marker, promotionAuthority, hooks.promotionBoundary);
-    if (recovered.state === "completion-required") context = recovered.context;
-  }
+  const promotion = createPromotionCoordinator({ workspaceRoot, projectRoot: root, project, releaseId: manifest.releaseId, token, workspaceLock: heldWorkspaceLock, projectLock: heldLock, hook: hooks.promotionBoundary });
+  let context, verifiedOutputIdentity;
+  for (const recovered of promotion.recoverPending()) if (recovered.state === "completion-required") context = recovered.context;
   const target = authority.target;
-  if (!context) { const initial = promotionContext(promotionInput); promotionAuthority = authorizePromotion(initial, { workspaceRoot, projectRoot: root, workspaceLock: heldWorkspaceLock, projectLock: heldLock }); context = beginPromotion(promotionInput, promotionAuthority, hooks.promotionBoundary); }
-  transactionAuthority = pinPromotionTransaction(context);
+  if (!context) context = promotion.begin();
   try {
     await hooks.beforePromotionVerification?.({ release: target, promotion: context });
     verifyReleaseDirectoryMaterial(target, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
     verifiedOutputIdentity = pinPromotionOutput(authority, candidate);
     await hooks.afterPromotionVerification?.({ release: target, promotion: context });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); assertPromotionTransaction(transactionAuthority);
-    if (context.phase !== "material-verified") context = markPromotionMaterialVerified(context, promotionAuthority, hooks.promotionBoundary);
-    transactionAuthority = pinPromotionTransaction(context);
-    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context, outputIdentity: verifiedOutputIdentity };
+    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable();
+    if (context.phase !== "material-verified") context = promotion.markMaterialVerified();
+    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context, outputIdentity: verifiedOutputIdentity, promotion };
     liveVerifiedPromotions.add(capability);
     await completeFinalizedRelease({ root, workspaceRoot, project, releaseDirectory: target, manifest, capability, heldWorkspaceLock, heldLock, hooks });
     await hooks.afterLedgerCompletion?.({ release: target, promotion: context });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); assertPromotionTransaction(transactionAuthority); assertPromotionOutput(capability.outputIdentity);
-    context = markPromotionLedgerCompleted(context, promotionAuthority, hooks.promotionBoundary);
-    transactionAuthority = pinPromotionTransaction(context);
+    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); assertPromotionOutput(capability.outputIdentity);
+    context = promotion.markLedgerCompleted();
     verifyReleaseDirectory(target, candidate, { manifest, root, heldLock, immutableRoot: promotionInput.outputRoot, workspaceRoot, heldWorkspaceLock });
-    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); assertPromotionTransaction(transactionAuthority); assertPromotionOutput(capability.outputIdentity); commitPromotion(context, promotionAuthority, hooks.promotionBoundary);
+    assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); assertPromotionOutput(capability.outputIdentity); promotion.commit();
     return target;
   } catch (error) {
-    if (error.promotionContext) context = error.promotionContext;
-    if (error.promotionTransactionAuthority) transactionAuthority = error.promotionTransactionAuthority;
+    context = promotion.context();
     let transactionStillAuthoritative = true;
-    try { assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); if (transactionAuthority) assertPromotionTransaction(transactionAuthority); } catch { transactionStillAuthoritative = false; }
+    try { assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root); promotion.assertStable(); } catch { transactionStillAuthoritative = false; }
     if (!transactionStillAuthoritative) { const failure = new Error("Promotion authority was lost; recovery is required and no cleanup mutation was attempted.", { cause: error }); failure.recoveryRequired = true; throw failure; }
     let ledgerCompleted = false;
     const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
@@ -218,7 +210,7 @@ export async function promoteFinalizedRelease(options) {
     // durably record ledger-completed and finish promotion cleanup.
     let outputStillAuthoritative = true;
     if (verifiedOutputIdentity) { try { assertPromotionOutput(verifiedOutputIdentity); } catch { outputStillAuthoritative = false; } }
-    if (!ledgerCompleted && context?.phase !== "ledger-completed" && outputStillAuthoritative && transactionStillAuthoritative) rollbackPromotion(context, promotionAuthority, hooks.promotionBoundary);
+    if (!ledgerCompleted && context?.phase !== "ledger-completed" && outputStillAuthoritative && transactionStillAuthoritative) promotion.rollback();
     throw error;
   }
 }

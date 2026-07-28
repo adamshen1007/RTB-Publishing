@@ -37,16 +37,32 @@ changing the command contract.
 
 ## Outputs
 
-For `books/volume-01-yc-playbook`, the pipeline writes:
+For each project, the generic pipeline writes one private generation containing
+both intermediate build material and rendered output, then atomically selects
+it with a small current pointer:
 
 ```text
-dist/books/volume-01-yc-playbook/
-├── index.html
-├── rtb-publishing-playbook.epub
-└── rtb-publishing-playbook.docx
+dist/books/
+├── .current/<project-id>.json
+└── .generations/<project-id>/<generation-id>/
+    ├── build/
+    │   ├── combined.md
+    │   └── diagrams/
+    └── output-root/<project-id>/
+        ├── index.html
+        └── <declared downloadable formats>
 ```
 
-Intermediate documents and rendered diagrams live under `build/`.
+The pointer is internal metadata, not a user-editable interface. `pnpm preview`
+resolves it for every request while holding the workspace output lock and reads
+the complete response bytes before releasing the lock. A successful build
+retains the current generation and two complete predecessors; cleanup runs only
+under the workspace and project locks.
+
+The generic `buildProject` API has no separate `buildRoot`: build intermediates
+are deliberately co-located with their rendered files so a pointer can never
+select a mixed pair. Release-candidate rendering continues to use its separate,
+canonical `build/publishing` workspace.
 
 ## Failure Rules
 
@@ -54,6 +70,8 @@ Intermediate documents and rendered diagrams live under `build/`.
 - A failed quality gate prevents artifact generation.
 - A failed conversion removes incomplete output for that format.
 - A missing, empty, or structurally invalid artifact fails the build.
+- A missing, malformed, replaced, or concurrently edited current pointer fails
+  preview rather than serving a conventional or stale output directory.
 - Confirmed broken internal or external links fail; transient remote failures
   are reported separately.
 

@@ -72,11 +72,15 @@ pnpm preview
 Open <http://127.0.0.1:4173> and press `Ctrl+C` in Terminal when finished.
 
 Each generic build writes its combined manuscript and rendered files into one
-private generation below `dist/books/.generations/`. After every file and
-directory has been flushed, RTB atomically replaces the small project pointer
-in `dist/books/.current/`. Preview resolves that pointer and never falls back
-to an older conventional output directory. If the pointer is missing or
-invalid, rebuild instead of selecting generation files by hand.
+private generation below `dist/books/.generations/`. There is no separate
+generic `buildRoot`; co-locating both halves prevents a mixed generation. After
+every file and directory has been flushed, RTB atomically replaces the small
+project pointer in `dist/books/.current/`. Preview resolves that pointer for
+every request, captures the response bytes under the workspace output lock,
+and never falls back to an older conventional output directory. If the pointer
+is missing or invalid, rebuild instead of selecting generation files by hand.
+The successful build keeps the current generation and two complete
+predecessors, deleting older generations only while both build locks are held.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux
 filesystems that implement file and directory `fsync`. It cannot promise
@@ -165,17 +169,20 @@ recovery.
 
 ## Generated Files
 
-The build writes review artifacts to:
+The build writes private generated material to:
 
 ```text
-dist/books/volume-01-yc-playbook/
-├── index.html
-├── rtb-publishing-playbook.epub
-└── rtb-publishing-playbook.docx
+dist/books/
+├── .current/<project-id>.json
+└── .generations/<project-id>/<generation-id>/
+    ├── build/combined.md
+    ├── build/diagrams/
+    └── output-root/<project-id>/<declared artifacts>
 ```
 
-Intermediate Markdown and rendered diagrams live under `build/`. Both
-directories are ignored by Git and may be deleted at any time.
+These paths are internal and ignored by Git. Use `pnpm preview` rather than
+opening a remembered generation path. `pnpm clean` may remove them after active
+build and preview readers release the workspace output lock.
 
 ## Adding a Chapter
 
