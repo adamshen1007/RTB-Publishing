@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 144/144 passed in the final local quality run.
+- Repository tests: 152/152 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -35,7 +35,9 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Audit reconstruction: the candidate retains the normalized source bundle,
   its file hashes, and the exact Git revision and tree.
 - Failure controls: candidate/manifest drift, extra artifacts, stale approval,
-  pre-approval manifest creation, and release-ID reuse fail closed in tests.
+  pre-approval manifest creation, release-ID reuse, forged or stale lock
+  authority, interrupted release promotion, ambiguous legacy approval facts,
+  and clean/finalization races fail closed in tests.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

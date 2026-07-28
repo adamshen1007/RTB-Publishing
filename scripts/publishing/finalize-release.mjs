@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock, hasProjectLock, projectLockPath } from "../state/project-lock.mjs";
+import { acquireProjectLock, assertLiveProjectLock } from "../state/project-lock.mjs";
 import { loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
@@ -23,7 +23,7 @@ function currentBetaMatches(project, approvedBeta) {
   return current.state === "ready" && approvedBeta?.betaSnapshotHash === current.betaSnapshotHash && approvedBeta?.policyResultsHash === current.policyResultsHash;
 }
 
-function prepare(database, project, candidateHash, approvalId, releaseDirectory, beforeCommit) {
+function prepare(database, project, candidateHash, approvalId, legacyReleaseDirectory, beforeCommit) {
   database.exec("BEGIN IMMEDIATE");
   try {
     const existing = database.prepare("SELECT * FROM release_finalizations WHERE approval_id = ?").get(approvalId);
@@ -39,7 +39,7 @@ function prepare(database, project, candidateHash, approvalId, releaseDirectory,
     const at = new Date().toISOString(), legacy = database.prepare("SELECT * FROM release_identities WHERE release_id = ? OR approval_id = ?").get(manifest.releaseId, approval.id);
     if (legacy) {
       let stored;
-      try { stored = JSON.parse(readFileSync(resolve(releaseDirectory, "manifest.json"), "utf8")); } catch { stored = null; }
+      try { stored = JSON.parse(readFileSync(resolve(legacyReleaseDirectory, "manifest.json"), "utf8")); } catch { stored = null; }
       if (legacy.status !== "reserved" || legacy.project_id !== manifest.projectId || legacy.candidate_hash !== manifest.candidateHash || legacy.approval_id !== approval.id || JSON.stringify(stored) !== JSON.stringify(manifest)) throw new Error("Legacy reserved release identity cannot be adopted safely. Preserve its evidence, then obtain a new exact Publish approval before finalizing again.");
       database.prepare("UPDATE release_identities SET status = 'pending' WHERE release_id = ?").run(manifest.releaseId);
     } else database.prepare("INSERT INTO release_identities (release_id, project_id, candidate_hash, approval_id, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").run(manifest.releaseId, manifest.projectId, manifest.candidateHash, approval.id, at);
@@ -74,17 +74,18 @@ function complete(database, root, project, releaseDirectory, manifest, beforeCom
 }
 
 /** Sole authority for preparing, writing, verifying, and completing a release manifest. */
-export async function finalizeRelease({ root, project, candidateHash, approvalId, releaseDirectory, hooks = {}, heldLock = null }) {
-  if (heldLock && (heldLock.path !== projectLockPath(root) || !hasProjectLock(root))) throw new Error("Held publication lock authority is invalid.");
+export async function finalizeRelease({ root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldLock = null }) {
+  if (heldLock) assertLiveProjectLock(heldLock, root);
   const lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-finalization-${process.pid}` });
-  const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+  let database;
   try {
-    const prepared = prepare(database, project, candidateHash, approvalId, releaseDirectory, hooks.beforePrepareCommit);
+    database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+    const prepared = prepare(database, project, candidateHash, approvalId, legacyReleaseDirectory, hooks.beforePrepareCommit);
     (hooks.writeManifest ?? writeJsonAtomic)(resolve(releaseDirectory, "manifest.json"), prepared.manifest);
     hooks.afterManifestWrite?.();
     if (prepared.status !== "completed") {
       complete(database, root, project, releaseDirectory, prepared.manifest, hooks.beforeCompleteCommit);
     } else verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ?").get(candidateHash).candidate_json), { manifest: prepared.manifest });
     return { manifest: prepared.manifest };
-  } finally { database.close(); if (!heldLock) lock.release(); }
+  } finally { database?.close(); if (!heldLock) lock.release(); }
 }

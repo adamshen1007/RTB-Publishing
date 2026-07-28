@@ -98,10 +98,21 @@ before commit. Direct external editor writes cannot be prevented by SQLite or
 the cooperative lock, so any mismatch observed by the stability recheck causes
 rollback.
 
+Held-lock authority is a process-private live handle, not a caller-supplied
+path or owner string. It is accepted only for the exact project root that
+created it. Release is idempotent and removes the lock file only when its inode,
+process, and random owner still match, so a stale or repeated release cannot
+unlink a successor writer's lock. Clean and every local build output mutator
+use this same lock boundary.
+
 The release build holds that lock while it renders in unique staging,
 registers and promotes the candidate, finalizes, and performs the last
-verification. It passes explicit held-lock authority into finalization; the
-finalization operation never recursively acquires the lock. A legacy `reserved` identity
+verification. The previously promoted directory remains intact until the new
+staging directory passes exact verification. Promotion uses a same-filesystem
+directory rename with a deterministic prior-directory backup; a retry first
+repairs an interrupted rename and never deletes the only legacy evidence. It
+passes explicit held-lock authority into finalization; the finalization
+operation never recursively acquires the lock. A legacy `reserved` identity
 without a finalization record may be adopted only when its deterministic
 release ID, candidate, real current approval and policy, current Beta, and
 existing manifest bytes exactly reproduce. Otherwise recovery requires a new
@@ -113,6 +124,13 @@ and exact binding bytes proven current at `completed_at`. A later Blueprint
 invalidation or product revocation does not alter those historical facts or
 the immutable release bytes. Current distribution eligibility and revocation
 are separate mutable product decisions.
+
+Databases upgraded from the earlier finalization schema reconcile missing
+completion-time approval facts only when the retained completed identity,
+registered candidate, exact manifest, approval, and invalidation timestamps
+prove that approval was current at completion. Ambiguous or already-invalid
+evidence remains preserved and fails with an explicit operator-reconciliation
+requirement; migration never guesses historical authority.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest

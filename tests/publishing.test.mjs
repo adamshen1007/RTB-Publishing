@@ -138,3 +138,33 @@ test("legacy reserved identity is adopted only from an exact existing manifest",
     assert.equal(verifyReleaseDirectory(directory, item.candidate, { manifest: adopted.manifest, root: item.root }), true);
   } finally { item.dispose(); }
 });
+
+test("migration-007 completed finalizations backfill exact historical approval facts", async () => {
+  const item = releaseFixture(2);
+  try {
+    const { book, published } = await publishable(item), directory = releaseDirectory(item, "migration-007-safe");
+    const { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+    const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+    try { database.prepare("UPDATE release_finalizations SET approval_actor_type = NULL, approval_actor_id = NULL, approval_created_at = NULL, approval_lifecycle_version = NULL, approval_bindings_json = NULL, completed_while_current = 0").run(); }
+    finally { database.close(); }
+    assert.equal(verifyReleaseDirectory(directory, item.candidate, { manifest, root: item.root }), true);
+    const verified = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+    try { const row = verified.prepare("SELECT * FROM release_finalizations").get(); assert.equal(row.completed_while_current, 1); assert.equal(row.approval_actor_id, "creator"); }
+    finally { verified.close(); }
+  } finally { item.dispose(); }
+});
+
+test("migration-007 finalizations require explicit reconciliation when prior approval currency is unprovable", async () => {
+  const item = releaseFixture(2);
+  try {
+    const { book, published } = await publishable(item), directory = releaseDirectory(item, "migration-007-unsafe");
+    const { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+    const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+    try {
+      const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(published.approval.id);
+      database.prepare("UPDATE release_finalizations SET approval_actor_type = NULL, approval_actor_id = NULL, approval_created_at = NULL, approval_lifecycle_version = NULL, approval_bindings_json = NULL, completed_while_current = 0").run();
+      database.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)").run("INV-MIGRATION-007", approval.id, approval.project_id, "pre-completion invalidation", approval.created_at);
+    } finally { database.close(); }
+    assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest, root: item.root }), /requires approval-facts reconciliation/);
+  } finally { item.dispose(); }
+});

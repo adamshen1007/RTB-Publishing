@@ -60,9 +60,23 @@ record. Only completed durable finalization verifies as a release. RTB
 Publishing does not claim hosted activation or subscriber delivery in
 Increment 1.
 
+The build uses a unique staging directory while holding the project writer
+lock. It does not remove the existing promoted release. After registration,
+finalization, and exact verification succeed, it atomically promotes staging
+and verifies the promoted directory again. `pnpm clean` and other build output
+writers use the same lock, so they wait or fail before changing publication
+bytes rather than racing finalization.
+
 An older `reserved` identity is adopted only when its exact candidate, current
 real approval and policy, current Beta, and existing manifest all reproduce.
 Otherwise preserve the evidence and obtain a new Publish approval. Verification
 of a completed release proves its approval and bytes were valid at completion;
 a later Blueprint invalidation does not rewrite that history. Current delivery
 eligibility or revocation is a separate product decision.
+
+When upgrading a database created before completion-time approval facts were
+stored, verification backfills those facts only if the completed identity,
+candidate, manifest, approval, and timestamps prove the approval was current
+at completion. If the proof is ambiguous, stop and preserve the directory and
+database. The explicit reconciliation error means a human must review the old
+evidence or create a new candidate and approval; do not delete the old release.
