@@ -369,6 +369,11 @@ test("generation GC completed empty recovery preserves raced evidence and retrie
     try { buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); }
     finally { rmSync(item.root, { recursive: true, force: true }); }
   });
+  await context.test("positive exactly empty tombstone recovery", () => {
+    const item = setup();
+    try { unlinkSync(item.temporary); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); }
+    finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
   await context.test("foreign file after empty check", () => {
     const item = setup(), proof = resolve(item.completed, "foreign-proof");
     try {
