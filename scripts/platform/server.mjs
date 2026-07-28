@@ -12,19 +12,30 @@ const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=
 const json = (response, status, body) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }); response.end(JSON.stringify(body)); };
 const validOrigin = (origin) => !origin || /^http:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:\d+)?$/.test(origin);
 
-async function body(request) {
+async function body(request, maximumBytes = 10000) {
   let value = "";
   for await (const chunk of request) {
     value += chunk;
-    if (value.length > 10000) throw new Error("Request body exceeds 10 KB.");
+    if (Buffer.byteLength(value) > maximumBytes) throw new Error("Request body exceeds the supported limit.");
   }
   return value ? JSON.parse(value) : {};
+}
+
+const exactJson = (contentType) => contentType === "application/json";
+const loopbackHost = (host) => /^(?:127\.0\.0\.1|localhost)(?::\d+)?$|^\[::1\](?::\d+)?$/.test(host ?? "");
+const mutationOrigin = (origin, host) => Boolean(origin) && loopbackHost(host) && origin === `http://${host}`;
+
+function mutationServiceFor(options, projectId) {
+  if (options.mutationService?.projectId === projectId) return options.mutationService;
+  if (options.mutationServices instanceof Map) return options.mutationServices.get(projectId);
+  return options.mutationServices?.[projectId];
 }
 
 export function createPlatformServer(options = {}) {
   const indexService = options.indexService ?? (options.index ? { refresh: () => options.index } : new WorkspaceIndex({ file: options.workspaceFile, localFile: options.localFile }));
   const jobs = options.jobs ?? new JobManager(options.jobOptions);
   const csrfToken = options.csrfToken ?? randomBytes(24).toString("hex");
+  const mutationCapability = options.mutationCapability ?? randomBytes(24).toString("hex");
   const requests = new Map();
   const server = createHttpServer(async (request, response) => {
     try {
@@ -45,6 +56,25 @@ export function createPlatformServer(options = {}) {
       }
       const detailMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/(research|agent-runs)$/);
       if (request.method === "GET" && detailMatch) return json(response, 200, detailMatch[2] === "research" ? researchDetail(detailMatch[1]) : agentRunDetail(detailMatch[1]));
+      const mutationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/mutations\/replace-files$/);
+      if (request.method === "POST" && mutationMatch) {
+        const service = mutationServiceFor(options, mutationMatch[1]);
+        const host = request.headers.host;
+        const capability = request.headers["x-rtb-publishing-capability"];
+        if (!service) return json(response, 403, { error: "mutation_denied", message: "This project has no approved local mutation service." });
+        if (url.search || !loopbackHost(host) || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Mutation requests must use the direct loopback origin." });
+        if (!exactJson(request.headers["content-type"])) return json(response, 415, { error: "content_type", message: "Mutation requests require exact application/json." });
+        if (!mutationOrigin(request.headers.origin, host) || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "origin", message: "Mutation requests require the configured same origin." });
+        if (request.headers["x-rtb-publishing-csrf"] !== csrfToken || capability !== mutationCapability) return json(response, 403, { error: "mutation_auth", message: "Refresh the local session before submitting a mutation." });
+        const sessionKey = `${capability}:${mutationMatch[1]}:${minute}`;
+        const sessionCount = (requests.get(sessionKey) ?? 0) + 1;
+        requests.set(sessionKey, sessionCount);
+        if (sessionCount > 20) return json(response, 429, { error: "rate_limit", message: "Too many mutation requests; wait one minute." });
+        const input = await body(request, 256 * 1024);
+        if (input.command !== "replace_files" || input.projectId !== mutationMatch[1]) return json(response, 403, { error: "mutation_denied", message: "Only the approved replace-files command is available for this project." });
+        const result = await service.execute(input);
+        return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result);
+      }
       const workflowMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows\/([a-z-]+)$/);
       if (request.method === "POST" && workflowMatch) {
         if (request.headers["content-type"] !== "application/json") return json(response, 415, { error: "content_type", message: "Workflow requests require application/json." });

@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "phases": ["before_intent", "intent_durable", "snapshot_prepared", "pointer_published", "state_committed"],
+  "policy": "recover-with-verified-prior-or-verified-state"
+}

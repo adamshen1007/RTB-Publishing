@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rtb-publishing.local/schemas/operations/mutation-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "projectId", "state", "message", "priorSnapshotHash", "proposedSnapshotHash", "pointerVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "pattern": "^MUT-[A-Z0-9-]{3,64}$" },
+    "projectId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+    "state": { "enum": ["queued", "running", "blocked", "conflict", "failed", "cancelled", "succeeded", "needs_review"] },
+    "message": { "type": "string", "minLength": 1, "maxLength": 280 },
+    "priorSnapshotHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "proposedSnapshotHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+    "pointerVersion": { "type": ["integer", "null"], "minimum": 1 }
+  }
+}
