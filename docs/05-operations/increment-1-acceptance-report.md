@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 279/279 passed in the final local quality run.
+- Repository tests: 284/284 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -52,12 +52,15 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   reviewer, rights-role, expiry, and timestamp facts before migration-007
   completion evidence can be trusted.
 - Promotion failures before durable target verification leave both release
-  ledger rows pending. Once target verification is durable, the exact
-  finalization and identity complete together; crash recovery preserves and
-  re-verifies that target before a pending retry can complete. Ordinary
+  ledger rows pending. Once target verification is durable, only a
+  process-private exact promotion capability can complete the finalization and
+  identity together. A separate durable `ledger-completed` marker fences backup
+  cleanup; a crash between the SQLite commit and that marker preserves and
+  reconciles the target on retry. Ordinary
   completed rows receive the same full authority reconstruction as migrated
-  rows. Exact immutable path containment and recursively symbolic-link-free
-  material are mandatory.
+  rows. Exact immutable path containment and recursively symbolic-link-free,
+  single-link regular files are mandatory. Copied bundles are not accepted as
+  the approved immutable location, and verification excludes concurrent clean.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

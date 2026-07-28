@@ -86,10 +86,14 @@ candidate, current unexpired and non-invalidated Publish approval, current
 unexpired exact Beta approval, and exact durable reviews, then persists the
 normalized manifest JSON and hash with a pending identity. The system writes
 staging, promotes and verifies the exact immutable target, and durably records
-the filesystem `verified` phase before a second SQLite transaction marks the
-finalization and identity completed together. Recovery at that filesystem
-phase preserves the promoted target, while a pending ledger retry completes
-only after re-verifying it. Earlier promotion failure leaves both ledger rows
+the filesystem `material-verified` phase. Only a module-private, one-time
+capability bound to that exact live promotion may enter the second SQLite
+transaction that marks the finalization and identity completed together. The
+system then durably records `ledger-completed` before deleting the backup.
+Recovery at `material-verified` rechecks current authority before resuming; it
+rolls back when completion cannot still be authorized. A crash after SQLite
+completion but before the ledger marker preserves the target and reconciles
+the marker on retry. Earlier promotion failure leaves both ledger rows
 pending. Only completed records verify as releases. Identical retries resume
 pending material after write, promotion, verification, or process
 interruption; they cannot consume a different identity. No separate

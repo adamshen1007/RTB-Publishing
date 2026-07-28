@@ -15,6 +15,7 @@ import { LifecycleService } from "../lifecycle/service.mjs";
 import { CanonicalLifecycleBindingProvider } from "../lifecycle/bindings.mjs";
 import { BetaPreparationService } from "../lifecycle/beta-preparation.mjs";
 import { ReleaseReviewService } from "../publishing/release-review-service.mjs";
+import { openStateDatabase } from "../state/database.mjs";
 
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
 const json = (response, status, body, headers = {}) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers }); response.end(JSON.stringify(body)); };
@@ -30,6 +31,7 @@ async function body(request, maximumBytes = 10000) {
 }
 
 const exactJson = (contentType) => contentType === "application/json";
+const shellQuote = (value) => `'${String(value).replaceAll("'", `'"'"'`)}'`;
 const loopbackHost = (host) => /^(?:127\.0\.0\.1|localhost)(?::\d+)?$|^\[::1\](?::\d+)?$/.test(host ?? "");
 const loopbackAddress = (address) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
 const cookies = (request) => Object.fromEntries((request.headers.cookie ?? "").split(";").map((part) => part.trim().split("=", 2)).filter(([key, value]) => key && value));
@@ -129,20 +131,30 @@ function publicBetaStatus(service) {
 }
 
 function publicationStatus({ lifecycleServices, releaseReviewServices, betaPreparationServices, sessions, session }) {
+  const publicationProjects = [];
   const lifecycle = Object.fromEntries([...lifecycleServices].map(([projectId, service]) => {
     const status = service.status();
     if (session?.operatorId) for (const gate of ["beta", "publish"]) {
       const material = status.gates?.[gate];
       if (material?.ok && material.materialRevision) material.intent = sessions.issueIntent(session, { action: "lifecycle-gate", projectId, gate, lifecycleVersion: status.lifecycle.version, materialRevision: material.materialRevision });
     }
-    return [projectId, { ...status, projectPath: service.projectPath ?? null }];
+    const projectPath = service.projectPath ?? null;
+    if (projectPath && releaseReviewServices.has(projectId)) {
+      const approval = status.approvals.filter((item) => item.gate === "publish" && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+      let releaseId = null; const database = openStateDatabase(service.databaseFile); try { releaseId = database.prepare("SELECT release_id FROM release_finalizations WHERE project_id = ? AND status = 'completed' ORDER BY completed_at DESC LIMIT 1").get(projectId)?.release_id ?? null; } finally { database.close(); }
+      const build = approval ? `pnpm release:candidate -- ${shellQuote(projectPath)} --lifecycle-version ${approval.lifecycleVersion - 1} --approval-id ${shellQuote(approval.id)}` : null;
+      const verify = releaseId ? `pnpm release:verify -- ${shellQuote(".")} ${shellQuote(projectPath)} ${shellQuote(releaseId)}` : null;
+      status.commands = { build, verify, releaseId };
+      publicationProjects.push({ id: projectId, name: `Publication · ${projectId}`, path: projectPath, stage: "publication", source: "canonical book", milestone: "Human gates", description: "Verified book candidate and human publication approvals.", signals: { researchTopics: 0, agentRuns: 0, documents: 1 }, nextAction: "Complete the named reviews, then confirm the exact lifecycle gate.", workflows: [] });
+    }
+    return [projectId, { ...status, projectPath }];
   }));
   const releaseReviews = Object.fromEntries([...releaseReviewServices].map(([projectId]) => {
     const status = contextualService(releaseReviewServices, projectId)?.status();
     if (session?.operatorId && status?.candidateHash) status.intent = sessions.issueIntent(session, { action: "release-review", projectId, candidateHash: status.candidateHash });
     return [projectId, status];
   }));
-  return { lifecycle, releaseReviews, betaPreparation: Object.fromEntries([...betaPreparationServices].map(([projectId]) => [projectId, publicBetaStatus(contextualService(betaPreparationServices, projectId))])) };
+  return { lifecycle, publicationProjects, releaseReviews, betaPreparation: Object.fromEntries([...betaPreparationServices].map(([projectId]) => [projectId, publicBetaStatus(contextualService(betaPreparationServices, projectId))])) };
 }
 
 export function createPlatformServer(options = {}) {

@@ -2,7 +2,7 @@ import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readF
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { writeJsonAtomic } from "./common.mjs";
 
-const PHASES = new Set(["prepared", "backup-intent", "backup-complete", "activate-intent", "activate-complete", "verified", "commit-cleanup-intent", "commit-cleanup-complete", "rollback-quarantine-intent", "rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"]);
+const PHASES = new Set(["prepared", "backup-intent", "backup-complete", "activate-intent", "activate-complete", "material-verified", "ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete", "rollback-quarantine-intent", "rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"]);
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const exactKeys = (value, keys) => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join("\0") === [...keys].sort().join("\0");
@@ -52,8 +52,9 @@ export function beginPromotion(input, hook) {
   return writeMarker(context, "activate-complete", hadPrior, hook);
 }
 
-export function markPromotionVerified(context, hook) { validatePaths(context); return writeMarker(context, "verified", context.hadPrior, hook); }
-export function commitPromotion(context, hook) { context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, hook); event(hook, "before-backup-cleanup", context); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }); event(hook, "after-backup-cleanup", context); context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, hook); removeMarker(context, hook); return context; }
+export function markPromotionMaterialVerified(context, hook) { validatePaths(context); return writeMarker(context, "material-verified", context.hadPrior, hook); }
+export function markPromotionLedgerCompleted(context, hook) { validatePaths(context); return writeMarker(context, "ledger-completed", context.hadPrior, hook); }
+export function commitPromotion(context, hook) { if (context.phase !== "ledger-completed") throw new Error("Promotion cleanup requires durable ledger completion authority."); context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, hook); event(hook, "before-backup-cleanup", context); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }); event(hook, "after-backup-cleanup", context); context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, hook); removeMarker(context, hook); return context; }
 
 export function rollbackPromotion(context, hook) {
   validatePaths(context);
@@ -89,7 +90,8 @@ function finishRollback(context, hook) {
 export function recoverPromotion(input, hook) {
   const trusted = promotionContext(input); validatePaths(trusted); if (!existsSync(trusted.marker)) return { state: "none", context: trusted };
   let context = readMarker(trusted); validatePaths(context);
-  if (["verified", "commit-cleanup-intent", "commit-cleanup-complete"].includes(context.phase)) { if (context.phase === "verified") context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, hook); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }); if (context.phase !== "commit-cleanup-complete") context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, hook); removeMarker(context, hook); return { state: "committed", context }; }
+  if (context.phase === "material-verified") return { state: "completion-required", context };
+  if (["ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete"].includes(context.phase)) { if (context.phase === "ledger-completed") context = writeMarker(context, "commit-cleanup-intent", context.hadPrior, hook); if (existsSync(context.backup)) remove(context, context.backup, { recursive: true, force: true }); if (context.phase !== "commit-cleanup-complete") context = writeMarker(context, "commit-cleanup-complete", context.hadPrior, hook); removeMarker(context, hook); return { state: "committed", context }; }
   context = finishRollback(context, hook); return { state: "rolled-back", context };
 }
 

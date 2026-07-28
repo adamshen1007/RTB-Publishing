@@ -10,6 +10,7 @@ import { createCandidate } from "../scripts/publishing/candidate.mjs";
 import { pendingReleasePolicies } from "../scripts/publishing/policies.mjs";
 import { registerReleaseCandidate } from "../scripts/publishing/release-registry.mjs";
 import { ReleaseReviewService } from "../scripts/publishing/release-review-service.mjs";
+import { openStateDatabase } from "../scripts/state/database.mjs";
 
 function candidate({ lifecycleVersion = 2, sourceFingerprint = "a".repeat(64), pdfHash = "2".repeat(64) } = {}) {
   return createCandidate({
@@ -38,7 +39,8 @@ test("guided publication routes are loopback-authenticated, server-authoritative
   const root = mkdtempSync(resolve(tmpdir(), "rtb-platform-lifecycle-"));
   const blueprint = { briefHash: "brief", sourcePolicyHash: "source", budgetsHash: "budget", egressPolicyHash: "egress", blueprintHash: "blueprint" };
   const bindings = new StaticLifecycleBindingProvider({ blueprint });
-  const lifecycle = new LifecycleService({ root, projectId: "fixture-book", bindingProvider: bindings });
+  const projectPath = "books/fixture path;$(do-not-run)";
+  const lifecycle = new LifecycleService({ root, projectId: "fixture-book", projectPath, bindingProvider: bindings });
   registerReleaseCandidate(root, candidate());
   let betaActor = null;
   const releaseReviewServices = new Map([["fixture-book", (actor) => new ReleaseReviewService({ root, projectId: "fixture-book", actorResolver: () => actor })]]);
@@ -104,9 +106,18 @@ test("guided publication routes are loopback-authenticated, server-authoritative
       const response = await fetch(`${base}/api/projects/fixture-book/release-reviews/${kind}`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: current.releaseReviews["fixture-book"].intent, decision, ...(qualifiedRole ? { qualifiedRole } : {}) }) });
       assert.equal(response.status, 201); headers = rotate(headers, response);
     }
+    const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+    try {
+      database.prepare("INSERT INTO release_finalizations (release_id, project_id, candidate_hash, approval_id, manifest_hash, manifest_json, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)").run("REL-ACTUAL-123", "fixture-book", replacement.candidateHash, "APR-TEST-FINAL", "9".repeat(64), "{}", new Date().toISOString(), new Date().toISOString());
+    } finally { database.close(); }
     const finalWorkspace = await workspace(base, headers);
     assert.equal(finalWorkspace.releaseReviews["fixture-book"].reviews["migration-visual-review"].decision, "rejected");
     assert.equal(finalWorkspace.releaseReviews["fixture-book"].reviews["rights-and-brand-review"].reviewer.qualifiedRole, "publishing rights owner");
+    assert.deepEqual(finalWorkspace.publicationProjects.map((project) => project.id), ["fixture-book"]);
+    assert.equal(finalWorkspace.publicationProjects[0].path, projectPath);
+    assert.match(finalWorkspace.lifecycle["fixture-book"].commands.build, /'books\/fixture path;\$\(do-not-run\)'/);
+    assert.match(finalWorkspace.lifecycle["fixture-book"].commands.verify, /'REL-ACTUAL-123'/);
+    assert.equal(finalWorkspace.lifecycle["fixture-book"].commands.releaseId, "REL-ACTUAL-123");
   } finally { await new Promise((done) => platform.server.close(done)); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -116,7 +127,8 @@ test("Creator Studio exposes guided controls without manual hashes or reviewer i
   const base = `http://127.0.0.1:${platform.server.address().port}`;
   try {
     const app = await (await fetch(`${base}/app.js`)).text(), html = await (await fetch(`${base}/`)).text();
-    assert.match(html, /Confirm human review session/); assert.match(app, /Candidate-bound release reviews/); assert.match(app, /Displayed candidate/); assert.match(app, /Declaration: my qualified rights-review role/); assert.match(app, /Prepare Beta/); assert.match(app, /\["blueprint", "beta", "publish"\]/); assert.match(app, /`Approve \$\{label\}`/); assert.match(app, /Create the immutable manifest with/); assert.match(app, /--approval-id/); assert.match(app, /release:verify -- dist\/releases\/immutable/); assert.match(app, /projectPath/); assert.match(app, /intent/);
+    assert.match(html, /Confirm human review session/); assert.match(app, /Candidate-bound release reviews/); assert.match(app, /Displayed candidate/); assert.match(app, /Declaration: my qualified rights-review role/); assert.match(app, /Prepare Beta/); assert.match(app, /\["blueprint", "beta", "publish"\]/); assert.match(app, /`Approve \$\{label\}`/); assert.match(app, /Create the immutable manifest with/); assert.match(app, /lifecycle\.commands\?\.build/); assert.match(app, /lifecycle\.commands\?\.verify/); assert.match(app, /intent/);
+    assert.doesNotMatch(app, /<release-id>|release:verify -- dist\/releases\/immutable|--approval-id|projectPath/);
     assert.doesNotMatch(app, /window\.prompt|candidateHash|betaSnapshotHash|policyResultsHash|operatorId|beta-evidence/);
   } finally { await new Promise((done) => platform.server.close(done)); }
 });

@@ -40,10 +40,10 @@ function lifecyclePanel(project, lifecycle) {
     const approval = lifecycle.approvals?.filter((item) => item.gate === gate && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
     if (gate === "publish" && approval) {
       const handoff = node("p", "muted", `Stored Publish approval ${approval.id}. Create the immutable manifest with:`);
-      const projectPath = lifecycle.projectPath || project.path;
-      const command = node("code", "", `pnpm release:candidate -- ${projectPath} --lifecycle-version ${approval.lifecycleVersion - 1} --approval-id ${approval.id}`);
-      const verify = node("code", "", `pnpm release:verify -- dist/releases/immutable/${project.id}/<release-id> ${projectPath} .`);
-      row.append(handoff, command, node("p", "muted", "The build prints the exact immutable directory. Copy it into this required verification command:"), verify);
+      const command = node("code", "", lifecycle.commands?.build ?? "Refresh to load the server-authored build command.");
+      row.append(handoff, command);
+      if (lifecycle.commands?.verify) row.append(node("p", "muted", `Completed immutable release ${lifecycle.commands.releaseId}. Verify it with:`), node("code", "", lifecycle.commands.verify));
+      else row.append(node("p", "muted", "After the build completes, refresh Creator Studio to receive the exact server-authored verification command."));
     }
   });
   return section;
@@ -108,8 +108,7 @@ function render(data) {
   state.data = data; $("#workspace-title").textContent = data.workspace.name; $("#project-count").textContent = `${data.projects.length} projects / local`;
   const indexStatus = $("#index-status"); indexStatus.textContent = data.index?.stale ? `Showing last valid index: ${data.index.error}` : `Live index generation ${data.index?.generation ?? 1}`; indexStatus.classList.toggle("warning", Boolean(data.index?.stale));
   $("#pilot-status").textContent = data.pilot ? `Pilot evidence ${data.pilot.sessions.observed}/${data.pilot.sessions.required} · ${data.pilot.decision}` : "Pilot evidence unavailable";
-  const known = new Set(data.projects.map((project) => project.id)); const publicationProjects = Object.keys(data.lifecycle ?? {}).filter((id) => !known.has(id)).map((id) => ({ id, name: id, stage: "publication", source: "canonical book", milestone: "Human gates", description: "Verified book candidate and human publication approvals.", signals: { researchTopics: 0, agentRuns: 0, documents: 1 }, nextAction: "Complete the named reviews, then confirm the exact lifecycle gate.", workflows: [] }));
-  const visibleProjects = [...data.projects, ...publicationProjects]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard)); renderJobs(data.jobs ?? []);
+  const visibleProjects = [...data.projects, ...(data.publicationProjects ?? [])]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard)); renderJobs(data.jobs ?? []);
 }
 
 function showNotice(message) { const notice = $("#notice"); notice.textContent = message; notice.hidden = !message; }

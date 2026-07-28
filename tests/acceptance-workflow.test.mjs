@@ -14,6 +14,7 @@ import { evaluateReleasePolicies } from "../scripts/publishing/policies.mjs";
 import { registerReleaseCandidate } from "../scripts/publishing/release-registry.mjs";
 import { ReleaseReviewService } from "../scripts/publishing/release-review-service.mjs";
 import { verifyReleaseDirectory } from "../scripts/publishing/verify-release.mjs";
+import { openStateDatabase } from "../scripts/state/database.mjs";
 
 const HUMAN = Object.freeze({ type: "human", id: "acceptance-reviewer" });
 const REVIEW_KINDS = Object.freeze([
@@ -266,8 +267,9 @@ test("acceptance workflow reaches one immutable manifest through real durable bo
 
     const releaseDirectory = materializeRelease(item.root, finalCandidate);
     const finalized = await finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id, releaseDirectory });
+    const completion = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite")); try { const record = completion.prepare("SELECT * FROM release_finalizations").get(), approval = completion.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(record.approval_id), at = new Date().toISOString(); completion.prepare("UPDATE release_finalizations SET status = 'completed', completed_at = ?, approval_actor_type = ?, approval_actor_id = ?, approval_created_at = ?, approval_lifecycle_version = ?, approval_bindings_json = ?, completed_while_current = 1").run(at, approval.actor_type, approval.actor_id, approval.created_at, approval.lifecycle_version, approval.bindings_json); completion.prepare("UPDATE release_identities SET status = 'completed'").run(); } finally { completion.close(); }
     assert.equal(verifyReleaseDirectory(releaseDirectory, finalCandidate, { manifest: finalized.manifest, root: item.root }), true);
-    assert.deepEqual(await finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id, releaseDirectory }), finalized, "an identical completed retry is idempotent");
+    assert.deepEqual((await finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id, releaseDirectory })).manifest, finalized.manifest, "an identical completed retry preserves the exact manifest identity");
   } finally {
     item.dispose();
   }

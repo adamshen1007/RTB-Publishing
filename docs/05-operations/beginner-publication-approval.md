@@ -212,8 +212,9 @@ Do this:
 
    ```sh
    pnpm release:verify -- \
-     dist/releases/immutable/rtb-yc-playbook/<release-id> \
-     books/volume-01-yc-playbook .
+     . \
+     books/volume-01-yc-playbook \
+     <release-id>
    ```
 
 Verify this:
@@ -232,7 +233,9 @@ Check:
   rejected.
 - The displayed command creates a durable pending record for one exact
   manifest, promotes and verifies the exact immutable directory, durably marks
-  that filesystem promotion verified, and only then marks the finalization and
+  that filesystem material verified, completes the ledger through one-time
+  process-private promotion authority, and only then marks the promotion
+  ledger-completed and removes any prior-release backup.
   identity completed. Only completed records verify as releases. If writing,
   promotion, or verification is interrupted, run the identical build command
   again; it recovers the same manifest and identity rather than consuming a

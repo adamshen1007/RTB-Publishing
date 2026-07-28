@@ -56,9 +56,11 @@ use the exact manifest command Creator Studio displays with
 lifecycle ledger; a browser-authored JSON file is not accepted. Finalization
 persists one exact pending manifest and identity. The build then promotes and
 verifies the derived immutable directory, durably records the filesystem
-`verified` phase, and only then completes the finalization and identity
-together. An identical retry safely resumes either pending ledger state or a
-verified promotion. Only an exact completed durable finalization verifies as a
+`material-verified` phase, and only then uses process-private, one-time
+promotion authority to complete the finalization and identity together. It
+then records `ledger-completed` before deleting any prior-release backup. An
+identical retry safely resumes either pending ledger state or a
+material-verified promotion. Only an exact completed durable finalization verifies as a
 release. RTB Publishing does not claim hosted activation or subscriber
 delivery in Increment 1.
 
@@ -77,9 +79,11 @@ verifies staging, records a durable promotion state machine, and atomically
 renames staging.
 The prior release backup remains until the promoted directory passes exact
 verification again. Every rename has durable intent and completion phases.
-Before the durable `verified` phase, failure or restart restores the prior
-verified directory; at or after it, recovery finishes the exact new immutable
-release. Markers contain only a fixed schema, phase, project/release IDs, a
+Before durable material verification, failure or restart restores the prior
+verified directory. A `material-verified` recovery may resume completion only
+when the exact current approval, Beta, review, and policy authority still pass;
+otherwise it rolls back. A completed ledger is reconciled to
+`ledger-completed` before recovery deletes the backup. Markers contain only a fixed schema, phase, project/release IDs, a
 random UUID token, and whether a prior target existed. All paths are derived
 from trusted roots; malformed, mismatched, traversal, or symbolic-link state
 is rejected without filesystem mutation. Immutable verification also requires
@@ -112,6 +116,7 @@ For the YC book, verify the exact path printed by the approved build with:
 
 ```sh
 pnpm release:verify -- \
-  dist/releases/immutable/rtb-yc-playbook/<release-id> \
-  books/volume-01-yc-playbook .
+  . \
+  books/volume-01-yc-playbook \
+  <release-id>
 ```

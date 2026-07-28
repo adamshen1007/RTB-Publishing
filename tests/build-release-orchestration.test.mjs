@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import test from "node:test";
@@ -64,7 +64,7 @@ test("real buildRelease excludes concurrent clean, recovers interrupted activati
     const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot }, first = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("old") }), approval = await approve(item.project, first.candidate);
     let cleaning;
     await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, orchestration: deterministicOrchestration("old"), hooks: { afterPromotionRename: async ({ release }) => { cleaning = cleanOutputs({ root: item.workspaceRoot, buildDirectory: resolve(item.workspaceRoot, "build"), distributionDirectory: resolve(item.workspaceRoot, "dist") }); await new Promise((done) => setTimeout(done, 50)); assert.equal(existsSync(release), true); }, beforePromotionVerification: () => { throw new Error("injected post-rename verification failure"); }, afterPromotionRollback: ({ release }) => assert.equal(existsSync(release), false, "unverified release is removed before locks are released") } }), /injected post-rename/);
-    await cleaning; assert.equal(existsSync(resolve(item.workspaceRoot, "dist")), false, "clean runs only after build releases the workspace lock");
+    await cleaning; assert.equal(existsSync(resolve(item.releaseRoot, "immutable", item.project.id, `REL-${materialHash({ candidateHash: first.candidate.candidateHash, approvalId: approval.id }).slice(0, 20).toUpperCase()}`)), false, "no immutable bundle remains after failed verification");
     const retried = await buildRelease(item.project, { ...base, approvalId: approval.id, orchestration: deterministicOrchestration("old") }); assert.equal(existsSync(retried.release), true); const immutableHash = JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash;
     const candidateOnly = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("new") }); assert.equal(candidateOnly.release, null); assert.notEqual(candidateOnly.candidate.candidateHash, immutableHash); assert.equal(JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash, immutableHash);
   } finally { item.dispose(); }
@@ -72,18 +72,19 @@ test("real buildRelease excludes concurrent clean, recovers interrupted activati
 
 test("promotion failures remain pending until a verified immutable retry completes the exact ledger", async (context) => {
   const failures = {
-    "before immutable verification": { beforePromotionVerification: () => { throw new Error("fault-before-verification"); } },
-    "after immutable verification": { afterPromotionVerification: () => { throw new Error("fault-after-verification"); } },
-    "after durable verified marker": { promotionBoundary: (event) => { if (event === "after-marker-verified") throw new Error("fault-after-verified-marker"); } },
+    "before immutable verification": { hooks: { beforePromotionVerification: () => { throw new Error("fault-before-verification"); } }, status: "pending" },
+    "after immutable verification": { hooks: { afterPromotionVerification: () => { throw new Error("fault-after-verification"); } }, status: "pending" },
+    "after durable material marker": { hooks: { promotionBoundary: (event) => { if (event === "after-marker-material-verified") throw new Error("fault-after-material-marker"); } }, status: "pending" },
+    "after ledger commit before durable marker": { hooks: { promotionBoundary: (event) => { if (event === "before-marker-ledger-completed") throw new Error("fault-before-ledger-marker"); } }, status: "completed" },
   };
-  for (const [name, hooks] of Object.entries(failures)) await context.test(name, async () => {
+  for (const [name, failure] of Object.entries(failures)) await context.test(name, async () => {
     const item = fixture();
     try {
       const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(name) };
       const candidate = await buildRelease(item.project, base), approval = await approve(item.project, candidate.candidate);
-      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks }), /fault-/);
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: failure.hooks }), /fault-/);
       let database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
-      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, failure.status); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, failure.status); }
       finally { database.close(); }
       const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
       database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
@@ -91,6 +92,28 @@ test("promotion failures remain pending until a verified immutable retry complet
       finally { database.close(); }
     } finally { item.dispose(); }
   });
+});
+
+test("material verification cannot complete after live approval authority expires", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("expiry-race") };
+    const candidate = await buildRelease(item.project, base), approval = await approve(item.project, candidate.candidate);
+    const expireApproval = () => {
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { database.prepare("UPDATE lifecycle_approvals SET expires_at = ? WHERE id = ?").run("2000-01-01T00:00:00.000Z", approval.id); }
+      finally { database.close(); }
+    };
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: expireApproval } }), /expiry|expired/);
+    const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+    try {
+      assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending");
+      assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending");
+      database.prepare("UPDATE lifecycle_approvals SET expires_at = NULL WHERE id = ?").run(approval.id);
+    } finally { database.close(); }
+    const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
+    assert.equal(existsSync(completed.release), true);
+  } finally { item.dispose(); }
 });
 
 test("immutable release verification rejects external and internal symbolic links without mutating targets", async () => {
@@ -107,5 +130,10 @@ test("immutable release verification rejects external and internal symbolic link
     unlinkSync(resolve(completed.release, "nested-book.pdf")); symlinkSync(outsideArtifact, resolve(completed.release, "nested-book.pdf"));
     assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /symbolic links/);
     assert.equal(readFileSync(outsideArtifact, "utf8"), "pdf-links");
+    unlinkSync(resolve(completed.release, "nested-book.pdf")); linkSync(outsideArtifact, resolve(completed.release, "nested-book.pdf"));
+    assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /one link/);
+    unlinkSync(resolve(completed.release, "nested-book.pdf")); writeFileSync(resolve(completed.release, "nested-book.pdf"), "pdf-links");
+    const retained = resolve(completed.release, "source-snapshot", "book.md"), outsideSource = resolve(item.workspaceRoot, "outside-source"); writeFileSync(outsideSource, readFileSync(retained)); unlinkSync(retained); linkSync(outsideSource, retained);
+    assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /one link/);
   } finally { item.dispose(); }
 });

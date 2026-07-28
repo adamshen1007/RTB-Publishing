@@ -12,14 +12,14 @@ import { prepareSnapshot, verifySnapshot } from "./snapshot.mjs";
 import { verifyFormats } from "./verify.mjs";
 import { verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
 import { registerReleaseCandidate } from "./release-registry.mjs";
-import { completeFinalizedRelease, finalizeRelease } from "./finalize-release.mjs";
+import { finalizeRelease, promoteFinalizedRelease } from "./finalize-release.mjs";
 import { evaluateReleasePolicies, pendingReleasePolicies } from "./policies.mjs";
 import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
 import { streamResourceFixture } from "./resource-proof.mjs";
 import { acquireProjectLock, acquireWorkspaceOutputLock } from "../state/project-lock.mjs";
-import { beginPromotion, commitPromotion, markPromotionVerified, promotionMarkers, recoverPromotion } from "./promotion-state.mjs";
-export { beginPromotion, commitPromotion, markPromotionVerified, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "./promotion-state.mjs";
+import { promotionMarkers, recoverPromotion } from "./promotion-state.mjs";
+export { beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "./promotion-state.mjs";
 
 function argumentsOf(values) { const result = { project: null, lifecycleVersion: 0, approvalId: null, resourceFixture: null, resourceReport: null }; for (let index = 0; index < values.length; index += 1) { const value = values[index]; if (value === "--lifecycle-version") result.lifecycleVersion = Number(values[++index]); else if (value === "--approval-id") result.approvalId = values[++index]; else if (value === "--resource-fixture") result.resourceFixture = resolve(values[++index]); else if (value === "--resource-report") result.resourceReport = resolve(values[++index]); else if (!result.project) result.project = value; else throw new Error(`Unknown publishing argument: ${value}`); } if (!Number.isInteger(result.lifecycleVersion) || result.lifecycleVersion < 0) throw new Error("--lifecycle-version must be a non-negative integer."); if (Boolean(result.resourceFixture) !== Boolean(result.resourceReport)) throw new Error("--resource-fixture and --resource-report must be provided together."); return result; }
 const filenameFor = (project, format) => basename(project.outputProfiles.find((profile) => profile.format === format)?.path ?? `${project.id}.${format}`);
@@ -32,7 +32,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
   const workspaceLock = await acquireWorkspaceOutputLock(workspaceRoot, { ownerId: `release-build-output-${process.pid}` });
   let publicationLock;
   const token = randomUUID(), work = resolve(buildRoot, ".staging", `${project.id}-${token}`), namespaceRoot = approvalId ? resolve(releaseRoot, "immutable") : candidateRoot, staging = resolve(namespaceRoot, ".staging", `${project.id}-${token}`), legacyRelease = resolve(releaseRoot, project.id);
-  let promotion = null, promotionInput = null;
+  let promotionInput = null;
   try {
     publicationLock = await acquireProjectLock(project.legacyRoot, { ownerId: `release-build-${process.pid}` });
     mkdirSync(work, { recursive: true }); mkdirSync(staging, { recursive: true });
@@ -44,7 +44,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     const candidate = createCandidate({ projectId: project.id, lifecycleVersion, sourceFingerprint: snapshot.record.sourceFingerprint, snapshot: { authority: snapshot.record.authority, canonicalSnapshotHash: snapshot.record.canonicalSnapshotHash, repository: snapshot.record.materials.repository, files: snapshot.record.files, materials: snapshot.record.materials, bundle, ...(resourceProof ? { resourceProof } : {}) }, verification, policies }); writeJson(resolve(staging, "candidate.json"), candidate); registerReleaseCandidate(project.legacyRoot, candidate);
     let releasePolicies = evaluateReleasePolicies(project, candidate);
     let manifest = null;
-    if (approvalId) { const finalized = await finalizeRelease({ root: project.legacyRoot, workspaceRoot, project, candidateHash: candidate.candidateHash, approvalId, releaseDirectory: staging, legacyReleaseDirectory: legacyRelease, heldWorkspaceLock: workspaceLock, heldLock: publicationLock, deferCompletion: true }); manifest = finalized.manifest; releasePolicies = evaluateReleasePolicies(project, candidate); }
+    if (approvalId) { const finalized = await finalizeRelease({ root: project.legacyRoot, workspaceRoot, project, candidateHash: candidate.candidateHash, approvalId, releaseDirectory: staging, legacyReleaseDirectory: legacyRelease, heldWorkspaceLock: workspaceLock, heldLock: publicationLock }); manifest = finalized.manifest; releasePolicies = evaluateReleasePolicies(project, candidate); }
     verifyReleaseDirectoryMaterial(staging, candidate, { manifest });
     let publishedDirectory = null, candidateDirectory = null;
     if (!manifest) {
@@ -53,25 +53,9 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
       else { mkdirSync(dirname(candidateDirectory), { recursive: true }); renameSync(staging, candidateDirectory); verifyReleaseDirectory(candidateDirectory, candidate); }
     } else {
       promotionInput = { outputRoot: resolve(releaseRoot, "immutable"), projectId: project.id, releaseId: manifest.releaseId, token };
-      for (const pending of promotionMarkers(promotionInput.outputRoot, project.id, manifest.releaseId)) recoverPromotion(pending);
       publishedDirectory = resolve(promotionInput.outputRoot, project.id, manifest.releaseId);
-      if (existsSync(publishedDirectory)) {
-        verifyReleaseDirectoryMaterial(publishedDirectory, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
-        await completeFinalizedRelease({ root: project.legacyRoot, workspaceRoot, project, releaseDirectory: publishedDirectory, manifest, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
-        verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock, immutableRoot: promotionInput.outputRoot }); rmSync(staging, { recursive: true, force: true });
-      }
-      else {
-        promotion = beginPromotion(promotionInput, hooks.promotionBoundary);
-        await hooks.afterPromotionRename?.({ release: publishedDirectory, staging, promotion });
-        await hooks.beforePromotionVerification?.({ release: publishedDirectory, promotion });
-        verifyReleaseDirectoryMaterial(publishedDirectory, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
-        await hooks.afterPromotionVerification?.({ release: publishedDirectory, promotion });
-        promotion = markPromotionVerified(promotion, hooks.promotionBoundary);
-        await completeFinalizedRelease({ root: project.legacyRoot, workspaceRoot, project, releaseDirectory: publishedDirectory, manifest, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
-        await hooks.afterLedgerCompletion?.({ release: publishedDirectory, promotion });
-        verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock, immutableRoot: promotionInput.outputRoot });
-        commitPromotion(promotion, hooks.promotionBoundary); promotion = null;
-      }
+      publishedDirectory = await promoteFinalizedRelease({ root: project.legacyRoot, workspaceRoot, project, candidate, manifest, promotionInput, hooks, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
+      rmSync(staging, { recursive: true, force: true });
     }
     const destination = publishedDirectory ?? candidateDirectory, outputs = Object.fromEntries(Object.entries(stagedOutputs).map(([format, file]) => [format, resolve(destination, basename(file))]));
     if (resourceReport) writeJson(resourceReport, resourceProof); return { project, snapshot, outputs, verification, candidate, releasePolicies, manifest, candidateDirectory, publishedDirectory, release: publishedDirectory };
