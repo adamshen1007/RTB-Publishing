@@ -266,7 +266,7 @@ test("generation retention resumes bounded deletion without touching another pro
 
 test("generation GC journal temp and terminal-tombstone crashes recover without permanent blockage", async (context) => {
   const cases = [
-    ...["after-db-pending", "after-temp-create", "after-temp-fsync", "before-temp-rename", "after-temp-rename", "before-db-pending-clear", "after-db-pending-clear"].map((event) => ["record", event]),
+    ...["after-initial-db-pending", "after-db-pending", "after-temp-create", "after-temp-fsync", "before-temp-rename", "after-temp-rename", "before-db-pending-clear", "after-db-pending-clear"].map((event) => ["record", event]),
     ...["afterGenerationGcClaimIntent", "afterGenerationGcClaimRename", "afterGenerationGcClaimJournal"].map((event) => ["item", event]),
     ...["after-terminal-journal", "before-terminal-rename", "after-terminal-rename", "after-terminal-parent-fsync", "before-terminal-remove", "after-terminal-claim-intent", "after-terminal-claim-rename", "after-terminal-claim-journal", "before-terminal-claim-remove", "after-terminal-remove"].map((event) => ["terminal", event]),
   ];
@@ -350,6 +350,16 @@ test("generation GC terminal removal preserves replaced successors and UUID-name
     const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-terminal-extra-"));
     try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); let extra;
       assert.throws(() => buildProject(project, { ...options, hooks: { gcTerminal: (event, transactionRoot) => { if (event === "after-terminal-journal") { extra = resolve(transactionRoot, randomUUID()); mkdirSync(extra); writeFileSync(resolve(extra, "proof"), "untouched"); } } } }), /unjournaled evidence/); const completedRoot = resolve(outputRoot, ".gc", project.id, readdirSync(resolve(outputRoot, ".gc", project.id)).find((name) => name.startsWith(".completed-"))), movedExtra = resolve(completedRoot, basename(extra)); assert.equal(readFileSync(resolve(movedExtra, "proof"), "utf8"), "untouched");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC removes only an exact empty legacy orphan directory", async (context) => {
+  for (const nonempty of [false, true]) await context.test(nonempty ? "nonempty-preserved" : "empty-recovered", () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-orphan-${nonempty}-`));
+    try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), orphan = resolve(outputRoot, ".gc", project.id, randomUUID()); mkdirSync(orphan, { recursive: true }); if (nonempty) writeFileSync(resolve(orphan, "forged-proof"), "untouched");
+      if (nonempty) { assert.throws(() => buildProject(project, options), /nonempty orphan transaction directory/); assert.equal(readFileSync(resolve(orphan, "forged-proof"), "utf8"), "untouched"); }
+      else { buildProject(project, options); assert.equal(existsSync(orphan), false); }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

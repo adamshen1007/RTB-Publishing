@@ -16,9 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 491/491 passed in the full local quality run. A final
-  migration-011 upgrade-path fixture then passed in the focused 16/16 state
-  migration rerun.
+- Repository tests: 504/504 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -44,9 +42,12 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Recovery writes are authorized in the project SQLite database before creating
   migration journals, migration receipts, or generation-retention temporaries.
   Legacy Fix18 journals receive one validated adoption path. Generation cleanup
+  records its initial pending journal before creating the transaction directory,
   journals item and terminal deletion claims before rename, rechecks the exact
   pointer and claimed tree before removal, resumes every tested crash boundary,
-  and preserves forged evidence and replacement successors.
+  and preserves forged evidence and replacement successors. Legacy migration
+  completion transactionally requires exact active SQLite bindings for the
+  canonical terminal journal and receipt, with no uncleared pending fields.
 - Real orchestration evidence invokes `buildRelease` through deterministic
   renderer seams while retaining its production lock, registry, finalization,
   verification, and promotion boundaries. Review-only output is isolated under
