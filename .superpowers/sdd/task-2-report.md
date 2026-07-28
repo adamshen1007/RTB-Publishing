@@ -89,3 +89,5 @@ The focused PDF suite passed all six tests.
   and the retained PNG pixel scan measures a 6x3 rendered bound. The test
   rejects the production-size threshold, proving altered image dimensions are
   detected from rendered pixels rather than from a preset boolean.
+- Added a strict schema for the retained pixel-measurement artifact and a
+  rejecting negative test for missing derived bounds before semantic checks.

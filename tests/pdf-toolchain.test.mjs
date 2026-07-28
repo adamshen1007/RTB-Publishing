@@ -50,12 +50,14 @@ test("lock, manifest, qpdf, and veraPDF evidence have actionable required shapes
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
   validate("visual-negative", visualNegative, "negative visual report");
+  validate("visual-negative-measurements", visualMeasurements, "negative visual measurements");
   assert.throws(() => validate("visual", { schemaVersion: 1, equal: false }, "malformed visual"), /schema invalid/);
   assert.throws(() => validate("manifest", { schemaVersion: 1 }, "malformed manifest"), /schema invalid/);
   assert.throws(() => validate("qpdf-outlines", { version: 2 }, "malformed outlines"), /schema invalid/);
   assert.throws(() => validate("qpdf-pages", { version: 2 }, "malformed pages"), /schema invalid/);
   assert.throws(() => validate("verapdf", { report: { jobs: [{ validationResult: [{ compliant: false, jobEndStatus: "normal", details: { failedRules: 1, failedChecks: 0 } }] }] } }, "failed verifier"), /schema invalid/);
   assert.throws(() => validate("visual-negative", { schemaVersion: 1 }, "malformed negative visual"), /schema invalid/);
+  assert.throws(() => validate("visual-negative-measurements", { schemaVersion: 1, clipping: { raster: "visual-clipping-1.png", clippingDetected: true }, imageResolution: {} }, "missing derived measurements"), /schema invalid/);
 });
 
 test("locks actual executable, runtime, and font bytes", () => {
