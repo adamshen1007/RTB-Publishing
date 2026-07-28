@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { chmodSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
 import { resolveCurrentGeneration } from "../scripts/books/generation.mjs";
 import { initializeSnapshots, materializeSnapshot, pointerPath, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
@@ -351,6 +351,50 @@ test("generation GC terminal removal preserves replaced successors and UUID-name
     try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); let extra;
       assert.throws(() => buildProject(project, { ...options, hooks: { gcTerminal: (event, transactionRoot) => { if (event === "after-terminal-journal") { extra = resolve(transactionRoot, randomUUID()); mkdirSync(extra); writeFileSync(resolve(extra, "proof"), "untouched"); } } } }), /unjournaled evidence/); const completedRoot = resolve(outputRoot, ".gc", project.id, readdirSync(resolve(outputRoot, ".gc", project.id)).find((name) => name.startsWith(".completed-"))), movedExtra = resolve(completedRoot, basename(extra)); assert.equal(readFileSync(resolve(movedExtra, "proof"), "utf8"), "untouched");
     } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC completed empty recovery preserves raced evidence and retries cleanly", async (context) => {
+  const setup = () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-completed-empty-"));
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+    const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root };
+    buildProject(project, options);
+    const token = randomUUID(), completed = resolve(outputRoot, ".gc", project.id, `.completed-${token}`), temporary = resolve(completed, `transaction.json.${token}.${randomUUID()}.tmp`);
+    mkdirSync(completed, { recursive: true }); writeFileSync(temporary, "");
+    return { root, project, outputRoot, options, completed, temporary };
+  };
+  await context.test("positive empty recovery", () => {
+    const item = setup();
+    try { buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); }
+    finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
+  await context.test("foreign file after empty check", () => {
+    const item = setup(), proof = resolve(item.completed, "foreign-proof");
+    try {
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks: { beforeGenerationGcCompletedEmptyRemove: ({ path }) => writeFileSync(resolve(path, "foreign-proof"), "untouched") } }), /not empty|incomplete/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); unlinkSync(proof); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
+  await context.test("replacement of completed transaction directory", () => {
+    const item = setup(), displaced = resolve(dirname(item.root), `${basename(item.root)}-displaced-completed`), proof = resolve(item.completed, "successor-proof");
+    try {
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks: { beforeGenerationGcCompletedEmptyRemove: ({ path }) => { renameSync(path, displaced); mkdirSync(path); writeFileSync(resolve(path, "successor-proof"), "untouched"); } } }), /identity changed/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); assert.ok(existsSync(displaced)); unlinkSync(proof); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); rmSync(displaced, { recursive: true, force: true }); }
+  });
+  for (const scenario of ["replacement of unbound temporary", "content added to unbound temporary"]) await context.test(scenario, () => {
+    const item = setup(), displaced = resolve(dirname(item.root), `${basename(item.root)}-displaced-temporary`);
+    try {
+      const hooks = { beforeGenerationGcOrphanTempRemove: ({ path }) => {
+        if (scenario === "replacement of unbound temporary") { renameSync(path, displaced); writeFileSync(path, "successor"); }
+        else writeFileSync(path, "added-content");
+      } };
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks }), /identity changed|temporary.*changed|unbound journal temporary/i);
+      if (scenario === "replacement of unbound temporary") { assert.equal(readFileSync(item.temporary, "utf8"), "successor"); assert.equal(readFileSync(displaced, "utf8"), ""); unlinkSync(item.temporary); }
+      else { assert.equal(readFileSync(item.temporary, "utf8"), "added-content"); writeFileSync(item.temporary, ""); }
+      buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); rmSync(displaced, { force: true }); }
   });
 });
 
