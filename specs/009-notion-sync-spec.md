@@ -81,3 +81,11 @@ path, and source hashes; private Notion page and workspace IDs are excluded. It
 also hashes the deterministic passed policy result and creates the reviewer
 identity from the confirmed local human session. The browser sends none of
 those hashes or identity fields.
+
+Registration re-derives that material inside the durable binding transaction
+and rejects an earlier inspection if canonical Markdown or the receipt changed.
+The Beta gate then re-derives the complete current snapshot again while the
+lifecycle approval transaction is held. A missing or stale receipt, or hashes
+that differ from the registered binding, makes the gate unavailable and cannot
+create an approval. A prepared Beta binding is therefore evidence for one exact
+canonical/Notion state, not a standing authorization.

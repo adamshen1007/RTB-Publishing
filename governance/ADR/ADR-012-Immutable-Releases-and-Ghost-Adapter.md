@@ -80,6 +80,15 @@ approval. This separation prevents a review record from changing the source
 fingerprint or candidate it is intended to approve while retaining an exact
 auditable binding at Publish.
 
+Manifest derivation and release-identity reservation occur in one immediate
+SQLite transaction. Finalization reloads the latest registered candidate,
+current non-invalidated Publish approval, and exact durable release reviews,
+then derives the policy and manifest and reserves the single-use identity
+before commit. No separate reservation API accepts a caller-created manifest.
+Candidate replacement, approval invalidation, or review rejection committed
+before finalization fails without consuming an identity; a concurrent writer
+cannot interleave after the authoritative reads and before reservation.
+
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest
 checksums. The local immutable manifest is the comparison authority for remote

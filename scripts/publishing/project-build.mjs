@@ -6,13 +6,12 @@ import { resolveBookProject } from "../books/discovery.mjs";
 import { createCandidate } from "./candidate.mjs";
 import { renderEpub } from "./epub.mjs";
 import { renderHtml } from "./html.mjs";
-import { createManifest } from "./manifest.mjs";
 import { pdfTools, renderPdf } from "./pdf.mjs";
 import { prepareSnapshot, verifySnapshot } from "./snapshot.mjs";
 import { verifyFormats } from "./verify.mjs";
 import { verifyReleaseDirectory } from "./verify-release.mjs";
-import { registerReleaseCandidate, reserveReleaseIdentity } from "./release-registry.mjs";
-import { loadPublishApproval } from "./approval-store.mjs";
+import { registerReleaseCandidate } from "./release-registry.mjs";
+import { finalizeRelease } from "./finalize-release.mjs";
 import { evaluateReleasePolicies, pendingReleasePolicies } from "./policies.mjs";
 import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
@@ -31,9 +30,9 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     const verification = await verifyFormats({ project, snapshotMarkdown: snapshot.markdown, outputs, pdfTools: pdf.tools, pdfDerived: pdf.derived, sourceFingerprint: snapshot.record.sourceFingerprint, env }); writeJson(resolve(release, "verification.json"), verification);
     const policies = pendingReleasePolicies(), bundle = retainSnapshot(snapshot, release);
     const candidate = createCandidate({ projectId: project.id, lifecycleVersion, sourceFingerprint: snapshot.record.sourceFingerprint, snapshot: { authority: snapshot.record.authority, canonicalSnapshotHash: snapshot.record.canonicalSnapshotHash, repository: snapshot.record.materials.repository, files: snapshot.record.files, materials: snapshot.record.materials, bundle, ...(resourceProof ? { resourceProof } : {}) }, verification, policies }); writeJson(resolve(release, "candidate.json"), candidate); registerReleaseCandidate(project.legacyRoot, candidate);
-    const releasePolicies = evaluateReleasePolicies(project, candidate);
+    let releasePolicies = evaluateReleasePolicies(project, candidate);
     let manifest = null, approval = null;
-    if (approvalId) { approval = loadPublishApproval(project.legacyRoot, approvalId, candidate); manifest = createManifest(candidate, approval, { releasePolicies }); reserveReleaseIdentity(project.legacyRoot, manifest); writeJson(resolve(release, "manifest.json"), manifest); }
+    if (approvalId) { const finalized = finalizeRelease({ root: project.legacyRoot, project, candidateHash: candidate.candidateHash, approvalId }); approval = finalized.approval; manifest = finalized.manifest; releasePolicies = evaluateReleasePolicies(project, candidate); writeJson(resolve(release, "manifest.json"), manifest); }
     verifyReleaseDirectory(release, candidate, { manifest, approval, releasePolicies }); if (resourceReport) writeJson(resourceReport, resourceProof); return { project, snapshot, outputs, verification, candidate, releasePolicies, manifest, release };
   } catch (error) { rmSync(release, { recursive: true, force: true }); throw error; }
 }

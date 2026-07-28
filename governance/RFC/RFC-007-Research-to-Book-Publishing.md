@@ -205,6 +205,12 @@ complete envelope. The human Publish action binds that exact envelope hash and
 lifecycle version and fails closed unless that lifecycle has a current Beta
 approval. Any material change requires a new envelope, hash, and approval.
 
+Beta registration and Beta approval each re-derive the complete normalized
+canonical/Notion snapshot from the current private sync receipt while holding
+their durable transaction boundary. Missing, malformed, stale, or changed
+receipt material makes the Beta binding unavailable. A previously prepared
+binding cannot authorize canonical Markdown that changed afterward.
+
 The candidate envelope does not embed the three mutable human release-review
 decisions. After a candidate is registered, the review service resolves its
 source fingerprint and HTML, PDF, and EPUB hashes from that server-side
@@ -226,6 +232,16 @@ remain eligible. Changing candidate material or review evidence therefore
 requires a new exact policy evaluation and, when its identity changes, a new
 Publish approval. This operational join breaks the self-reference cycle
 without weakening the Publish gate or making review evidence canonical input.
+
+Final manifest creation and release-identity reservation are one immediate
+SQLite transaction. That transaction reloads the latest registered candidate,
+the non-invalidated exact Publish approval, and current durable release-review
+evidence; derives the policy and manifest from those reads; and reserves the
+single-use release identity before commit. A preliminary policy evaluation or
+standalone manifest object has no reservation authority. A rejection,
+invalidation, or candidate replacement committed before finalization therefore
+fails without consuming an identity, while concurrent writers cannot slip
+between the authoritative recheck and reservation.
 
 The final manifest required by ADR-012 derives from the approved envelope. It
 must preserve every material field exactly and may add only the Publish

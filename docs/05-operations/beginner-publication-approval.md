@@ -150,6 +150,9 @@ Check:
 
 - Beta preparation creates the snapshot and policy hashes on the local server.
   There is no manual hash-entry step.
+- Beta approval checks the canonical chapters and real receipt again. If either
+  changed after preparation, the gate becomes unavailable; sync, prepare, and
+  review Beta again.
 - If Creator Studio reports that the material changed, the page was stale.
   Refresh, inspect the current receipt and gate, then make a new decision.
 
@@ -219,6 +222,10 @@ Check:
   reviews; do not alter the approval record.
 - A Publish approval and release identity are single-use. Reusing either is
   rejected.
+- The displayed command finalizes atomically: it reloads the current candidate,
+  Publish approval, and exact review policy before reserving the identity. A
+  rejection, invalidation, or newer candidate makes it fail without creating a
+  manifest identity.
 - A `409` or “material changed” message means your page or command is stale.
   Refresh and inspect the current exact material before trying again.
 

@@ -56,7 +56,7 @@ export function evaluateReleasePolicies(project, candidate, { databaseFile, data
     manualReviews[kind] = record.decision === "approved" ? "approved" : "rejected";
   }
   const value = result(manualReviews, registered.candidateHash, evidence);
-  livePolicyEvaluations.set(value, { project: { id: project.id, root: project.root, legacyRoot: project.legacyRoot }, candidateHash: registered.candidateHash, databaseFile });
+  livePolicyEvaluations.set(value, { project: { id: project.id, root: project.root, legacyRoot: project.legacyRoot }, candidateHash: registered.candidateHash, databaseFile, database });
   return value;
 }
 
@@ -64,7 +64,7 @@ export function evaluateReleasePolicies(project, candidate, { databaseFile, data
 export function assertCurrentReleasePolicies(candidate, evaluation) {
   const authority = evaluation && livePolicyEvaluations.get(evaluation);
   if (!authority || evaluation.candidateHash !== candidate.candidateHash) throw new Error("Manifest creation requires an explicit, durable exact release-policy evaluation.");
-  const fresh = evaluateReleasePolicies(authority.project, authority.candidateHash, authority.databaseFile ? { databaseFile: authority.databaseFile } : {});
+  const fresh = evaluateReleasePolicies(authority.project, authority.candidateHash, authority.database ? { database: authority.database } : authority.databaseFile ? { databaseFile: authority.databaseFile } : {});
   if (fresh.releasePolicyHash !== evaluation.releasePolicyHash) throw new Error("Release policy evidence changed after evaluation; evaluate the current exact candidate again.");
   if (fresh.releaseEligible !== true) throw new Error("The current release policy has blocking manual reviews or findings.");
   return fresh;
