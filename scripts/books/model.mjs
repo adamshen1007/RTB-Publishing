@@ -12,6 +12,7 @@ const SCHEMA_FILES = {
   "book-blueprint": "book-blueprint.schema.json",
   "book-chapter": "book-chapter.schema.json",
   "schema-migration": "schema-migration.schema.json",
+  "migration-report": "migration-report.schema.json",
 };
 
 export const CURRENT_SCHEMA_VERSION = "1";

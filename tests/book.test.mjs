@@ -7,7 +7,7 @@ import {
   namespaceFootnotes,
   validateChapter
 } from "../scripts/book-contract.mjs";
-import { BOOK_OUTPUT_NAME } from "../scripts/lib.mjs";
+import { discoverBookProject } from "../scripts/books/discovery.mjs";
 
 const completeChapter = `# Chapter 2 — Test a Decision
 
@@ -86,5 +86,5 @@ test("footnote namespaces remain unique when chapters are combined", () => {
 test("publication preparation uses explicit public statuses and artifact naming", () => {
   assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Publication Candidate"));
   assert.ok(COMPLETE_MANUSCRIPT_STATUSES.includes("Public Preview"));
-  assert.equal(BOOK_OUTPUT_NAME, "rtb-publishing-playbook");
+  assert.equal(discoverBookProject("books/volume-01-yc-playbook").outputProfiles.find((profile) => profile.format === "epub").filename, "rtb-publishing-playbook.epub");
 });

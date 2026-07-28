@@ -1,7 +1,12 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, normalize, resolve, sep } from "node:path";
-import { BOOK_DIST_DIR } from "./lib.mjs";
+import { resolve as resolveOutput } from "node:path";
+import { discoverBookProject } from "./books/discovery.mjs";
+import { DEFAULT_BOOK_PROJECT, DIST_DIR } from "./lib.mjs";
+
+const project = discoverBookProject(process.argv[2] ?? DEFAULT_BOOK_PROJECT);
+const BOOK_DIST_DIR = resolveOutput(DIST_DIR, "books", project.id);
 
 if (!existsSync(resolve(BOOK_DIST_DIR, "index.html"))) {
   console.error("No HTML build found. Run pnpm build before pnpm preview.");
@@ -16,7 +21,6 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".epub": "application/epub+zip",
   ".html": "text/html; charset=utf-8",
   ".png": "image/png",

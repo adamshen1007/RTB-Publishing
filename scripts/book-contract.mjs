@@ -75,13 +75,23 @@ export function validateChapter(filename, content, expectedTitle) {
   return failures;
 }
 
-export function validateBook({ bookDirectory, chapterFiles }) {
+export function validateBook({ bookDirectory, chapterFiles, project }) {
   const failures = [];
+  if (project) {
+    const actual = project.chapters.map((chapter) => chapter.source_path);
+    for (const chapter of project.chapters) {
+      const content = readFileSync(chapter.sourcePath, "utf8");
+      // The stable contract binds source paths and semantic IDs; authored display
+      // headings may deliberately differ from the concise Blueprint title.
+      for (const failure of validateChapter(chapter.source_path, content)) failures.push(`${chapter.source_path}: ${failure}`);
+    }
+    return { actual, planned: actual, failures, status: bookMetadata(project.metadata).status };
+  }
   const contents = readFileSync(resolve(bookDirectory, "table-of-contents.md"), "utf8");
   const entries = canonicalChapterEntries(contents);
   const planned = entries.map((entry) => entry.file);
-  if (planned.length !== 23 || new Set(planned).size !== planned.length) {
-    failures.push("canonical table of contents must declare 23 unique chapter files");
+  if (planned.length === 0 || new Set(planned).size !== planned.length) {
+    failures.push("canonical table of contents must declare unique chapter files");
   }
   const actual = [...chapterFiles].sort();
   for (const file of actual) {

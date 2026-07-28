@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { assertLegacyBookBuildCompatibility, validateLegacyBookProject } from "../scripts/books/compat.mjs";
+import { discoverBookProject } from "../scripts/books/discovery.mjs";
 import { canonicalJson, migrateFileDryRun, migrateRecord } from "../scripts/books/migrations.mjs";
 import { canonicalBlueprintHash, canonicalLifecycleHash, discoverBookProjects, readStructuredFile, resolveSafeRelativePath, validateFile, validateRecord } from "../scripts/books/model.mjs";
 import { parse, stringify } from "yaml";
@@ -112,12 +112,11 @@ test("SCH-007: failed and interrupted dry-run migration preserves canonical byte
   assert.equal(validateRecord("schema-migration", result.report).valid, true);
 });
 
-test("SCH-008: the existing check command and build preflight use the compatibility adapter", () => {
-  const result = validateLegacyBookProject(resolve("books/volume-01-yc-playbook"));
-  assert.equal(result.valid, true, JSON.stringify(result.diagnostics));
+test("SCH-008: the existing check command uses generic discovered-project preflight", () => {
+  const result = discoverBookProject(resolve("books/volume-01-yc-playbook"));
+  assert.equal(result.chapters.length, 23);
   const output = execFileSync(process.execPath, ["scripts/check-book.mjs"], { encoding: "utf8" });
   assert.match(output, /Book contract: 23\/23/);
-  assert.doesNotThrow(() => assertLegacyBookBuildCompatibility(resolve("books/volume-01-yc-playbook")));
 });
 
 test("cross-record references and child stable IDs fail closed", () => {

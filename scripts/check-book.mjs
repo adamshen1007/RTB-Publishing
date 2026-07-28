@@ -1,13 +1,9 @@
-import { readdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { BOOK_DIR } from "./lib.mjs";
+import { DEFAULT_BOOK_PROJECT } from "./lib.mjs";
 import { validateBook } from "./book-contract.mjs";
-import { throwForInvalidLegacyBookProject } from "./books/compat.mjs";
+import { discoverBookProject } from "./books/discovery.mjs";
 
-const chapterDirectory = resolve(BOOK_DIR, "chapters");
-throwForInvalidLegacyBookProject(BOOK_DIR);
-const chapterFiles = readdirSync(chapterDirectory).filter((file) => file.endsWith(".md"));
-const result = validateBook({ bookDirectory: BOOK_DIR, chapterFiles });
+const project = discoverBookProject(process.argv[2] ?? DEFAULT_BOOK_PROJECT);
+const result = validateBook({ project });
 
 if (result.failures.length) {
   for (const failure of result.failures) console.error(`✗ ${failure}`);

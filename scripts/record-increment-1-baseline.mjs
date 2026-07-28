@@ -3,10 +3,13 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileS
 import { basename, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import yauzl from "yauzl";
-import { BOOK_DIR, BOOK_DIST_DIR, BUILD_DIR, ROOT, localBinary, run } from "./lib.mjs";
+import { BUILD_DIR, DEFAULT_BOOK_PROJECT, DIST_DIR, ROOT, localBinary, run } from "./lib.mjs";
+import { discoverBookProject } from "./books/discovery.mjs";
+import { projectOutputPath } from "./books/assemble.mjs";
 
 const DEFAULT_OUTPUT = resolve(BUILD_DIR, "acceptance", "increment-1", "baseline", "baseline.json");
-const SOURCE_REGISTRY = resolve(BOOK_DIR, "references", "source-registry.md");
+const DEFAULT_PROJECT = discoverBookProject(DEFAULT_BOOK_PROJECT);
+const SOURCE_REGISTRY = resolve(DEFAULT_PROJECT.root, DEFAULT_PROJECT.manifest.paths.research, "source-registry.md");
 const REQUIRED_COMMANDS = Object.freeze([
   { id: "pnpm-check", command: "pnpm", args: ["check"] },
   { id: "pnpm-build", command: "pnpm", args: ["build"] },
@@ -235,8 +238,8 @@ async function epubSemantics(epubFile) {
   return { entries, sha256: sha256(JSON.stringify(entries)) };
 }
 
-function canonicalInputs() {
-  return filesBelow(BOOK_DIR)
+function canonicalInputs(project = DEFAULT_PROJECT) {
+  return filesBelow(project.root)
     .filter((file) => file.endsWith(".md"))
     .map((file) => ({ path: relativePath(file), sha256: sha256(readFileSync(file)) }));
 }
@@ -255,9 +258,9 @@ function assertSanitized(record) {
 }
 
 export async function createBaselineRecord({ startedAt = new Date().toISOString(), commands, repositoryStart, readSnapshot = readRepositorySnapshot } = {}) {
-  const htmlFile = resolve(BOOK_DIST_DIR, "index.html");
-  const epubFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.epub");
-  const docxFile = resolve(BOOK_DIST_DIR, "rtb-publishing-playbook.docx");
+  const project = DEFAULT_PROJECT;
+  const htmlFile = projectOutputPath(project, resolve(DIST_DIR, "books"), "html");
+  const epubFile = projectOutputPath(project, resolve(DIST_DIR, "books"), "epub");
   const start = repositoryStart ?? readSnapshot();
   assertBaselinePreconditions({ dirty: start.dirty, commands });
   const inputs = canonicalInputs();
@@ -281,15 +284,16 @@ export async function createBaselineRecord({ startedAt = new Date().toISOString(
       vale: version("vale"),
       mermaid: version(localBinary("mmdc"))
     },
-    ycPlaybook: {
-      chapterCount: inputs.filter((input) => input.path.includes("/chapters/")).length,
+    book: {
+      projectId: project.id,
+      chapterCount: project.chapters.length,
       canonicalInputs: inputs,
       canonicalContentSha256: sha256(JSON.stringify(inputs)),
       sourceRegistrySha256: sha256(readFileSync(SOURCE_REGISTRY))
     },
     configuration: [{ path: "package.json", sha256: sha256(readFileSync(resolve(ROOT, "package.json"))) }],
     commands,
-    outputs: [outputRecord(htmlFile), outputRecord(epubFile), outputRecord(docxFile)],
+    outputs: [outputRecord(htmlFile), outputRecord(epubFile)],
     semantics: {
       html: { sha256: sha256(normalizeHtml(html)) },
       epub: await epubSemantics(epubFile)
@@ -329,7 +333,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     const output = outputFlag === -1 ? DEFAULT_OUTPUT : resolve(process.argv[outputFlag + 1]);
     const result = await runBaselineCapture(output);
     console.log(`Increment 1 baseline written: ${result.output}`);
-    console.log(`YC chapters: ${result.record.ycPlaybook.chapterCount}`);
+    console.log(`Chapters: ${result.record.book.chapterCount}`);
     console.log(`HTML semantics: ${result.record.semantics.html.sha256}`);
     console.log(`EPUB semantics: ${result.record.semantics.epub.sha256}`);
   } catch (error) {

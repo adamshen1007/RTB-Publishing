@@ -106,8 +106,12 @@ delete manuscript content and the operational index can be rebuilt.
 
 Existing build commands still read the legacy working-tree manuscript path.
 They do not project a snapshot back into that path. The `.rtb-content/current.json`
-pointer is the forward-compatible canonical read boundary that WP96 discovery
-and assembly must consume before the legacy working-tree path is retired.
+pointer is the canonical read boundary for WP96 discovery and assembly: a reader
+pins it once, then reads only below that immutable snapshot. Until every existing
+Book Project has a pointer, generic discovery makes an explicit, read-only
+`legacy-working-tree` fallback; it never copies a snapshot back into the legacy
+path. The fallback is a transition state, not a second canonical authority, and
+is retired project-by-project once a current-root pointer exists.
 
 Snapshots are selected from the reviewed project policy and exclude Git
 metadata, local state, dependency and generated output directories, and
