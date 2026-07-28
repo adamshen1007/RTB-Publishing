@@ -1,6 +1,6 @@
 # Increment 1 acceptance report
 
-**Evaluation date:** 2026-07-28
+**Evaluation date:** 2026-07-29
 
 **Branch:** `codex/increment-1-wp91-wp98-plan`
 
@@ -16,7 +16,9 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 469/469 passed in the final local quality run.
+- Repository tests: 491/491 passed in the full local quality run. A final
+  migration-011 upgrade-path fixture then passed in the focused 16/16 state
+  migration rerun.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -39,6 +41,12 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   authority, interrupted release promotion, malformed or hostile recovery
   markers, ambiguous legacy approval facts, and clean/finalization races fail
   closed in tests.
+- Recovery writes are authorized in the project SQLite database before creating
+  migration journals, migration receipts, or generation-retention temporaries.
+  Legacy Fix18 journals receive one validated adoption path. Generation cleanup
+  journals item and terminal deletion claims before rename, rechecks the exact
+  pointer and claimed tree before removal, resumes every tested crash boundary,
+  and preserves forged evidence and replacement successors.
 - Real orchestration evidence invokes `buildRelease` through deterministic
   renderer seams while retaining its production lock, registry, finalization,
   verification, and promotion boundaries. Review-only output is isolated under

@@ -59,9 +59,45 @@ test("draft-v9 promotion rows are preserved exactly while adding durable binding
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("draft-v9 active crash rows at terminal cleanup boundaries migrate safely", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-draft-v9-cleanup-phases-")), legacyMigrations = resolve(root, "migrations"), databaseFile = resolve(root, "state.sqlite");
+  const phases = ["ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete", "rollback-cleanup-complete"];
+  const rows = phases.map((phase, index) => [
+    `00000000-0000-4000-8000-0000000000${10 + index}`,
+    `book-${index}`,
+    `REL-${index}`,
+    "a".repeat(64),
+    "b".repeat(64),
+    "c".repeat(64),
+    "d".repeat(64),
+    phase,
+    "active",
+    "2026-02-01T00:00:00.000Z",
+    "2026-02-02T00:00:00.000Z",
+  ]);
+  mkdirSync(legacyMigrations, { recursive: true });
+  for (const name of ["001-initial.sql", "002-lifecycle-workflow-ledger.sql", "003-workflow-fencing.sql", "004-release-identities.sql", "005-release-candidates-and-bindings.sql", "006-release-reviews.sql", "007-release-finalizations.sql", "008-finalization-approval-facts.sql"]) copyFileSync(resolve("scripts/state/migrations", name), resolve(legacyMigrations, name));
+  openStateDatabase(databaseFile, { migrationsDirectory: legacyMigrations }).close();
+  seedDraftV9(databaseFile, rows);
+  const database = openStateDatabase(databaseFile);
+  try {
+    assert.deepEqual(database.prepare("SELECT phase, status FROM promotion_transactions ORDER BY project_id").all().map((row) => ({ ...row })), phases.map((phase) => ({ phase, status: "active" })));
+  } finally { database.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("an already-applied migration 010 receives Fix19 authority columns from migration 011", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-migration-010-upgrade-")), legacyMigrations = resolve(root, "migrations"), databaseFile = resolve(root, "state.sqlite");
+  try {
+    mkdirSync(legacyMigrations);
+    for (const name of ["001-initial.sql", "002-lifecycle-workflow-ledger.sql", "003-workflow-fencing.sql", "004-release-identities.sql", "005-release-candidates-and-bindings.sql", "006-release-reviews.sql", "007-release-finalizations.sql", "008-finalization-approval-facts.sql", "009-promotion-transactions.sql", "010-legacy-promotion-migrations.sql"]) copyFileSync(resolve("scripts/state/migrations", name), resolve(legacyMigrations, name));
+    const legacy = openStateDatabase(databaseFile, { migrationsDirectory: legacyMigrations }); try { assert.equal(legacy.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('legacy_promotion_migrations') WHERE name = 'receipt_hash'").get().count, 0); } finally { legacy.close(); }
+    const upgraded = openStateDatabase(databaseFile); try { for (const column of ["journal_hash", "journal_json", "receipt_hash", "receipt_json", "pending_receipt_temp_token", "pending_receipt_hash", "pending_receipt_json"]) assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('legacy_promotion_migrations') WHERE name = ?").get(column).count, 1); assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'generation_gc_transactions'").get().count, 1); } finally { upgraded.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("malformed draft-v9 promotion fields fail actionably and leave the legacy table intact", async (context) => {
   const base = ["00000000-0000-4000-8000-000000000009", "book", "REL", "a".repeat(64), "b".repeat(64), "c".repeat(64), "d".repeat(64), "prepared", "active", "2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z"], cases = {
-    token: [0, "token-bad"], project: [1, "../book"], release: [2, "/REL"], candidate: [3, "candidate"], manifest: [4, "manifest"], marker: [5, "marker"], evidence: [6, null], phase: [7, "commit-cleanup-complete"], status: [8, "unknown-status"], created: [9, "not-a-time"], updated: [10, "2025-01-01T00:00:00.000Z"],
+    token: [0, "token-bad"], project: [1, "../book"], release: [2, "/REL"], candidate: [3, "candidate"], manifest: [4, "manifest"], marker: [5, "marker"], evidence: [6, null], phase: [7, "unknown-phase"], status: [8, "unknown-status"], created: [9, "not-a-time"], updated: [10, "2025-01-01T00:00:00.000Z"],
   };
   for (const [name, [index, value]] of Object.entries(cases)) await context.test(name, () => {
     const root = mkdtempSync(resolve(tmpdir(), `rtb-draft-v9-${name}-`)), legacyMigrations = resolve(root, "migrations"), databaseFile = resolve(root, "state.sqlite"), malformed = [...base]; malformed[index] = value;

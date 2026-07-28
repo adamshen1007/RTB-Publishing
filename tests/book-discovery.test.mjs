@@ -266,8 +266,9 @@ test("generation retention resumes bounded deletion without touching another pro
 
 test("generation GC journal temp and terminal-tombstone crashes recover without permanent blockage", async (context) => {
   const cases = [
-    ...["after-temp-create", "after-temp-fsync", "before-temp-rename", "after-temp-rename"].map((event) => ["record", event]),
-    ...["after-terminal-journal", "before-terminal-rename", "after-terminal-rename", "after-terminal-parent-fsync", "before-terminal-remove", "after-terminal-remove"].map((event) => ["terminal", event]),
+    ...["after-db-pending", "after-temp-create", "after-temp-fsync", "before-temp-rename", "after-temp-rename", "before-db-pending-clear", "after-db-pending-clear"].map((event) => ["record", event]),
+    ...["afterGenerationGcClaimIntent", "afterGenerationGcClaimRename", "afterGenerationGcClaimJournal"].map((event) => ["item", event]),
+    ...["after-terminal-journal", "before-terminal-rename", "after-terminal-rename", "after-terminal-parent-fsync", "before-terminal-remove", "after-terminal-claim-intent", "after-terminal-claim-rename", "after-terminal-claim-journal", "before-terminal-claim-remove", "after-terminal-remove"].map((event) => ["terminal", event]),
   ];
   for (const [kind, event] of cases) await context.test(`${kind}:${event}`, () => {
     const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-${kind}-`));
@@ -276,7 +277,8 @@ test("generation GC journal temp and terminal-tombstone crashes recover without 
       const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id);
       for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
       let fired = false; const crash = (seen) => { if (seen === event && !fired) { fired = true; throw new Error(`gc-${kind}-${event}`); } };
-      assert.throws(() => buildProject(project, { ...options, hooks: kind === "record" ? { gcRecord: crash } : { gcTerminal: crash } }), new RegExp(`gc-${kind}-${event}`));
+      const faultHooks = kind === "record" ? { gcRecord: crash } : kind === "terminal" ? { gcTerminal: crash } : { [event]: () => crash(event) };
+      assert.throws(() => buildProject(project, { ...options, hooks: faultHooks }), new RegExp(`gc-${kind}-${event}`));
       assert.equal(fired, true); const completed = buildProject(project, options); assert.ok(existsSync(resolve(generationRoot, completed.generation))); const projectGc = resolve(outputRoot, ".gc", project.id); assert.equal(existsSync(projectGc) ? readdirSync(projectGc).length : 0, 0);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

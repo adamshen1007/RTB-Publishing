@@ -388,7 +388,7 @@ test("migration 009 quarantines legacy completed evidence and invalidates legacy
 });
 
 test("legacy promotion migration journal resumes every evidence-move and receipt boundary", async (context) => {
-  const events = ["after-legacy-journal-temp-binding", "after-legacy-journal-temp-create", "after-legacy-journal-temp-fsync", "before-legacy-journal-temp-rename", "after-legacy-journal-temp-rename", "after-legacy-migration-journal", ...Array.from({ length: 4 }, (_, index) => [`before-legacy-migration-move-${index}`, `after-legacy-migration-rename-${index}`, `after-legacy-migration-checkpoint-${index}`]).flat(), "before-legacy-migration-receipt", "after-legacy-migration-receipt", "after-legacy-migration-terminal"];
+  const events = ["after-legacy-migration-db-insert", "after-legacy-journal-temp-binding", "after-legacy-journal-temp-create", "after-legacy-journal-temp-fsync", "before-legacy-journal-temp-rename", "after-legacy-journal-temp-rename", "after-legacy-migration-journal", ...Array.from({ length: 4 }, (_, index) => [`before-legacy-migration-move-${index}`, `after-legacy-migration-rename-${index}`, `after-legacy-migration-checkpoint-${index}`]).flat(), "before-legacy-migration-receipt", "after-legacy-receipt-temp-binding", "after-legacy-receipt-temp-create", "after-legacy-receipt-temp-fsync", "before-legacy-receipt-temp-rename", "after-legacy-receipt-temp-rename", "before-legacy-receipt-temp-clear", "after-legacy-migration-receipt", "after-legacy-migration-terminal"];
   for (const fault of events) await context.test(fault, async () => {
     const item = fixture();
     try {
@@ -401,6 +401,29 @@ test("legacy promotion migration journal resumes every evidence-move and receipt
       const journalRoot = resolve(stateRoot, "migration-journals", item.project.id, completed.manifest.releaseId); assert.equal(existsSync(journalRoot) ? readdirSync(journalRoot).length : 0, 0);
     } finally { item.dispose(); }
   });
+});
+
+test("legacy migration adopts one canonical Fix18 journal and rejects an unbound forgery", async (context) => {
+  for (const forged of [false, true]) await context.test(forged ? "forged" : "canonical", async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`legacy-adoption-${forged}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), completed = await buildRelease(item.project, { ...base, approvalId: approval.id }), token = randomUUID(), stateRoot = resolve(item.releaseRoot, "immutable", ".promotion-state"), marker = resolve(stateRoot, `${item.project.id}-${completed.manifest.releaseId}-${token}.json`);
+      writeFileSync(marker, "legacy-adoption-marker\n"); let database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.exec("DROP TABLE promotion_transactions"); database.prepare("DELETE FROM schema_migrations WHERE version = 9").run(); } finally { database.close(); }
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { legacyMigration: (event) => { if (event === "after-legacy-migration-journal") throw new Error("preserve-fix18-journal"); } } }), /preserve-fix18-journal/);
+      const journalRoot = resolve(stateRoot, "migration-journals", item.project.id, completed.manifest.releaseId), journalFile = resolve(journalRoot, readdirSync(journalRoot).find((name) => name.endsWith(".json"))), journal = JSON.parse(readFileSync(journalFile, "utf8")); database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.prepare("DELETE FROM legacy_promotion_migrations WHERE id = ?").run(journal.id); } finally { database.close(); }
+      if (forged) { journal.candidateHash = "f".repeat(64); writeFileSync(journalFile, `${JSON.stringify(journal)}\n`); await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /exact candidate|durable authority|canonical Fix18/); assert.equal(existsSync(marker), true); }
+      else { await buildRelease(item.project, { ...base, approvalId: approval.id }); assert.equal(existsSync(marker), false); database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT status FROM legacy_promotion_migrations WHERE id = ?").get(journal.id).status, "complete"); } finally { database.close(); } }
+    } finally { item.dispose(); }
+  });
+});
+
+test("legacy migration preserves a replacement receipt-root successor", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("legacy-receipt-root-pin") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), completed = await buildRelease(item.project, { ...base, approvalId: approval.id }), token = randomUUID(), stateRoot = resolve(item.releaseRoot, "immutable", ".promotion-state"), marker = resolve(stateRoot, `${item.project.id}-${completed.manifest.releaseId}-${token}.json`); writeFileSync(marker, "legacy-receipt-root-pin\n");
+    const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.exec("DROP TABLE promotion_transactions"); database.prepare("DELETE FROM schema_migrations WHERE version = 9").run(); } finally { database.close(); }
+    let successor; await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { legacyMigration: (event, journal) => { if (event !== "before-legacy-migration-move-0" || successor) return; const owned = `${journal.receiptRoot}.owned`; renameSync(journal.receiptRoot, owned); mkdirSync(journal.receiptRoot); successor = resolve(journal.receiptRoot, "successor-proof"); writeFileSync(successor, "untouched"); } } }), /identity changed|physical entry/); assert.equal(readFileSync(successor, "utf8"), "untouched"); assert.equal(existsSync(marker), true);
+  } finally { item.dispose(); }
 });
 
 test("legacy migration rejects forged or mismatched durable authority before moving evidence", async (context) => {
