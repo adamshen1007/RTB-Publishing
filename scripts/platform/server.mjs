@@ -13,6 +13,8 @@ import { loadEffectiveWorkspace } from "./local-state.mjs";
 import { MutationService } from "../state/mutation-journal.mjs";
 import { LifecycleService } from "../lifecycle/service.mjs";
 import { CanonicalLifecycleBindingProvider } from "../lifecycle/bindings.mjs";
+import { BetaPreparationService } from "../lifecycle/beta-preparation.mjs";
+import { ReleaseReviewService } from "../publishing/release-review-service.mjs";
 
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
 const json = (response, status, body, headers = {}) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers }); response.end(JSON.stringify(body)); };
@@ -42,10 +44,10 @@ export class LocalSessionManager {
     session.csrfToken = randomBytes(24).toString("hex"); session.capability = randomBytes(24).toString("hex"); session.expiresAt = this.now() + this.ttlMs;
     return session;
   }
-  bootstrap(id, csrfToken, capability, operatorId) {
+  bootstrap(id, csrfToken, capability) {
     const session = this.consume(id, csrfToken, capability);
-    if (!session || typeof operatorId !== "string" || !/^[A-Za-z0-9._@-]{2,120}$/.test(operatorId)) return null;
-    session.operatorId = operatorId;
+    if (!session) return null;
+    session.operatorId ??= `human-${randomBytes(12).toString("hex")}`;
     return session;
   }
   cookie(session) { return `rtb_session=${session.id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.ttlMs / 1000)}`; }
@@ -84,12 +86,41 @@ export function createRegisteredLifecycleServices({ workspaceFile, localFile, no
   return services;
 }
 
+export function createRegisteredReleaseReviewServices({ lifecycleServices } = {}) {
+  const services = new Map();
+  const book = resolveBookProject();
+  if (lifecycleServices?.has(book.id)) services.set(book.id, (actor) => new ReleaseReviewService({ root: book.legacyRoot, projectId: book.id, actorResolver: () => actor }));
+  return services;
+}
+
+export function createRegisteredBetaPreparationServices({ lifecycleServices } = {}) {
+  const services = new Map();
+  const book = resolveBookProject();
+  const lifecycle = lifecycleServices?.get(book.id);
+  if (lifecycle) services.set(book.id, (actor) => new BetaPreparationService({ book, bindingProvider: lifecycle.bindingProvider, actorResolver: () => actor }));
+  return services;
+}
+
+function contextualService(services, projectId, actor = null) {
+  const value = services instanceof Map ? services.get(projectId) : services?.[projectId];
+  return typeof value === "function" ? value(actor) : value;
+}
+
+function publicBetaStatus(service) {
+  if (!service) return null;
+  const { state, code, message, chapterCount, failures } = service.inspect();
+  return { state, code, message, ...(chapterCount == null ? {} : { chapterCount }), ...(failures ? { failures } : {}) };
+}
+
 export function createPlatformServer(options = {}) {
   const indexService = options.indexService ?? (options.index ? { refresh: () => options.index } : new WorkspaceIndex({ file: options.workspaceFile, localFile: options.localFile }));
   const jobs = options.jobs ?? new JobManager(options.jobOptions);
   const csrfToken = options.csrfToken ?? randomBytes(24).toString("hex");
   const sessions = options.sessions ?? new LocalSessionManager({ now: options.now, ttlMs: options.sessionTtlMs });
   const lifecycleServices = options.lifecycleServices ?? (options.lifecycleService ? new Map([[options.lifecycleService.projectId, options.lifecycleService]]) : options.mutationService ? new Map() : createRegisteredLifecycleServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }));
+  const useRegisteredPublicationServices = !options.lifecycleService && !options.mutationService;
+  const releaseReviewServices = options.releaseReviewServices ?? (useRegisteredPublicationServices ? createRegisteredReleaseReviewServices({ lifecycleServices }) : new Map());
+  const betaPreparationServices = options.betaPreparationServices ?? (useRegisteredPublicationServices ? createRegisteredBetaPreparationServices({ lifecycleServices }) : new Map());
   const requests = new Map();
   const server = createHttpServer(async (request, response) => {
     let rebootstrap;
@@ -112,27 +143,41 @@ export function createPlatformServer(options = {}) {
       if (request.method === "POST" && url.pathname === "/api/session/bootstrap") {
         if (!sameListener || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "operator_bootstrap_denied", message: "Local operator bootstrap requires the direct local origin." });
         const input = await body(request);
-        if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit operator confirmation is required." });
-        const session = sessions.bootstrap(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"], input.operatorId);
-        if (!session) return json(response, 403, { error: "operator_bootstrap_denied", message: "Refresh the local session and provide a valid operator identity." });
+        if (input.confirm !== true || Object.keys(input).some((key) => key !== "confirm")) return json(response, 400, { error: "confirmation", message: "Explicit confirmation is required; reviewer identity is created by the local server." });
+        const session = sessions.bootstrap(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        if (!session) return json(response, 403, { error: "operator_bootstrap_denied", message: "Refresh the local session and confirm the human review session again." });
         return json(response, 200, { operator: session.operatorId, csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability });
       }
       const index = indexService.refresh();
-      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries([...lifecycleServices].map(([id, service]) => [id, service.status()])) });
-      const betaEvidenceMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/beta-evidence$/);
-      if (request.method === "POST" && betaEvidenceMatch) {
-        const service = lifecycleServices.get(betaEvidenceMatch[1]), session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
-        if (!service?.bindingProvider?.registerBeta || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "beta_evidence_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
-        const input = await body(request); if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit confirmation is required." });
+      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries([...lifecycleServices].map(([id, service]) => [id, service.status()])), releaseReviews: Object.fromEntries([...releaseReviewServices].map(([id]) => [id, contextualService(releaseReviewServices, id)?.status()])), betaPreparation: Object.fromEntries([...betaPreparationServices].map(([id]) => [id, publicBetaStatus(contextualService(betaPreparationServices, id))])) });
+      const betaPreparationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/beta-preparation$/);
+      if (request.method === "POST" && betaPreparationMatch) {
+        const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        const service = contextualService(betaPreparationServices, betaPreparationMatch[1], session ? { type: "human", id: `local-operator:${session.operatorId}` } : null);
+        if (!service || !session?.operatorId || url.search || !sameListener || !loopbackHost(request.headers.host) || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "beta_preparation_auth", message: "A confirmed local human session and direct loopback origin are required." });
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
-        const result = service.bindingProvider.registerBeta({ betaSnapshotHash: input.betaSnapshotHash, policyResultsHash: input.policyResultsHash, reviewerId: `local-operator:${session.operatorId}` });
-        return json(response, 201, result, rebootstrap);
+        const input = await body(request);
+        if (input.confirm !== true || Object.keys(input).some((key) => key !== "confirm")) return json(response, 400, { error: "beta_preparation_authority", message: "Beta preparation accepts confirmation only; hashes and reviewer identity are resolved by the server." }, rebootstrap);
+        try { return json(response, 201, service.prepare(), rebootstrap); }
+        catch (error) { return json(response, 409, { error: "beta_preparation_blocked", message: error.message }, rebootstrap); }
+      }
+      const reviewMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/release-reviews\/(migration-visual-review|pdf-screen-reader-visual-review|rights-and-brand-review)$/);
+      if (request.method === "POST" && reviewMatch) {
+        const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        const service = contextualService(releaseReviewServices, reviewMatch[1], session ? { type: "human", id: `local-operator:${session.operatorId}` } : null);
+        if (!service || !session?.operatorId || url.search || !sameListener || !loopbackHost(request.headers.host) || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "release_review_auth", message: "A confirmed local human session and direct loopback origin are required." });
+        rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
+        const input = await body(request);
+        if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit human review confirmation is required." }, rebootstrap);
+        const recordInput = { ...input, kind: reviewMatch[2] }; delete recordInput.confirm;
+        try { return json(response, 201, service.record(recordInput), rebootstrap); }
+        catch (error) { return json(response, 400, { error: "release_review_rejected", message: error.message }, rebootstrap); }
       }
       const gateMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/gates\/(blueprint|beta|publish)$/);
       if (request.method === "POST" && gateMatch) {
         const service = lifecycleServices.get(gateMatch[1]); const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "gate_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
-        const input = await body(request); if (input.confirm !== true || !Number.isInteger(input.expectedVersion) || (input.reason && typeof input.reason !== "string")) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and current version are required." });
+        const input = await body(request); if (input.confirm !== true || !Number.isInteger(input.expectedVersion) || (input.reason && typeof input.reason !== "string") || Object.keys(input).some((key) => !["confirm", "expectedVersion", "reason"].includes(key))) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and current version are required; lifecycle bindings and actor identity are resolved by the server." });
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
         const result = await service.approve({ gate: gateMatch[2], expectedVersion: input.expectedVersion, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
         return json(response, result.state === "succeeded" ? 202 : result.state === "conflict" ? 409 : 400, result, rebootstrap);
@@ -199,7 +244,7 @@ export function createPlatformServer(options = {}) {
       return json(response, 400, { error: "request_failed", message: "Request could not be processed safely." }, rebootstrap);
     }
   });
-  return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices, lifecycleServices };
+  return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices, lifecycleServices, releaseReviewServices, betaPreparationServices };
 }
 
 export async function startPlatform({ host = "127.0.0.1", port = 4310, ...options } = {}) {

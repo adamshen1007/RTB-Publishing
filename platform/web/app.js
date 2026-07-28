@@ -27,14 +27,52 @@ function projectCard(project, index) {
 function lifecyclePanel(project, lifecycle) {
   const section = node("section", "lifecycle-review"); section.setAttribute("aria-label", "Lifecycle review");
   const current = lifecycle.lifecycle;
-  section.append(node("h4", "", "Human review gates"), node("p", "muted", current ? `Lifecycle ${current.version} · ${current.state.replaceAll("_", " ")}` : lifecycle.unavailable));
+  section.append(node("h4", "", "Guided release review"), node("p", "muted", current ? `Lifecycle ${current.version} · ${current.state.replaceAll("_", " ")}` : lifecycle.unavailable));
+  const reviewStatus = state.data?.releaseReviews?.[project.id];
+  if (reviewStatus) section.append(releaseReviewControls(project, reviewStatus));
+  const betaPreparation = state.data?.betaPreparation?.[project.id];
+  if (betaPreparation) section.append(betaPreparationControl(project, betaPreparation));
   ["blueprint", "beta", "publish"].forEach((gate) => {
     const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
     row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
     const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
-    const registerEvidence = gate === "beta" && !result?.ok, action = node("button", "quiet-button", registerEvidence ? "Register reviewed Beta evidence" : `Confirm ${label}`); action.type = "button"; action.disabled = registerEvidence ? !state.operator : !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => registerEvidence ? registerBetaEvidence(project) : confirmGate(project, gate, current.version)); row.append(action); section.append(row);
+    const action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version)); row.append(action); section.append(row);
   });
   return section;
+}
+
+const reviewLabels = {
+  "migration-visual-review": "Migration visual review",
+  "pdf-screen-reader-visual-review": "PDF and screen-reader visual review",
+  "rights-and-brand-review": "Rights and brand review",
+};
+
+function releaseReviewControls(project, status) {
+  const group = node("div", "review-group");
+  const heading = node("h5", "", "Candidate-bound release reviews"); group.append(heading, node("p", "muted", status.message));
+  Object.entries(reviewLabels).forEach(([kind, label]) => {
+    const review = status.reviews[kind], row = node("div", "review-row"), detailId = `${project.id}-${kind}-status`;
+    const title = node("strong", "", label), durable = node("span", `review-decision ${review.decision}`, review.decision); row.append(title, durable);
+    const detail = node("p", "muted", review.message); detail.id = detailId; row.append(detail);
+    let roleInput = null;
+    if (kind === "rights-and-brand-review") {
+      const inputId = `${project.id}-rights-role`, labelNode = node("label", "declaration-label", "Declaration: my qualified rights-review role"); labelNode.htmlFor = inputId;
+      roleInput = node("input", "declaration-input"); roleInput.id = inputId; roleInput.type = "text"; roleInput.maxLength = 200; roleInput.autocomplete = "organization-title"; roleInput.placeholder = "For example: publishing rights owner"; roleInput.setAttribute("aria-describedby", `${detailId} ${inputId}-help`);
+      const help = node("small", "muted", "Required only for approval. This is your human declaration, not a server-verified credential."); help.id = `${inputId}-help`; row.append(labelNode, roleInput, help);
+    }
+    const actions = node("div", "review-actions");
+    ["approved", "rejected"].forEach((decision) => { const button = node("button", decision === "approved" ? "action" : "quiet-button", decision === "approved" ? "Record approval" : "Record rejection"); button.type = "button"; button.disabled = !state.operator || !status.candidateHash; button.setAttribute("aria-describedby", detailId); button.addEventListener("click", () => recordReleaseReview(project, kind, decision, roleInput)); actions.append(button); });
+    row.append(actions); group.append(row);
+  });
+  return group;
+}
+
+function betaPreparationControl(project, status) {
+  const row = node("div", "gate-row beta-preparation"), detailId = `${project.id}-beta-preparation-status`;
+  row.append(node("strong", "", "Prepare exact Beta material"), node("span", status.state === "ready" ? "gate-ready" : "gate-unavailable", status.state === "ready" ? "Receipt current" : "Blocked"));
+  const detail = node("p", "muted", status.message); detail.id = detailId; row.append(detail);
+  const action = node("button", "action", "Prepare Beta"); action.type = "button"; action.disabled = status.state !== "ready" || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => prepareBeta(project)); row.append(action);
+  return row;
 }
 
 function renderJobs(jobs) {
@@ -67,6 +105,7 @@ function render(data) {
 }
 
 function showNotice(message) { const notice = $("#notice"); notice.textContent = message; notice.hidden = !message; }
+function captureRotation(response) { state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability; }
 
 function metric(label, value) { const item = node("div", "dossier-metric"); item.append(node("strong", "", value), node("span", "", label)); return item; }
 async function openDossier(project) {
@@ -91,30 +130,40 @@ async function jobAction(job, action) {
 }
 
 async function confirmGate(project, gate, expectedVersion) {
-  const reason = window.prompt(`Record an explicit ${gate} decision for ${project.name}. Why is it ready?`);
-  if (reason === null || !window.confirm(`Confirm ${gate} as ${state.operator}?`)) return;
-  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, expectedVersion, reason }) });
+  if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, expectedVersion, reason: `Explicit guided Creator Studio ${gate} approval` }) });
   const result = await response.json();
-  state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability;
-  if (!response.ok) return showNotice(result.message); await refresh();
+  captureRotation(response); if (!response.ok) return showNotice(result.message); await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
 }
 
-async function registerBetaEvidence(project) {
-  const betaSnapshotHash = window.prompt("Paste the 64-character SHA-256 for the reviewed Notion Beta snapshot."); if (!betaSnapshotHash) return;
-  const policyResultsHash = window.prompt("Paste the 64-character SHA-256 for its completed policy-results record."); if (!policyResultsHash || !window.confirm(`Register this exact Beta evidence as ${state.operator}?`)) return;
-  const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-evidence`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, betaSnapshotHash, policyResultsHash }) });
-  const result = await response.json(); state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability;
-  if (!response.ok) return showNotice(result.message); showNotice("Beta evidence registered. Review the now-ready Beta gate before confirming it."); await refresh();
+async function prepareBeta(project) {
+  if (!window.confirm("Prepare Beta from every current canonical chapter and the fixed private Notion sync receipt?")) return;
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-preparation`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+  const result = await response.json(); captureRotation(response);
+  if (!response.ok) return showNotice(result.message); await refresh(); showNotice("Exact Beta material prepared on the server. Review the now-ready Beta gate before approving it.");
+}
+
+async function recordReleaseReview(project, kind, decision, roleInput) {
+  const qualifiedRole = roleInput?.value.trim() ?? "";
+  if (kind === "rights-and-brand-review" && decision === "approved" && !qualifiedRole) { roleInput.focus(); return showNotice("Declare your non-empty qualified rights-review role before recording approval."); }
+  if (!window.confirm(`Record a durable ${decision} decision for ${reviewLabels[kind]} on the latest exact candidate?`)) return;
+  const payload = { confirm: true, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
+  const response = await fetch(`/api/projects/${project.id}/release-reviews/${kind}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
+  const result = await response.json(); captureRotation(response);
+  if (!response.ok) return showNotice(result.message); await refresh(); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the latest exact candidate.`);
 }
 
 async function bootstrapOperator() {
-  const operatorId = window.prompt("Enter your local operator identity before recording human lifecycle approvals.");
-  if (!operatorId) return;
-  const response = await fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, operatorId }) });
+  if (!window.confirm("Confirm that a human is present and taking responsibility for review decisions in this local session?")) return;
+  const submit = () => fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+  let response = await submit();
+  if (response.status === 403) { await issueSession(); response = await submit(); }
   const result = await response.json();
   if (!response.ok) return showNotice(result.message);
-  state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; await refresh();
+  state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; $("#human-session-status").textContent = "Confirmed human review session"; $("#confirm-human-session").textContent = "Renew human review session"; await refresh();
 }
+
+async function issueSession() { const session = await (await fetch("/api/session")).json(); state.operator = null; state.csrfToken = session.csrfToken; state.mutationCapability = session.mutationCapability; $("#human-session-status").textContent = "Human review session not confirmed"; }
 
 async function refresh() {
   const response = await fetch("/api/workspace"); if (!response.ok) throw new Error("Workspace state could not be loaded. Run platform doctor in the terminal."); render(await response.json()); showNotice("");
@@ -130,7 +179,8 @@ async function runWorkflow(project, workflow, button) {
 }
 
 $("#refresh").addEventListener("click", refresh);
+$("#confirm-human-session").addEventListener("click", bootstrapOperator);
 $("#close-dossier").addEventListener("click", () => $("#dossier").close());
 $("#open-onboarding").addEventListener("click", () => $("#onboarding").showModal());
 $("#close-onboarding").addEventListener("click", () => $("#onboarding").close());
-try { const session = await (await fetch("/api/session")).json(); state.csrfToken = session.csrfToken; state.mutationCapability = session.mutationCapability; await refresh(); await bootstrapOperator(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }
+try { await issueSession(); await refresh(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }

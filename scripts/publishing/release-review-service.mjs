@@ -30,6 +30,23 @@ export class ReleaseReviewService {
 
   currentCandidate() { return this.store.currentCandidate(this.projectId); }
 
+  status() {
+    const candidate = this.currentCandidate();
+    if (!candidate) return {
+      state: "blocked",
+      message: "Release reviews are blocked until a verified HTML, PDF, and EPUB release candidate is registered.",
+      candidateHash: null,
+      reviews: Object.fromEntries(RELEASE_REVIEW_KINDS.map((kind) => [kind, { decision: "pending", message: "Build and register the release candidate before reviewing it." }])),
+    };
+    verifyCandidate(candidate);
+    const latest = this.store.latestForCandidate(this.projectId, candidate.candidateHash);
+    const reviews = Object.fromEntries(RELEASE_REVIEW_KINDS.map((kind) => {
+      const record = latest[kind];
+      return [kind, record ? { decision: record.decision, reviewer: record.reviewer, createdAt: record.createdAt, message: record.decision === "approved" ? "Durable approval recorded for the current exact candidate." : "The current exact candidate was rejected; resolve the finding, rebuild, and review the new candidate." } : { decision: "pending", message: "No durable decision has been recorded for the current exact candidate." }];
+    }));
+    return { state: Object.values(reviews).every((review) => review.decision === "approved") ? "approved" : "review_required", message: "Review decisions below are durable and bound to the latest registered candidate.", candidateHash: candidate.candidateHash, reviews };
+  }
+
   record(input = {}) {
     for (const field of AUTHORITATIVE_FIELDS) if (Object.hasOwn(input, field)) throw new Error(`Release review requests cannot author ${field}; it is resolved by the server.`);
     const supplied = Object.keys(input);

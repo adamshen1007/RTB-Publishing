@@ -67,3 +67,17 @@ diagrams remain owned by the publishing build.
 - Never store private Notion URLs or page IDs in committed files.
 - `pnpm notion:check` must cover exactly the canonical 23 chapters and report
   missing worksheet, source, or release records before a sync is accepted.
+
+## Guided Beta Preparation
+
+Creator Studio prepares Beta material only from the fixed private receipt at
+`.rtb-publishing/notion/sync-state.json`. The server compares every discovered
+canonical chapter ID and source hash with that receipt. A missing record, stale
+hash, malformed receipt, or missing receipt blocks preparation with repair
+guidance.
+
+The server hashes a normalized snapshot containing canonical chapter identity,
+path, and source hashes; private Notion page and workspace IDs are excluded. It
+also hashes the deterministic passed policy result and creates the reviewer
+identity from the confirmed local human session. The browser sends none of
+those hashes or identity fields.
