@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
@@ -17,11 +17,14 @@ import { publicationExport } from "../scripts/notion-publication.mjs";
 import { openStateDatabase } from "../scripts/state/database.mjs";
 import { acquireProjectLock, acquireWorkspaceOutputLock } from "../scripts/state/project-lock.mjs";
 import { resolveBookProject } from "../scripts/books/discovery.mjs";
+import { initializeSnapshots, materializeSnapshot, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
 
-function fixture() {
-  const workspaceRoot = mkdtempSync(resolve(tmpdir(), "rtb-real-build-")), legacyRoot = resolve(workspaceRoot, "books", "nested");
+function fixture({ snapshots = false } = {}) {
+  const workspaceRoot = realpathSync(mkdtempSync(resolve(tmpdir(), "rtb-real-build-"))), legacyRoot = resolve(workspaceRoot, "books", "nested");
   cpSync(resolve("tests/fixtures/books/one-chapter"), legacyRoot, { recursive: true });
-  const discovered = resolveBookProject(legacyRoot, { workspaceRoot }), project = { ...discovered, outputProfiles: ["html", "pdf", "epub"].map((format) => ({ format, path: `${discovered.id}.${format}` })) };
+  const manifestPath = resolve(legacyRoot, "book.project.yaml"), manifest = readFileSync(manifestPath, "utf8").replace("output_profiles: [{ id: web-edition, format: html, path: outputs/index.html }]", "output_profiles: [{ id: web-edition, format: html, path: outputs/index.html }, { id: pdf-edition, format: pdf, path: outputs/book.pdf }, { id: epub-edition, format: epub, path: outputs/book.epub }]"); writeFileSync(manifestPath, manifest);
+  if (snapshots) initializeSnapshots(legacyRoot);
+  const project = resolveBookProject(legacyRoot, { workspaceRoot });
   return { workspaceRoot, legacyRoot, project, buildRoot: resolve(workspaceRoot, "build", "publishing"), candidateRoot: resolve(workspaceRoot, "dist", "candidates"), releaseRoot: resolve(workspaceRoot, "dist", "releases"), dispose: () => rmSync(workspaceRoot, { recursive: true, force: true }) };
 }
 
@@ -35,6 +38,8 @@ function deterministicOrchestration(content = "v1") {
     verifyFormats: async ({ outputs, sourceFingerprint }) => ({ schemaVersion: 1, sourceFingerprint, status: "passed", semanticParity: { status: "passed" }, html: { status: "passed" }, epub: { status: "passed" }, pdf: { status: "passed" }, artifacts: Object.fromEntries(Object.entries(outputs).map(([format, file]) => [format, { path: basename(file), mediaType: `test/${format}`, bytes: statSync(file).size, sha256: fileHash(file) }])) }),
   };
 }
+
+function advancePointer(root, _label) { const prior = readPointer(root), next = materializeSnapshot(root, { sourceRoot: snapshotRoot(root, prior.snapshotHash) }); return writePointer(root, { expected: prior, nextSnapshotHash: next.hash, nextVersion: prior.version + 1 }); }
 
 async function approve(project, candidate) {
   const provider = new CanonicalLifecycleBindingProvider({ book: project }), service = new LifecycleService({ root: project.legacyRoot, projectId: project.id, bindingProvider: provider });
@@ -83,8 +88,24 @@ test("public promotion boundary rejects missing, stale, wrong-root, and caller-s
   } finally { item.dispose(); rmSync(outside, { recursive: true, force: true }); }
 });
 
+test("publishing rejects symlinked project and output namespace ancestors before external mutation", async (context) => {
+  for (const kind of ["project", "dist", "candidates", "immutable"]) await context.test(kind, async () => {
+    const item = fixture(), external = realpathSync(mkdtempSync(resolve(tmpdir(), `rtb-external-${kind}-`)));
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(kind) };
+      let project = item.project, approvalId = null;
+      if (kind === "project") { const link = resolve(item.workspaceRoot, "books", "linked"); symlinkSync(item.legacyRoot, link); project = { ...item.project, legacyRoot: link, workspacePath: "books/linked" }; }
+      if (kind === "dist") symlinkSync(external, resolve(item.workspaceRoot, "dist"));
+      if (kind === "candidates") { mkdirSync(resolve(item.workspaceRoot, "dist")); symlinkSync(external, item.candidateRoot); }
+      if (kind === "immutable") { const candidateOnly = await buildRelease(project, base); approvalId = (await approve(project, candidateOnly.candidate)).id; mkdirSync(item.releaseRoot, { recursive: true }); symlinkSync(external, resolve(item.releaseRoot, "immutable")); }
+      await assert.rejects(() => buildRelease(project, { ...base, approvalId }), /symbolic link/);
+      assert.equal(existsSync(resolve(external, ".staging")), false);
+    } finally { item.dispose(); rmSync(external, { recursive: true, force: true }); }
+  });
+});
+
 test("approved build prints a fully quoted exact verification command that executes", async () => {
-  const workspaceRoot = mkdtempSync(resolve(tmpdir(), "rtb-command-workspace-")), projectRoot = resolve(workspaceRoot, "books", "yc playbook;safe");
+  const workspaceRoot = realpathSync(mkdtempSync(resolve(tmpdir(), "rtb-command-workspace-"))), projectRoot = resolve(workspaceRoot, "books", "yc playbook;safe");
   try {
     cpSync(resolve("books/volume-01-yc-playbook"), projectRoot, { recursive: true });
     const project = resolveBookProject(projectRoot, { workspaceRoot }), base = { lifecycleVersion: 2, workspaceRoot, buildRoot: resolve(workspaceRoot, "build", "publishing"), candidateRoot: resolve(workspaceRoot, "dist", "candidates"), releaseRoot: resolve(workspaceRoot, "dist", "releases"), orchestration: deterministicOrchestration("command") };
@@ -152,6 +173,37 @@ test("material verification cannot complete after live approval authority expire
     const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
     assert.equal(existsSync(completed.release), true);
   } finally { item.dispose(); }
+});
+
+test("stale canonical pointers before lock, after render, and before completion never publish", async (context) => {
+  await context.test("before locks", async () => {
+    const item = fixture({ snapshots: true });
+    try {
+      advancePointer(item.legacyRoot, "changed-before-lock");
+      await assert.rejects(() => buildRelease(item.project, { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("before-lock") }), /snapshot is stale/);
+      assert.equal(existsSync(resolve(item.candidateRoot, item.project.id)), false);
+    } finally { item.dispose(); }
+  });
+  await context.test("after rediscovery and render", async () => {
+    const item = fixture({ snapshots: true });
+    try {
+      await assert.rejects(() => buildRelease(item.project, { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("after-render"), hooks: { afterRender: () => advancePointer(item.legacyRoot, "changed-after-render") } }), /snapshot or material changed/);
+      assert.equal(existsSync(resolve(item.candidateRoot, item.project.id)), false);
+    } finally { item.dispose(); }
+  });
+  await context.test("after material verification before completion", async () => {
+    const item = fixture({ snapshots: true });
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("before-completion") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: () => advancePointer(item.legacyRoot, "changed-before-completion") } }), /snapshot or material changed/);
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+      finally { database.close(); }
+      const fresh = resolveBookProject(item.legacyRoot, { workspaceRoot: item.workspaceRoot });
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /snapshot is stale/);
+      const freshCandidate = await buildRelease(fresh, base); assert.equal(freshCandidate.project.pointerVersion, item.project.pointerVersion + 1); assert.ok(freshCandidate.candidate.candidateHash);
+    } finally { item.dispose(); }
+  });
 });
 
 test("immutable release verification rejects external and internal symbolic links without mutating targets", async () => {

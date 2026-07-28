@@ -127,6 +127,24 @@ process, and random owner still match, so a stale or repeated release cannot
 unlink a successor writer's lock. This hierarchy ensures a workspace clean
 cannot race a build or finalization whose project root is nested below it.
 
+Workspace and project locks pin physical directory identity: canonical
+path plus device and inode. Lock acquisition rejects a symbolic-link lock
+directory and creates each missing directory segment only after checking its
+ancestors. Every later authority check revalidates that physical identity, so
+renaming and replacing a root invalidates the handle. Publishing, verification,
+and clean similarly reject symbolic links in existing project, `build`, `dist`,
+candidate, immutable, staging, and promotion path segments before touching
+their contents. A symlink is never followed to establish a trusted output root.
+
+After both physical locks are held, publication discards the caller's material
+view and re-discovers the canonical Book Project. It requires the caller view
+to match the fresh ID, physical roots, workspace path, authority, snapshot hash,
+pointer version, manifest, Blueprint, metadata, and chapter-byte identity.
+That identity is checked again after rendering, before finalization, and
+immediately before promotion capability consumption. A changed
+`.rtb-content/current.json` pointer or canonical byte causes rollback and leaves
+the release ledger pending; only a newly discovered build may retry.
+
 The release build holds that lock while it renders in unique staging,
 registers the candidate, finalizes approved material, and performs the last
 verification. Candidate-only builds move to

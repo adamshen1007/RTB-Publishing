@@ -1,8 +1,10 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
+import { createHash } from "node:crypto";
 import { ROOT } from "../lib.mjs";
 import { readSnapshot } from "../state/snapshots.mjs";
+import { assertNoSymlinkPath, pinPhysicalDirectory } from "../state/project-lock.mjs";
 import { discoverBookProjects as manifestFiles, resolveSafeRelativePath, validateFile } from "./model.mjs";
 
 const ignored = new Set([".git", ".rtb-content", ".rtb-state", ".tmp", "node_modules", "build", "dist", "tests", "examples"]);
@@ -23,18 +25,20 @@ function readYaml(root, path) {
  * their legacy working tree during the documented transition.
  */
 export function resolveProjectRoot(projectRoot, { preferCanonical = true } = {}) {
-  const legacyRoot = resolve(projectRoot);
+  const legacyRoot = pinPhysicalDirectory(projectRoot).path;
   if (!preferCanonical || !existsSync(resolve(legacyRoot, ".rtb-content", "current.json"))) {
     return { root: legacyRoot, authority: "legacy-working-tree", snapshotHash: null, pointerVersion: null };
   }
   const snapshot = readSnapshot(legacyRoot);
+  assertNoSymlinkPath(legacyRoot, snapshot.root, { allowMissing: false });
   return { root: snapshot.root, authority: "rtb-content-current", snapshotHash: snapshot.snapshotHash, pointerVersion: snapshot.version };
 }
 
 function projectFromManifest(manifestFile, { workspaceRoot = ROOT, preferCanonical = true } = {}) {
-  const workspace = resolve(workspaceRoot);
-  const legacyRoot = dirname(manifestFile);
+  const workspace = pinPhysicalDirectory(workspaceRoot).path;
+  const legacyRoot = pinPhysicalDirectory(dirname(manifestFile)).path;
   safeRelative(workspace, legacyRoot);
+  assertNoSymlinkPath(workspace, legacyRoot, { allowMissing: false });
   const resolved = resolveProjectRoot(legacyRoot, { preferCanonical });
   const manifestPath = resolve(resolved.root, "book.project.yaml");
   if (!existsSync(manifestPath) || lstatSync(manifestPath).isSymbolicLink()) throw new Error(`Canonical project root has no safe manifest: ${manifestFile}`);
@@ -97,4 +101,29 @@ export function resolveBookProject(projectArgument, { workspaceRoot = ROOT } = {
   const projects = discoverBooks(workspaceRoot);
   if (projects.length !== 1) throw new Error(`Expected exactly one discoverable Book Project; found ${projects.length}. Pass an explicit project path.`);
   return projects[0];
+}
+
+export function projectCanonicalIdentity(project) {
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const material = {
+    id: project.id,
+    root: realpathSync(project.root),
+    legacyRoot: realpathSync(project.legacyRoot),
+    workspaceRoot: realpathSync(project.workspaceRoot),
+    workspacePath: project.workspacePath,
+    authority: project.authority,
+    snapshotHash: project.snapshotHash,
+    pointerVersion: project.pointerVersion,
+    manifest: project.manifest,
+    blueprint: project.blueprint,
+    metadataHash: digest(project.metadata),
+    chapters: project.chapters.map((chapter) => ({ id: chapter.id, order: chapter.order, sourcePath: relative(project.root, chapter.sourcePath).split(sep).join("/"), contentHash: digest(readFileSync(chapter.sourcePath)) })),
+  };
+  return { ...material, materialHash: digest(JSON.stringify(material)) };
+}
+
+export function assertCurrentProjectIdentity(project) {
+  const current = resolveBookProject(project.legacyRoot, { workspaceRoot: project.workspaceRoot });
+  if (projectCanonicalIdentity(current).materialHash !== projectCanonicalIdentity(project).materialHash) throw new Error("Canonical Book Project snapshot or material changed after it was pinned; rebuild from the fresh project.");
+  return current;
 }

@@ -81,6 +81,18 @@ The promotion boundary accepts no output directory from a caller. It validates
 both live locks and the discovered book/workspace relationship before marker
 recovery, then derives the only permitted immutable target from the workspace,
 project ID, and release ID.
+Both locks pin the real directory path plus device and inode. Existing path
+segments below the workspace—including the project, lock directories,
+`build`, `dist`, candidates, immutable releases, staging, and promotion
+targets—must be physical directories rather than symbolic links. Replacing a
+root after lock acquisition invalidates its handle before further mutation.
+
+The project is re-discovered only after both locks are held. RTB compares the
+fresh canonical identity—including snapshot pointer hash/version and all
+manifest, Blueprint, metadata, and chapter material—with the caller's view,
+then rechecks it after rendering and immediately before ledger completion. If
+the pointer or material changes, the attempt cannot promote or complete; start
+a fresh build from the newly discovered project.
 The prior release backup remains until the promoted directory passes exact
 verification again. Every rename has durable intent and completion phases.
 Before durable material verification, failure or restart restores the prior

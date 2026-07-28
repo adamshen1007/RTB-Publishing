@@ -225,6 +225,10 @@ Check:
 - If the final rebuild does not reproduce the approved candidate exactly, the
   command fails closed. Return to the new displayed candidate and repeat its
   reviews; do not alter the approval record.
+- If RTB reports a symbolic path, replaced physical root, or stale canonical
+  snapshot, stop. Restore real workspace/project/output directories, refresh
+  the project, and start a fresh candidate build. Do not reuse the stale
+  command or approval to force completion.
 - A Publish approval and release identity are single-use. Reusing either is
   rejected.
 - The displayed command creates a durable pending record for one exact

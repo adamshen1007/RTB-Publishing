@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock } from "../state/project-lock.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, assertPinnedDirectory, pinPhysicalDirectory } from "../state/project-lock.mjs";
 import { assertFutureExpiry, loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
 import { assertCurrentReleasePolicies, evaluateReleasePolicies } from "./policies.mjs";
 import { verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
 import { beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, promotionMarkers, recoverPromotion, rollbackPromotion } from "./promotion-state.mjs";
-import { resolveBookProject } from "../books/discovery.mjs";
+import { assertCurrentProjectIdentity, projectCanonicalIdentity, resolveBookProject } from "../books/discovery.mjs";
 
 const liveVerifiedPromotions = new WeakSet();
 function inside(root, path) { const value = relative(resolve(root), resolve(path)); return value !== ".." && !value.startsWith(`..${sep}`); }
@@ -18,13 +18,15 @@ function assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manif
   if (!heldWorkspaceLock || !heldLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
   assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
   assertLiveProjectLock(heldLock, root);
-  const workspace = resolve(workspaceRoot), projectRoot = resolve(root), declaredWorkspace = resolve(project.workspaceRoot ?? ""), declaredProject = resolve(workspace, project.workspacePath ?? "");
+  const workspaceIdentity = pinPhysicalDirectory(workspaceRoot), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, projectRoot = projectIdentity.path, declaredWorkspace = pinPhysicalDirectory(project.workspaceRoot ?? "").path, declaredProject = resolve(workspace, project.workspacePath ?? "");
   if (declaredWorkspace !== workspace || declaredProject !== projectRoot || resolve(project.legacyRoot) !== projectRoot || !inside(workspace, projectRoot)) throw new Error("Book Project is not the exact discovered project inside the locked workspace.");
+  assertNoSymlinkPath(workspace, projectRoot, { allowMissing: false });
   const discovered = resolveBookProject(projectRoot, { workspaceRoot: workspace });
-  if (discovered.id !== project.id || resolve(discovered.legacyRoot) !== projectRoot || resolve(discovered.workspaceRoot) !== workspace) throw new Error("Book Project identity does not match current workspace discovery.");
+  if (projectCanonicalIdentity(discovered).materialHash !== projectCanonicalIdentity(project).materialHash) throw new Error("Book Project identity does not match current workspace discovery.");
   if (manifest.projectId !== project.id) throw new Error("Manifest project does not match the locked discovered Book Project.");
   const immutableRoot = resolve(workspace, "dist", "releases", "immutable"), target = resolve(immutableRoot, project.id, manifest.releaseId);
-  return { workspace, projectRoot, immutableRoot, target };
+  assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, target);
+  return { workspace, workspaceIdentity, projectRoot, projectIdentity, immutableRoot, target };
 }
 
 function buildManifest(candidate, approval, releasePolicies) {
@@ -81,8 +83,9 @@ function prepare(database, project, candidateHash, approvalId, legacyReleaseDire
 }
 
 function complete(database, root, project, releaseDirectory, manifest, capability, beforeCommit) {
-  const workspace = resolve(project.workspaceRoot ?? ""), immutableRoot = resolve(workspace, "dist", "releases", "immutable");
-  if (!capability || !liveVerifiedPromotions.delete(capability) || capability.workspaceRoot !== workspace || capability.immutableRoot !== immutableRoot || capability.projectRoot !== resolve(root) || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
+  const workspaceIdentity = pinPhysicalDirectory(project.workspaceRoot ?? ""), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, immutableRoot = resolve(workspace, "dist", "releases", "immutable");
+  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
+  if (!capability || !liveVerifiedPromotions.delete(capability) || capability.workspaceRoot !== workspace || capability.workspaceIdentity.dev !== workspaceIdentity.dev || capability.workspaceIdentity.ino !== workspaceIdentity.ino || capability.immutableRoot !== immutableRoot || capability.projectRoot !== projectIdentity.path || capability.projectIdentity.dev !== projectIdentity.dev || capability.projectIdentity.ino !== projectIdentity.ino || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
   database.exec("BEGIN IMMEDIATE");
   try {
     const record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ?").get(manifest.releaseId);
@@ -150,8 +153,10 @@ async function completeFinalizedRelease(options) {
 /** Sole promotion/completion boundary; no caller can mint completion authority. */
 export async function promoteFinalizedRelease(options) {
   const { root, workspaceRoot, project, candidate, manifest, token, hooks = {}, heldWorkspaceLock, heldLock } = options;
-  const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
+  if (!heldWorkspaceLock || !heldLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
+  assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot); assertLiveProjectLock(heldLock, root);
   if (Object.hasOwn(options, "outputRoot") || Object.hasOwn(options, "promotionInput")) throw new Error("Callers cannot select an immutable promotion output root.");
+  const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
   if (!token) throw new Error("Immutable release promotion requires its build transaction token.");
   const promotionInput = { outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, token };
   let context;
@@ -167,7 +172,7 @@ export async function promoteFinalizedRelease(options) {
     verifyReleaseDirectoryMaterial(target, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
     await hooks.afterPromotionVerification?.({ release: target, promotion: context });
     if (context.phase !== "material-verified") context = markPromotionMaterialVerified(context, hooks.promotionBoundary);
-    const capability = { workspaceRoot: authority.workspace, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context };
+    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context };
     liveVerifiedPromotions.add(capability);
     await completeFinalizedRelease({ root, workspaceRoot, project, releaseDirectory: target, manifest, capability, heldWorkspaceLock, heldLock, hooks });
     await hooks.afterLedgerCompletion?.({ release: target, promotion: context });

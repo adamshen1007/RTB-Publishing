@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -29,6 +29,19 @@ test("double release cannot unlink a successor lock", async () => {
     assert.equal(assertLiveProjectLock(successor, root), successor);
     successor.release();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("locks reject symbolic lock directories and physical root replacement", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-physical-")), moved = `${root}-moved`, external = mkdtempSync(resolve(tmpdir(), "rtb-lock-external-"));
+  try {
+    symlinkSync(external, resolve(root, ".rtb-state"));
+    await assert.rejects(() => acquireWorkspaceOutputLock(root), /symbolic link/);
+    rmSync(resolve(root, ".rtb-state"));
+    const handle = await acquireWorkspaceOutputLock(root);
+    renameSync(root, moved); mkdirSync(root);
+    assert.throws(() => assertLiveWorkspaceOutputLock(handle, root), /physical identity/);
+    handle.release();
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(moved, { recursive: true, force: true }); rmSync(external, { recursive: true, force: true }); }
 });
 
 test("clean waits for a nested project's workspace output lock before removing outputs", async () => {
