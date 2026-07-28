@@ -2,13 +2,15 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, normalize, resolve, sep } from "node:path";
 import { resolve as resolveOutput } from "node:path";
-import { discoverBookProject } from "./books/discovery.mjs";
-import { DEFAULT_BOOK_PROJECT, DIST_DIR } from "./lib.mjs";
+import { projectOutputPath } from "./books/assemble.mjs";
+import { resolveBookProject } from "./books/discovery.mjs";
+import { DIST_DIR } from "./lib.mjs";
 
-const project = discoverBookProject(process.argv[2] ?? DEFAULT_BOOK_PROJECT);
+const project = resolveBookProject(process.argv[2]);
 const BOOK_DIST_DIR = resolveOutput(DIST_DIR, "books", project.id);
+const htmlName = projectOutputPath(project, resolveOutput(DIST_DIR, "books"), "html").split("/").at(-1);
 
-if (!existsSync(resolve(BOOK_DIST_DIR, "index.html"))) {
+if (!existsSync(resolve(BOOK_DIST_DIR, htmlName))) {
   console.error("No HTML build found. Run pnpm build before pnpm preview.");
   process.exit(1);
 }
@@ -29,7 +31,7 @@ const contentTypes = {
 
 const server = createServer((request, response) => {
   const requestPath = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
-  const relativePath = requestPath === "/" ? "index.html" : normalize(requestPath).replace(/^[/\\]+/, "");
+  const relativePath = requestPath === "/" ? htmlName : normalize(requestPath).replace(/^[/\\]+/, "");
   const file = resolve(BOOK_DIST_DIR, relativePath);
   if (file !== BOOK_DIST_DIR && !file.startsWith(`${BOOK_DIST_DIR}${sep}`)) {
     response.writeHead(403).end("Forbidden");

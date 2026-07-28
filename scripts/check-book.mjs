@@ -1,8 +1,7 @@
-import { DEFAULT_BOOK_PROJECT } from "./lib.mjs";
 import { validateBook } from "./book-contract.mjs";
-import { discoverBookProject } from "./books/discovery.mjs";
+import { resolveBookProject } from "./books/discovery.mjs";
 
-const project = discoverBookProject(process.argv[2] ?? DEFAULT_BOOK_PROJECT);
+const project = resolveBookProject(process.argv[2]);
 const result = validateBook({ project });
 
 if (result.failures.length) {

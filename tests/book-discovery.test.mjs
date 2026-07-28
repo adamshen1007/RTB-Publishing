@@ -5,12 +5,20 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
 import { initializeSnapshots } from "../scripts/state/snapshots.mjs";
+import { outputDispatch } from "../scripts/build-book.mjs";
 
 test("MIG-001/MIG-003: generic discovery finds versioned projects of different shapes", () => {
   const projects = discoverBooks(resolve("tests/fixtures/books/discoverable"));
   assert.deepEqual(projects.map((project) => project.id), ["english-field-guide", "guide-francais"]);
   assert.notEqual(projects[0].chapters.length, projects[1].chapters.length);
   assert.notEqual(projects[0].parts.length, projects[1].parts.length);
+});
+
+test("MIG-003: profile dispatch is data-driven for one, 23, and French PDF/EPUB projects", () => {
+  const one = discoverBookProject("tests/fixtures/books/one-chapter", { workspaceRoot: "tests/fixtures/books/one-chapter" });
+  const yc = discoverBookProject("books/volume-01-yc-playbook");
+  const french = discoverBookProject("tests/fixtures/books/discoverable/french", { workspaceRoot: "tests/fixtures/books/discoverable/french" });
+  assert.equal(one.chapters.length, 1); assert.equal(yc.chapters.length, 23); assert.ok(outputDispatch(french).every((profile) => ["epub", "pdf"].includes(profile.format)));
 });
 
 test("MIG-002: a project cannot resolve outside its safe root", () => {

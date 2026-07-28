@@ -19,6 +19,13 @@ test("Notion pages retain traceable paths and hashes", () => {
   assert.equal(sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 });
 
+test("Notion export accepts a generic project without YC path conventions", () => {
+  const payload = publicationExport("tests/fixtures/books/one-chapter");
+  assert.equal(payload.chapters.length, 1);
+  assert.match(payload.chapters[0].sourcePath, /chapters\/start\.md$/);
+  assert.deepEqual(validatePublicationExport(payload), []);
+});
+
 test("sync-state validation detects a stale or absent Notion copy", () => {
   const payload = publicationExport();
   const state = { chapters: Object.fromEntries(payload.chapters.map((chapter) => [chapter.number, { sourceHash: chapter.sourceHash }])) };

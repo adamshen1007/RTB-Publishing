@@ -11,7 +11,7 @@ const escapeHtml = (value) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
  * Produce deterministic evidence for, but never approval of, a human visual
  * migration review. The reviewer must record findings and the final decision.
  */
-export function generateMigrationReviewEvidence(projectOrRoot, outputDirectory) {
+export function generateMigrationReviewEvidence(projectOrRoot, outputDirectory, { beforeProject } = {}) {
   const project = typeof projectOrRoot === "object" ? projectOrRoot : discoverBookProject(projectOrRoot);
   const chapterRisk = project.chapters.map((chapter) => {
     const markdown = readFileSync(chapter.sourcePath, "utf8");
@@ -26,7 +26,8 @@ export function generateMigrationReviewEvidence(projectOrRoot, outputDirectory) 
     const item = selected.get(page.id);
     writeFileSync(resolve(outputDirectory, page.preview), `<!doctype html><html lang="${project.manifest.locale}"><meta charset="utf-8"><title>${page.id} migration preview</title><body><main><p>Machine-prepared migration evidence. Human review is required.</p><pre>${escapeHtml(item.markdown)}</pre></main></body></html>\n`);
   }
-  const report = migrationReport(project, project);
+  if (!beforeProject) throw new Error("Visual-review evidence requires the independently discovered pre-migration authority.");
+  const report = migrationReport(beforeProject, project);
   const evidence = { schema_version: "1", kind: "migration-visual-review-evidence", project_id: project.id, status: "awaiting-human-review", machine_oracle_status: report.status, pages, review_checklist: ["Compare source and HTML preview reading order, headings, callouts, links, tables, worksheets, diagrams and assets.", "Compare the same representative and risky pages in HTML, PDF, and EPUB when renderer artifacts are available.", "Record every finding, its classification, resolution, reviewer identity, review date, and final decision.", "Do not treat this review as accessibility conformance or legal/rights approval."], report_hash: hash(JSON.stringify(report)) };
   writeFileSync(resolve(outputDirectory, "review-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   return evidence;

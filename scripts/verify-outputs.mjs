@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bookMetadata } from "./book-contract.mjs";
 import { projectOutputPath } from "./books/assemble.mjs";
-import { discoverBookProject } from "./books/discovery.mjs";
-import { DEFAULT_BOOK_PROJECT, DIST_DIR } from "./lib.mjs";
+import { resolveBookProject } from "./books/discovery.mjs";
+import { DIST_DIR } from "./lib.mjs";
 
 function escaped(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
@@ -30,5 +30,5 @@ export function verifyOutputs(project, { outputRoot = resolve(DIST_DIR, "books")
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  try { for (const output of verifyOutputs(discoverBookProject(process.argv[2] ?? DEFAULT_BOOK_PROJECT))) console.log(`✓ ${output.file} (${output.size} bytes)`); } catch (error) { console.error(error.message); process.exitCode = 1; }
+  try { for (const output of verifyOutputs(resolveBookProject(process.argv[2]))) console.log(`✓ ${output.file} (${output.size} bytes)`); } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

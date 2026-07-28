@@ -3,12 +3,12 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileS
 import { basename, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import yauzl from "yauzl";
-import { BUILD_DIR, DEFAULT_BOOK_PROJECT, DIST_DIR, ROOT, localBinary, run } from "./lib.mjs";
-import { discoverBookProject } from "./books/discovery.mjs";
+import { BUILD_DIR, DIST_DIR, ROOT, localBinary, run } from "./lib.mjs";
+import { resolveBookProject } from "./books/discovery.mjs";
 import { projectOutputPath } from "./books/assemble.mjs";
 
 const DEFAULT_OUTPUT = resolve(BUILD_DIR, "acceptance", "increment-1", "baseline", "baseline.json");
-const DEFAULT_PROJECT = discoverBookProject(DEFAULT_BOOK_PROJECT);
+const DEFAULT_PROJECT = resolveBookProject();
 const SOURCE_REGISTRY = resolve(DEFAULT_PROJECT.root, DEFAULT_PROJECT.manifest.paths.research, "source-registry.md");
 const REQUIRED_COMMANDS = Object.freeze([
   { id: "pnpm-check", command: "pnpm", args: ["check"] },

@@ -2,8 +2,9 @@
 
 ## Machine evidence
 
-Status: `passed` for the deterministic semantic oracle when the canonical
-project is compared with itself through generic discovery. The report compares
+Status: `passed` for the deterministic semantic oracle when an independently
+pinned pre-WP96 Git authority (`2938d43`) is discovered and compared against
+the current generic Book Project. The report compares
 title and metadata; part and chapter order; headings; paragraphs; lists;
 tables; links; footnotes; callouts; worksheets; source references; diagrams;
 assets; language; and normalized text content. Each row has base and migrated
@@ -12,8 +13,7 @@ SHA-256 hashes plus a required classification.
 Reproduce the report:
 
 ```sh
-node scripts/books/migrate-yc.mjs books/volume-01-yc-playbook
-node scripts/books/migration-review.mjs books/volume-01-yc-playbook build/migration-review/yc
+node scripts/books/migrate-yc.mjs --before-commit 2938d43 --before-project books/volume-01-yc-playbook --after books/volume-01-yc-playbook
 ```
 
 ## Human visual review gate

@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { localBinary, ROOT, run } from "./lib.mjs";
 
@@ -23,7 +23,11 @@ export function renderMermaidBlocks(markdown, sourceName, outputDirectory, optio
     const stem = `${safeStem(basename(sourceName))}-diagram-${index}`;
     const sourceFile = resolve(outputDirectory, `${stem}.mmd`);
     const outputFile = resolve(outputDirectory, `${stem}.${options.format ?? "png"}`);
-    writeFileSync(sourceFile, `${match[1].trim()}\n`);
+    // mmdc is launched synchronously but Chromium starts a child process. Close
+    // and fsync the exact absolute input before it observes the path.
+    writeFileSync(sourceFile, `${match[1].trim()}\n`, { encoding: "utf8", mode: 0o600 });
+    const descriptor = openSync(sourceFile, "r"); try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+    if (!existsSync(sourceFile)) throw new Error(`Mermaid input disappeared before rendering: ${sourceFile}`);
     run(localBinary("mmdc"), [
       "-i", sourceFile, "-o", outputFile,
       "-p", resolve(ROOT, "publishing", "puppeteer-config.json"),

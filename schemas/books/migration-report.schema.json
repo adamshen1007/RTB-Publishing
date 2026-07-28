@@ -2,20 +2,18 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://rtb-publishing.local/schemas/books/migration-report.schema.json",
   "title": "Book Semantic Migration Report",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema_version", "report_type", "project_id", "base_snapshot", "migrated_snapshot", "dimensions", "source_hash", "migrated_hash", "status", "validators", "blocking_differences"],
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "report_type", "project_id", "base_identity", "migrated_identity", "dimensions", "source_hash", "migrated_hash", "status", "validators", "blocking_differences"],
   "properties": {
     "schema_version": { "const": "1" }, "report_type": { "const": "book-semantic-migration" }, "project_id": { "type": "string" },
-    "base_snapshot": { "$ref": "#/$defs/snapshot" }, "migrated_snapshot": { "$ref": "#/$defs/snapshot" },
-    "dimensions": { "type": "array", "minItems": 15, "items": { "$ref": "#/$defs/difference" } },
-    "source_hash": { "$ref": "#/$defs/hash" }, "migrated_hash": { "$ref": "#/$defs/hash" },
-    "status": { "enum": ["passed", "blocked"] }, "validators": { "type": "array", "minItems": 1 },
-    "blocking_differences": { "type": "array", "items": { "type": "string" } }
+    "base_identity": { "$ref": "#/$defs/identity" }, "migrated_identity": { "$ref": "#/$defs/identity" },
+    "dimensions": { "type": "array", "minItems": 15, "maxItems": 15, "items": { "$ref": "#/$defs/difference" } },
+    "source_hash": { "$ref": "#/$defs/hash" }, "migrated_hash": { "$ref": "#/$defs/hash" }, "status": { "enum": ["passed", "blocked"] },
+    "validators": { "type": "array", "minItems": 1, "items": { "type": "object", "additionalProperties": false, "required": ["id", "result"], "properties": { "id": { "type": "string" }, "result": { "enum": ["passed", "failed"] } } } }, "blocking_differences": { "type": "array", "items": { "type": "string" } }
   },
   "$defs": {
     "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-    "snapshot": { "type": "object", "additionalProperties": false, "required": ["authority", "hash"], "properties": { "authority": { "type": "string" }, "hash": { "$ref": "#/$defs/hash" } } },
-    "difference": { "type": "object", "required": ["dimension", "semantic_id", "base_hash", "migrated_hash", "classification"], "properties": { "dimension": { "type": "string" }, "semantic_id": { "type": "string" }, "base_hash": { "$ref": "#/$defs/hash" }, "migrated_hash": { "$ref": "#/$defs/hash" }, "classification": { "enum": ["equal", "normalized-equivalent", "approved-change", "blocking-difference"] }, "base_value": {}, "migrated_value": {}, "approved_change": {} } }
+    "identity": { "type": "object", "additionalProperties": false, "required": ["authority"], "properties": { "authority": { "type": "string" }, "commit": { "type": "string" }, "project_path": { "type": "string" }, "manifest_hash": { "$ref": "#/$defs/hash" }, "root_hash": { "$ref": "#/$defs/hash" }, "semantic_hash": { "$ref": "#/$defs/hash" } } },
+    "difference": { "type": "object", "additionalProperties": false, "required": ["dimension", "semantic_id", "base_hash", "migrated_hash", "classification", "base_value", "migrated_value", "approved_change"], "properties": { "dimension": { "enum": ["title-and-metadata", "part-and-chapter-order", "headings", "paragraphs", "lists", "tables", "links", "footnotes", "callouts", "worksheets", "source-references", "diagrams", "assets", "language", "normalized-text-content"] }, "semantic_id": { "type": "string" }, "base_hash": { "$ref": "#/$defs/hash" }, "migrated_hash": { "$ref": "#/$defs/hash" }, "classification": { "enum": ["equal", "normalized-equivalent", "approved-change", "blocking-difference"] }, "base_value": {}, "migrated_value": {}, "approved_change": {} } }
   }
 }

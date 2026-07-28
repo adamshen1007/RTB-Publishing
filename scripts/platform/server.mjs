@@ -4,6 +4,7 @@ import { extname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { PLATFORM_WEB_DIRECTORY, LOOPBACK_HOSTS } from "./constants.mjs";
 import { ROOT } from "../lib.mjs";
+import { resolveBookProject } from "../books/discovery.mjs";
 import { agentRunDetail, WorkspaceIndex, researchDetail } from "./indexer.mjs";
 import { JobManager } from "./jobs.mjs";
 import { safePlatformPath } from "./security.mjs";
@@ -51,7 +52,6 @@ function mutationServiceFor(options, projectId) {
 const registeredPolicies = {
   "rtb-publishing-core": {
     registeredRoot: ROOT,
-    root: resolve(ROOT, "books/volume-01-yc-playbook"),
     paths: ["chapters/*.md", "worksheets/*.md"],
     sourcePaths: ["*.md", "*.yaml", "chapters/*.md", "worksheets/*.md", "references/*.md", "reviews/*.md", "assets/*", "diagrams/*", "releases/*.md"]
   }
@@ -64,7 +64,8 @@ export function createRegisteredMutationServices({ workspaceFile, localFile, now
   for (const project of workspace.projects) {
     const policy = registeredPolicies[project.id];
     if (!policy || project.source === "local" || project.kind !== "repository" || resolve(ROOT, project.path) !== policy.registeredRoot) continue;
-    services.set(project.id, new MutationService({ root: policy.root, projectId: project.id, allowedPaths: policy.paths, sourcePaths: policy.sourcePaths, now }));
+    const book = resolveBookProject();
+    services.set(project.id, new MutationService({ root: book.legacyRoot, projectId: project.id, allowedPaths: policy.paths, sourcePaths: policy.sourcePaths, now }));
   }
   return services;
 }

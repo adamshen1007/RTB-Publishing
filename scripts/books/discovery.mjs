@@ -5,7 +5,7 @@ import { ROOT } from "../lib.mjs";
 import { readSnapshot } from "../state/snapshots.mjs";
 import { discoverBookProjects as manifestFiles, resolveSafeRelativePath, validateFile } from "./model.mjs";
 
-const ignored = new Set([".git", ".rtb-content", ".rtb-state", "node_modules", "build", "dist"]);
+const ignored = new Set([".git", ".rtb-content", ".rtb-state", "node_modules", "build", "dist", "tests", "examples"]);
 
 function safeRelative(root, target) {
   const value = relative(root, target).split(sep).join("/");
@@ -88,4 +88,12 @@ export function discoverBooks(workspaceRoot = ROOT, options = {}) {
     ids.add(project.id);
   }
   return projects.sort((left, right) => left.workspacePath.localeCompare(right.workspacePath));
+}
+
+/** Resolve an explicit project, or the only registered manifest in a workspace. */
+export function resolveBookProject(projectArgument, { workspaceRoot = ROOT } = {}) {
+  if (projectArgument) return discoverBookProject(projectArgument, { workspaceRoot });
+  const projects = discoverBooks(workspaceRoot);
+  if (projects.length !== 1) throw new Error(`Expected exactly one discoverable Book Project; found ${projects.length}. Pass an explicit project path.`);
+  return projects[0];
 }
