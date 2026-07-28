@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 327/327 passed in the final local quality run.
+- Repository tests: 276/276 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -84,9 +84,10 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Release verification uses an exact recursive inventory with no hidden-file
   filtering. Tests reject root and nested hidden extras, ordinary nested extras,
   unexpected directories, missing files, and file/directory type swaps.
-- Catch recovery validates the marker schema before minting process-private
-  coordinator authority, then pins promotion-state parents and the recursive
-  bytes and identities of marker, staging, backup, quarantine, and target.
+- Catch recovery validates closed marker schema version 2 and its recorded
+  recursive transaction evidence before reconstructing private coordinator
+  state. It accepts only the marker-bound pre-state or an allowed exact
+  intent-phase post-state and never adopts a wholesale live snapshot.
   Every rename, removal, created directory, and owned marker write validates
   its exact expected post-state before authority advances. Direct calls, unsafe
   exports, mutation-window replacement, or lock-parent loss are mutation-free
@@ -96,13 +97,18 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   three contenders admits at most one successor without reclaim artifacts.
   Canonical identity tests cover assets, research, hard links, and final byte
   changes. Final Publish and Beta expiry are checked again after the last hook.
-- Generic builds recursively flush every generation file and directory, flush
+- Generic builds recursively inventory and flush every generation file and
+  directory, revalidate the complete staging tree before rename and the exact
+  destination afterward, preserve destination collisions, flush
   both rename parents, and prove the fsynced temporary pointer inode and bytes
   remain exact after rename and pointer-parent flush. Preview resolves on every
-  request and reads under the workspace lock, never stale conventional output.
-  Retention keeps current plus two predecessors and cannot race a reader. Crash,
-  in-place edit, replacement, clean-exclusion, and GC tests preserve complete
-  generations without trusting successor paths.
+  request, opens without following links, reads descriptor-only, and rechecks
+  descriptor, path, and pointer under the workspace lock. Retention keeps
+  current plus two predecessors and transactionally quarantines recursively
+  pinned older generations while rechecking the pointer before every move.
+  Crash, in-place edit, replacement, clean-exclusion, staging collision, pointer
+  switch, and GC restoration tests preserve complete generations without
+  trusting successor paths.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

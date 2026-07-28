@@ -18,7 +18,7 @@ import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
 import { streamResourceFixture } from "./resource-proof.mjs";
 import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, ensurePhysicalDirectory, pinPhysicalDirectory } from "../state/project-lock.mjs";
-import { createPromotionCoordinator } from "./promotion-state.mjs";
+import { openCanonicalPromotion } from "./promotion-state.mjs";
 
 function argumentsOf(input) { const values = input[0] === "--" ? input.slice(1) : input, result = { project: null, lifecycleVersion: 0, approvalId: null, resourceFixture: null, resourceReport: null }; for (let index = 0; index < values.length; index += 1) { const value = values[index]; if (value === "--lifecycle-version") result.lifecycleVersion = Number(values[++index]); else if (value === "--approval-id") result.approvalId = values[++index]; else if (value === "--resource-fixture") result.resourceFixture = resolve(values[++index]); else if (value === "--resource-report") result.resourceReport = resolve(values[++index]); else if (!result.project) result.project = value; else throw new Error(`Unknown publishing argument: ${value}`); } if (!Number.isInteger(result.lifecycleVersion) || result.lifecycleVersion < 0) throw new Error("--lifecycle-version must be a non-negative integer."); if (Boolean(result.resourceFixture) !== Boolean(result.resourceReport)) throw new Error("--resource-fixture and --resource-report must be provided together."); return result; }
 const shellQuote = (value) => `'${String(value).replaceAll("'", `'"'"'`)}'`;
@@ -37,7 +37,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
   const workspaceLock = await acquireWorkspaceOutputLock(physicalWorkspace, { ownerId: `release-build-output-${process.pid}` });
   let publicationLock;
   const token = randomUUID(); let work, namespaceRoot, staging, legacyRelease;
-  let promotionInput = null;
+  let promotionInput = null, promotionCandidate = null, promotionManifest = null;
   try {
     publicationLock = await acquireProjectLock(requestedProject.legacyRoot, { ownerId: `release-build-${process.pid}` });
     project = resolveBookProject(requestedProject.legacyRoot, { workspaceRoot: physicalWorkspace });
@@ -64,6 +64,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
       else { mkdirSync(dirname(candidateDirectory), { recursive: true }); renameSync(staging, candidateDirectory); verifyReleaseDirectory(candidateDirectory, candidate); }
     } else {
       promotionInput = { outputRoot: resolve(releaseRoot, "immutable"), projectId: project.id, releaseId: manifest.releaseId, token };
+      promotionCandidate = candidate; promotionManifest = manifest;
       publishedDirectory = resolve(promotionInput.outputRoot, project.id, manifest.releaseId);
       publishedDirectory = await promoteFinalizedRelease({ root: project.legacyRoot, workspaceRoot: physicalWorkspace, project, candidate, manifest, token, hooks, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
       rmSync(staging, { recursive: true, force: true });
@@ -74,7 +75,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     let mutationAuthority = !error.recoveryRequired;
     try { assertLiveWorkspaceOutputLock(workspaceLock, physicalWorkspace); if (publicationLock) assertLiveProjectLock(publicationLock, requestedProject.legacyRoot); }
     catch { mutationAuthority = false; }
-    if (promotionInput && mutationAuthority) { const promotion = createPromotionCoordinator({ workspaceRoot: physicalWorkspace, projectRoot: requestedProject.legacyRoot, project, releaseId: promotionInput.releaseId, token: promotionInput.token, workspaceLock, projectLock: publicationLock }); for (const recovered of promotion.recoverPending({ rollbackCompletionRequired: true })) if (recovered.state === "rolled-back") await hooks.afterPromotionRollback?.({ release: recovered.context.target, promotion: recovered.context }); }
+    if (promotionInput && mutationAuthority) { const promotion = openCanonicalPromotion({ workspaceRoot: physicalWorkspace, projectRoot: requestedProject.legacyRoot, project, candidate: promotionCandidate, manifest: promotionManifest, releaseId: promotionInput.releaseId, token: promotionInput.token, workspaceLock, projectLock: publicationLock }); for (const recovered of promotion.recoverPending({ rollbackCompletionRequired: true })) if (recovered.state === "rolled-back") await hooks.afterPromotionRollback?.({ release: recovered.context.target, promotion: recovered.context }); }
     if (staging && mutationAuthority) rmSync(staging, { recursive: true, force: true });
     if (!mutationAuthority) { if (error.recoveryRequired) throw error; throw new Error("Publishing lock authority was lost; recovery is required and no cleanup mutation was attempted.", { cause: error }); }
     throw error;

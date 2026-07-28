@@ -76,11 +76,16 @@ private generation below `dist/books/.generations/`. There is no separate
 generic `buildRoot`; co-locating both halves prevents a mixed generation. After
 every file and directory has been flushed, RTB atomically replaces the small
 project pointer in `dist/books/.current/`. Preview resolves that pointer for
-every request, captures the response bytes under the workspace output lock,
-and never falls back to an older conventional output directory. If the pointer
+every request, opens the selected file without following symbolic links, reads
+only through the pinned descriptor, and rechecks the descriptor, path, and
+pointer before returning bytes under the workspace output lock. It never falls
+back to an older conventional output directory. If the pointer
 is missing or invalid, rebuild instead of selecting generation files by hand.
 The successful build keeps the current generation and two complete
-predecessors, deleting older generations only while both build locks are held.
+predecessors. Older generations first move into a private quarantine while the
+exact pointer is rechecked before every move. Any pointer change restores all
+moved generations; deletion occurs only after the transaction remains stable
+while both build locks are held.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux
 filesystems that implement file and directory `fsync`. It cannot promise

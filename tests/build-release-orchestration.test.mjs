@@ -19,6 +19,8 @@ import { acquireProjectLock, acquireWorkspaceOutputLock } from "../scripts/state
 import { resolveBookProject } from "../scripts/books/discovery.mjs";
 import { initializeSnapshots, materializeSnapshot, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
 
+test("promotion module exposes only its durable canonical-finalization boundary", async () => { const module = await import("../scripts/publishing/promotion-state.mjs"); assert.deepEqual(Object.keys(module), ["openCanonicalPromotion"]); for (const name of ["createPromotionCoordinator", "authorizePromotion", "beginPromotion", "commitPromotion", "recoverPromotion", "rollbackPromotion"]) assert.equal(name in module, false); });
+
 function fixture({ snapshots = false } = {}) {
   const workspaceRoot = realpathSync(mkdtempSync(resolve(tmpdir(), "rtb-real-build-"))), legacyRoot = resolve(workspaceRoot, "books", "nested");
   cpSync(resolve("tests/fixtures/books/one-chapter"), legacyRoot, { recursive: true });
@@ -274,6 +276,38 @@ test("replaced promotion marker makes catch mutation-free and recovery-required"
     const replaceMarker = ({ release: target, promotion }) => { release = target; replacement = promotion.marker; displaced = `${replacement}.displaced`; const bytes = readFileSync(replacement); renameSync(replacement, displaced); writeFileSync(replacement, bytes); };
     await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replaceMarker } }), /recovery is required/);
     assert.equal(existsSync(replacement), true); assert.equal(existsSync(displaced), true); assert.equal(existsSync(release), true);
+  } finally { item.dispose(); }
+});
+
+test("authority validation-to-advance window rejects a copied promotion marker", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("advance-window") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+    let replacement, displaced, attacked = false;
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { promotionBoundary: (event, next) => {
+      if (event !== "before-authority-advance" || next?.phase !== "prepared" || attacked) return;
+      attacked = true; replacement = next.marker; displaced = `${replacement}.displaced`; const bytes = readFileSync(replacement); renameSync(replacement, displaced); writeFileSync(replacement, bytes, { mode: 0o600 });
+    } } }), /identity changed|recovery is required/);
+    assert.equal(attacked, true); assert.equal(existsSync(replacement), true); assert.equal(existsSync(displaced), true);
+    const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+    try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+    finally { database.close(); }
+  } finally { item.dispose(); }
+});
+
+test("marker-bound recovery rejects a copied target after an interrupted rename", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("recovery-replacement") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+    let replacement, displaced, attacked = false;
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { promotionBoundary: (event, current) => {
+      if (event !== "after-atomic-staging-to-target" || attacked) return;
+      attacked = true; replacement = current.target; displaced = `${replacement}.displaced`; renameSync(replacement, displaced); cpSync(displaced, replacement, { recursive: true }); throw new Error("crash-with-replacement");
+    } } }), /does not match marker-bound|recovery is required|identity changed/);
+    assert.equal(attacked, true); assert.equal(existsSync(replacement), true); assert.equal(existsSync(displaced), true);
+    const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+    try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+    finally { database.close(); }
   } finally { item.dispose(); }
 });
 

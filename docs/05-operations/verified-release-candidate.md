@@ -112,10 +112,14 @@ Before durable material verification, failure or restart restores the prior
 verified directory. A `material-verified` recovery may resume completion only
 when the exact current approval, Beta, review, and policy authority still pass;
 otherwise it rolls back. A completed ledger is reconciled to
-`ledger-completed` before recovery deletes the backup. Markers contain only a fixed schema, phase, project/release IDs, a
-random UUID token, and whether a prior target existed. All paths are derived
-from trusted roots; malformed, mismatched, traversal, or symbolic-link state
-is rejected without filesystem mutation. Immutable verification also requires
+`ledger-completed` before recovery deletes the backup. Version 2 markers use a
+closed schema containing the phase, project/release IDs, random UUID token,
+prior-target flag, and exact recursive identity-and-byte evidence for every
+transaction path except the marker itself. Recovery derives only the recorded
+pre-state or the one exact post-state allowed by an interrupted intent phase;
+it never adopts a live filesystem snapshot. All paths are derived from trusted
+roots; malformed, mismatched, traversal, symbolic-link, or copied replacement
+state is rejected without filesystem mutation. Immutable verification also requires
 the exact derived `immutable/<project>/<release-id>` path, real-path
 containment, regular expected files, and a recursively symbolic-link-free
 tree.
@@ -126,12 +130,15 @@ Promotion recovery and cleanup also require the original lock authority and
 pinned `.promotion-state`, marker, backup, quarantine, target, and parent
 identities. If any is replaced, RTB reports that recovery is required and
 preserves both the successor namespace and existing evidence without mutation.
-Every promotion mutator is internal to this boundary and requires a
-process-private branded authority that binds both still-live locks and the
-pinned recursive transaction identities and bytes. Recovery validates the fixed
-marker schema before creating the private coordinator. Each owned rename,
+Every promotion mutator is private to this boundary. The sole public entry
+validates both live locks, canonical project identity, and the exact durable
+candidate, manifest, identity, and finalization rows before constructing the
+coordinator. Recovery validates marker-bound evidence before reconstructing
+private coordinator state. Each owned rename,
 removal, directory creation, and temporary-marker rename proves its exact
-post-state before the coordinator advances. Direct calls, public re-exports,
+post-state before the coordinator advances. A replacement in the
+validation-to-advance window makes the error recovery-required. Direct calls,
+public re-exports,
 copied objects, and marker, backup, or quarantine replacement are rejected
 without adopting the replacement.
 

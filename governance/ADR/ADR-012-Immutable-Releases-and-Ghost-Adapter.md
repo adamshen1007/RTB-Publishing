@@ -188,11 +188,17 @@ generation directory is flushed bottom-up; after the generation rename both
 the source staging parent and destination generation parent are flushed. RTB
 flushes and pins the owned temporary pointer bytes and inode, renames it,
 flushes the pointer parent, then proves `.current` is still that exact inode and
-bytes before declaring the switch complete. Preview resolves the pointer for
-every request and captures response bytes while holding the workspace output
-lock, so build, retention, and clean cannot delete a served generation midway.
-A successful build retains current plus two complete predecessors under both
-build locks. These durability guarantees depend on the local filesystem
+bytes before declaring the switch complete. The complete recursive staging
+identity and bytes are checked before and after flush, immediately before
+rename, and at the destination; a collision is preserved rather than adopted or
+deleted. Preview opens the selected file without following symbolic links,
+reads only from the pinned descriptor, then rechecks descriptor, path, and
+pointer while holding the workspace output lock, so build, retention, and clean
+cannot replace or delete served bytes midway. A successful build retains current
+plus two complete predecessors under both build locks. Retention is a
+pointer-aware quarantine transaction: it rechecks the exact pointer before each
+recursive generation move and restores all moves if the pointer changes. These
+durability guarantees depend on the local filesystem
 honoring file and directory `fsync`; unsupported network or virtual filesystems
 are outside the release guarantee.
 
@@ -217,17 +223,22 @@ that phase completes the exact new release. Each rollback phase is idempotent,
 so a second crash cannot activate unverified bytes or delete a restored prior
 release.
 
-Every promotion mutation requires a process-private branded authority bound to
-both still-live lock handles and a pinned identity snapshot of the exact
-transaction paths. Recovery validates the closed marker schema before minting
-that authority. Direct helper calls, copied objects, unsafe re-exports, and
+Every promotion mutation is private to a coordinator constructed only after the
+sole public boundary validates both still-live lock handles, canonical project
+identity, and exact durable candidate, manifest, identity, and finalization
+rows. Recovery validates the closed marker schema and its exact recursive
+transaction evidence before reconstructing coordinator state. Direct helper
+calls, copied objects, unsafe re-exports, and
 marker, backup, quarantine, target, or parent replacement fail before any
 rename, removal, directory creation, or marker write.
 
-Markers have one closed schema and version, a fixed phase enum, exact project
-and release identities, a cryptographically random UUID token, and a prior
-target flag. Paths are derived internally from the trusted output root and
-those validated identities. Marker-owned paths, traversal, unsafe names,
+Markers use closed schema version 2, a fixed phase enum, exact project and
+release identities, a cryptographically random UUID token, a prior-target flag,
+and exact recursive device, inode, size, and byte-hash evidence for every
+transaction path except the marker. Recovery accepts only that recorded
+pre-state or the single exact post-state allowed by an interrupted intent; it
+never snapshots and adopts live state. Paths are derived internally from the
+trusted output root and those validated identities. Marker-owned paths,
 symbolic links, malformed JSON, unknown fields, and mismatched identities are
 rejected without filesystem mutation. The build passes explicit held-lock
 authority into finalization; the finalization

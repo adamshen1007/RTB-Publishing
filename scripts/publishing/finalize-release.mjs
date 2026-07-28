@@ -8,7 +8,7 @@ import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
 import { assertCurrentReleasePolicies, evaluateReleasePolicies } from "./policies.mjs";
 import { releaseTreeInventory, verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
-import { createPromotionCoordinator } from "./promotion-state.mjs";
+import { openCanonicalPromotion } from "./promotion-state.mjs";
 import { assertCurrentProjectIdentity, pinnedProjectCanonicalHash, resolveBookProject } from "../books/discovery.mjs";
 
 const liveVerifiedPromotions = new WeakSet();
@@ -173,7 +173,7 @@ export async function promoteFinalizedRelease(options) {
   const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
   if (!token) throw new Error("Immutable release promotion requires its build transaction token.");
   const promotionInput = { outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, token };
-  const promotion = createPromotionCoordinator({ workspaceRoot, projectRoot: root, project, releaseId: manifest.releaseId, token, workspaceLock: heldWorkspaceLock, projectLock: heldLock, hook: hooks.promotionBoundary });
+  const promotion = openCanonicalPromotion({ workspaceRoot, projectRoot: root, project, candidate, manifest, releaseId: manifest.releaseId, token, workspaceLock: heldWorkspaceLock, projectLock: heldLock, hook: hooks.promotionBoundary });
   let context, verifiedOutputIdentity;
   for (const recovered of promotion.recoverPending()) if (recovered.state === "completion-required") context = recovered.context;
   const target = authority.target;
