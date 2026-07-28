@@ -1,4 +1,4 @@
-const state = { csrfToken: "", data: null };
+const state = { csrfToken: "", mutationCapability: "", operator: null, data: null };
 const $ = (selector) => document.querySelector(selector);
 const node = (tag, className, text) => { const element = document.createElement(tag); if (className) element.className = className; if (text != null) element.textContent = text; return element; };
 
@@ -19,7 +19,22 @@ function projectCard(project, index) {
   project.workflows.forEach((workflow) => { const button = node("button", "action", workflowLabel(workflow)); button.type = "button"; button.addEventListener("click", () => runWorkflow(project, workflow, button)); actions.append(button); });
   if (!project.workflows.length) actions.append(node("span", "read-only", "Read-only · workflows disabled"));
   card.append(actions);
+  const lifecycle = state.data?.lifecycle?.[project.id];
+  if (lifecycle) card.append(lifecyclePanel(project, lifecycle));
   return card;
+}
+
+function lifecyclePanel(project, lifecycle) {
+  const section = node("section", "lifecycle-review"); section.setAttribute("aria-label", "Lifecycle review");
+  const current = lifecycle.lifecycle;
+  section.append(node("h4", "", "Human review gates"), node("p", "muted", current ? `Lifecycle ${current.version} · ${current.state.replaceAll("_", " ")}` : lifecycle.unavailable));
+  ["blueprint", "beta", "publish"].forEach((gate) => {
+    const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
+    row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
+    const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
+    const action = node("button", "quiet-button", `Confirm ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version)); row.append(action); section.append(row);
+  });
+  return section;
 }
 
 function renderJobs(jobs) {
@@ -74,6 +89,24 @@ async function jobAction(job, action) {
   const result = await response.json(); if (!response.ok) return showNotice(result.message); showNotice(""); await refresh();
 }
 
+async function confirmGate(project, gate, expectedVersion) {
+  const reason = window.prompt(`Record an explicit ${gate} decision for ${project.name}. Why is it ready?`);
+  if (reason === null || !window.confirm(`Confirm ${gate} as ${state.operator}?`)) return;
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, expectedVersion, reason }) });
+  const result = await response.json();
+  state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability;
+  if (!response.ok) return showNotice(result.message); await refresh();
+}
+
+async function bootstrapOperator() {
+  const operatorId = window.prompt("Enter your local operator identity before recording human lifecycle approvals.");
+  if (!operatorId) return;
+  const response = await fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, operatorId }) });
+  const result = await response.json();
+  if (!response.ok) return showNotice(result.message);
+  state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; await refresh();
+}
+
 async function refresh() {
   const response = await fetch("/api/workspace"); if (!response.ok) throw new Error("Workspace state could not be loaded. Run platform doctor in the terminal."); render(await response.json()); showNotice("");
 }
@@ -82,7 +115,7 @@ async function runWorkflow(project, workflow, button) {
   if (!window.confirm(`Start “${workflowLabel(workflow)}” for ${project.name}? The result will be recorded locally.`)) return;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
+    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true, idempotencyKey: crypto.randomUUID() }) });
     const result = await response.json(); if (!response.ok) throw new Error(result.message); showNotice(""); await refresh();
   } catch (error) { showNotice(error.message); } finally { button.disabled = false; }
 }
@@ -91,4 +124,4 @@ $("#refresh").addEventListener("click", refresh);
 $("#close-dossier").addEventListener("click", () => $("#dossier").close());
 $("#open-onboarding").addEventListener("click", () => $("#onboarding").showModal());
 $("#close-onboarding").addEventListener("click", () => $("#onboarding").close());
-try { state.csrfToken = (await (await fetch("/api/session")).json()).csrfToken; await refresh(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }
+try { const session = await (await fetch("/api/session")).json(); state.csrfToken = session.csrfToken; state.mutationCapability = session.mutationCapability; await refresh(); await bootstrapOperator(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }

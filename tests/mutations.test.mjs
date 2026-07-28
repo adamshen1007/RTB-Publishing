@@ -39,6 +39,42 @@ test("MUT-001 applies a single-file mutation as one immutable snapshot", async (
   } finally { item.dispose(); }
 });
 
+test("material canonical mutations atomically invalidate lifecycle approvals", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-mutation-lifecycle-"));
+  writeFileSync(resolve(root, "chapter.md"), "before\n");
+  const service = new MutationService({
+    root,
+    projectId: "fixture-book",
+    allowedPaths: ["chapter.md"],
+    sourcePaths: ["chapter.md"],
+    requireCurrentBlueprint: true,
+    materialBlueprintFieldsForCommand: () => ["chapter_contracts"],
+  });
+  try {
+    await service.recover();
+    const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+    database.prepare("UPDATE lifecycle_state SET version = 1, status = 'evidence', guard = 'blueprint_approved' WHERE project_id = ?").run("fixture-book");
+    database.prepare("INSERT INTO lifecycle_approvals VALUES (?, ?, 'blueprint', 'approved', 'human', 'operator', 1, 1, '{}', NULL, ?)")
+      .run("APR-MUTATION", "fixture-book", "2026-07-28T00:00:00.000Z");
+    database.close();
+    const mutation = command(service, [{ path: "chapter.md", content: "after\n" }], "MUT-MATERIAL-001");
+    mutation.expectedLifecycleVersion = 1;
+    mutation.expectedLifecycleGuard = "blueprint_approved";
+    assert.equal((await service.execute(mutation)).state, "succeeded");
+    const verified = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+    const lifecycle = verified.prepare("SELECT version, status, guard FROM lifecycle_state WHERE project_id = ?").get("fixture-book");
+    const invalidation = verified.prepare("SELECT reason FROM lifecycle_approval_invalidations WHERE approval_id = ?").get("APR-MUTATION");
+    const transition = verified.prepare("SELECT actor_id, resulting_version FROM lifecycle_transitions WHERE project_id = ? ORDER BY resulting_version DESC LIMIT 1").get("fixture-book");
+    verified.close();
+    assert.equal(lifecycle.version, 2);
+    assert.equal(lifecycle.status, "blueprint_review");
+    assert.equal(lifecycle.guard, "blueprint_required");
+    assert.match(invalidation.reason, /Material Blueprint change/);
+    assert.equal(transition.resulting_version, 2);
+    assert.match(transition.actor_id, /MUT-MATERIAL-001/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("MUT-002 readers resolve a complete old or new snapshot, never a mixed tree", async () => {
   const item = fixture();
   try {

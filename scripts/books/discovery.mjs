@@ -80,7 +80,7 @@ export function discoverBookProject(projectOrManifest, options = {}) {
 /** Discover only declared manifests, in stable workspace-relative order. */
 export function discoverBooks(workspaceRoot = ROOT, options = {}) {
   const root = realpathSync(resolve(workspaceRoot));
-  const files = manifestFiles(root).filter((file) => !safeRelative(root, file).split("/").some((segment) => ignored.has(segment)));
+  const files = manifestFiles(root, { ignoredDirectoryNames: ignored });
   const projects = files.map((file) => projectFromManifest(file, { workspaceRoot: root, ...options }));
   const ids = new Set();
   for (const project of projects) {

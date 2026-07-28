@@ -180,7 +180,7 @@ test("workflow allowlist is fixed and logs redact secrets", () => {
   assert.equal(redactLog("authorization=Bearer abc123 password=hunter2"), "authorization=[REDACTED] password=[REDACTED]");
 });
 
-test("job records persist terminal state and recover interrupted work", async () => {
+test("job projections rebuild from durable state after restart", async () => {
   const directory = mkdtempSync(resolve(temporaryRoot, "jobs-"));
   try {
     const manager = new JobManager({ directory, now: () => "2026-07-13T06:00:00Z", executor: async (_command, output) => { output("token=secret-value\ncompleted"); return { exitCode: 0, output: "" }; } });
@@ -191,10 +191,10 @@ test("job records persist terminal state and recover interrupted work", async ()
     stored.status = "running";
     writeFileSync(resolve(directory, `${job.id}.json`), `${JSON.stringify(stored)}\n`);
     const recovered = new JobManager({ directory, now: () => "2026-07-13T06:05:00Z" });
-    assert.equal(recovered.get(job.id).status, "failed");
-    assert.match(recovered.get(job.id).log, /restart/);
+    assert.equal(recovered.get(job.id).status, "passed");
+    assert.doesNotMatch(recovered.get(job.id).log, /restart/);
     assert.equal(recovered.snapshot()[0].progress, "complete");
-    assert.match(recovered.snapshot()[0].recoveryHint, /platform stopped/);
+    assert.equal(recovered.snapshot()[0].recoveryHint, null);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

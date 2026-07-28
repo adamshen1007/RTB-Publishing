@@ -221,7 +221,7 @@ export function validateRecord(recordType, record, { root, checkPaths = false } 
 }
 
 /** Finds declared Book Project manifests below a safe root in stable path order. */
-export function discoverBookProjects(root) {
+export function discoverBookProjects(root, { ignoredDirectoryNames = new Set() } = {}) {
   const discovered = [];
   function visit(directory) {
     let entries;
@@ -230,7 +230,7 @@ export function discoverBookProjects(root) {
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const target = resolve(directory, entry.name);
       if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) visit(target);
+      if (entry.isDirectory() && !ignoredDirectoryNames.has(entry.name)) visit(target);
       else if (entry.isFile() && entry.name === "book.project.yaml") discovered.push(target);
     }
   }

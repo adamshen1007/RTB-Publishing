@@ -13,6 +13,6 @@ lang: en-US
 | --- | --- |
 | Evidence | |
 
-See [source](https://example.com/source).[^sample]
+See [source](https://example.com/).[^sample]
 
 [^sample]: Sanitized source note.

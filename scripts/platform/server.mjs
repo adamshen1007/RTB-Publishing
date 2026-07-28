@@ -11,6 +11,8 @@ import { safePlatformPath } from "./security.mjs";
 import { pilotStatus } from "./operations.mjs";
 import { loadEffectiveWorkspace } from "./local-state.mjs";
 import { MutationService } from "../state/mutation-journal.mjs";
+import { LifecycleService } from "../lifecycle/service.mjs";
+import { CanonicalLifecycleBindingProvider } from "../lifecycle/bindings.mjs";
 
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
 const json = (response, status, body, headers = {}) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers }); response.end(JSON.stringify(body)); };
@@ -32,12 +34,18 @@ const cookies = (request) => Object.fromEntries((request.headers.cookie ?? "").s
 
 export class LocalSessionManager {
   constructor({ now = () => Date.now(), ttlMs = 5 * 60 * 1000 } = {}) { this.now = now; this.ttlMs = ttlMs; this.sessions = new Map(); }
-  issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
+  issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), operatorId: null, expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
   consume(id, csrfToken, capability) {
     const session = this.sessions.get(id);
     if (!session || session.expiresAt <= this.now() || session.csrfToken !== csrfToken || session.capability !== capability) return null;
     // Rotate synchronously before any body or service await: the old pair is one-use.
     session.csrfToken = randomBytes(24).toString("hex"); session.capability = randomBytes(24).toString("hex"); session.expiresAt = this.now() + this.ttlMs;
+    return session;
+  }
+  bootstrap(id, csrfToken, capability, operatorId) {
+    const session = this.consume(id, csrfToken, capability);
+    if (!session || typeof operatorId !== "string" || !/^[A-Za-z0-9._@-]{2,120}$/.test(operatorId)) return null;
+    session.operatorId = operatorId;
     return session;
   }
   cookie(session) { return `rtb_session=${session.id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.ttlMs / 1000)}`; }
@@ -65,8 +73,14 @@ export function createRegisteredMutationServices({ workspaceFile, localFile, now
     const policy = registeredPolicies[project.id];
     if (!policy || project.source === "local" || project.kind !== "repository" || resolve(ROOT, project.path) !== policy.registeredRoot) continue;
     const book = resolveBookProject();
-    services.set(project.id, new MutationService({ root: book.legacyRoot, projectId: project.id, allowedPaths: policy.paths, sourcePaths: policy.sourcePaths, now }));
+    services.set(project.id, new MutationService({ root: book.legacyRoot, projectId: project.id, allowedPaths: policy.paths, sourcePaths: policy.sourcePaths, now, requireCurrentBlueprint: true, materialBlueprintFieldsForCommand: (command) => command.files.flatMap((file) => file.path.endsWith("book-project.yaml") ? ["reader", "promised_outcome", "scope", "thesis"] : file.path.endsWith("blueprint.yaml") ? ["chapter_contracts"] : []) }));
   }
+  return services;
+}
+
+export function createRegisteredLifecycleServices({ workspaceFile, localFile, now } = {}) {
+  const workspace = loadEffectiveWorkspace(workspaceFile, localFile); const services = new Map();
+  for (const project of workspace.projects) if (project.id === "rtb-publishing-core" && project.source !== "local") { const book = resolveBookProject(); services.set(project.id, new LifecycleService({ root: book.legacyRoot, projectId: project.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book }), now })); }
   return services;
 }
 
@@ -75,6 +89,7 @@ export function createPlatformServer(options = {}) {
   const jobs = options.jobs ?? new JobManager(options.jobOptions);
   const csrfToken = options.csrfToken ?? randomBytes(24).toString("hex");
   const sessions = options.sessions ?? new LocalSessionManager({ now: options.now, ttlMs: options.sessionTtlMs });
+  const lifecycleServices = options.lifecycleServices ?? (options.lifecycleService ? new Map([[options.lifecycleService.projectId, options.lifecycleService]]) : options.mutationService ? new Map() : createRegisteredLifecycleServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }));
   const requests = new Map();
   const server = createHttpServer(async (request, response) => {
     let rebootstrap;
@@ -92,10 +107,27 @@ export function createPlatformServer(options = {}) {
       if (request.method === "GET" && url.pathname === "/api/session") {
         if (!sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Local sessions require the direct listener origin." });
         const session = sessions.issue();
-        return json(response, 200, { csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "set-cookie": sessions.cookie(session) });
+        return json(response, 200, { csrfToken: session.csrfToken, mutationCapability: session.capability, operator: null, expiresAt: new Date(session.expiresAt).toISOString() }, { "set-cookie": sessions.cookie(session) });
+      }
+      if (request.method === "POST" && url.pathname === "/api/session/bootstrap") {
+        if (!sameListener || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "operator_bootstrap_denied", message: "Local operator bootstrap requires the direct local origin." });
+        const input = await body(request);
+        if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit operator confirmation is required." });
+        const session = sessions.bootstrap(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"], input.operatorId);
+        if (!session) return json(response, 403, { error: "operator_bootstrap_denied", message: "Refresh the local session and provide a valid operator identity." });
+        return json(response, 200, { operator: session.operatorId, csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability });
       }
       const index = indexService.refresh();
-      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot() });
+      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries(index.projects.map((p) => [p.id, lifecycleServices.get(p.id)?.status() ?? { unavailable: "Lifecycle unavailable." }])) });
+      const gateMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/gates\/(blueprint|beta|publish)$/);
+      if (request.method === "POST" && gateMatch) {
+        const service = lifecycleServices.get(gateMatch[1]); const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        if (!service || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "gate_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
+        const input = await body(request); if (input.confirm !== true || !Number.isInteger(input.expectedVersion) || (input.reason && typeof input.reason !== "string")) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and current version are required." });
+        rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
+        const result = await service.approve({ gate: gateMatch[2], expectedVersion: input.expectedVersion, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
+        return json(response, result.state === "succeeded" ? 202 : result.state === "conflict" ? 409 : 400, result, rebootstrap);
+      }
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
       if (request.method === "GET" && projectMatch) {
         const project = index.projects.find((item) => item.id === projectMatch[1]);
@@ -105,7 +137,7 @@ export function createPlatformServer(options = {}) {
       if (request.method === "GET" && detailMatch) return json(response, 200, detailMatch[2] === "research" ? researchDetail(detailMatch[1]) : agentRunDetail(detailMatch[1]));
       const mutationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/mutations\/replace-files$/);
       if (request.method === "POST" && mutationMatch) {
-        const service = mutationServiceFor(options, mutationMatch[1]);
+        const service = mutationServiceFor(options, mutationMatch[1]); const lifecycleService = lifecycleServices.get(mutationMatch[1]);
         const host = request.headers.host;
         const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service) return json(response, 403, { error: "mutation_denied", message: "This project has no approved local mutation service." });
@@ -121,7 +153,9 @@ export function createPlatformServer(options = {}) {
         const input = await body(request, 256 * 1024);
         if (input.command !== "replace_files" || input.projectId !== mutationMatch[1]) return json(response, 403, { error: "mutation_denied", message: "Only the approved replace-files command is available for this project." });
         if (!Array.isArray(input.files) || input.files.some((file) => !service.allowsPath(file?.path))) return json(response, 403, { error: "path_denied", message: "This action cannot change that file." });
-        const result = await service.execute(input);
+        const expectation = lifecycleService?.mutationExpectation();
+        if (lifecycleService && !expectation) return json(response, 400, { error: "blueprint_required", message: "A current Blueprint approval is required before canonical mutation." }, rebootstrap);
+        const result = await service.execute(expectation ? { ...input, expectedLifecycleVersion: expectation.version, expectedLifecycleGuard: expectation.guard } : input);
         return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result, rebootstrap);
       }
       const workflowMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows\/([a-z-]+)$/);
@@ -131,10 +165,10 @@ export function createPlatformServer(options = {}) {
         const origin = request.headers.origin;
         if (!validOrigin(origin)) return json(response, 403, { error: "origin", message: "Remote origins are not allowed." });
         const input = await body(request);
-        if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Set confirm to true after reviewing the workflow." });
+        if (input.confirm !== true || (input.idempotencyKey !== undefined && (typeof input.idempotencyKey !== "string" || !/^[A-Za-z0-9._:-]{8,256}$/.test(input.idempotencyKey)))) return json(response, 400, { error: "confirmation", message: "Confirm with one stable command identity after reviewing the workflow." });
         const project = index.projects.find((item) => item.id === workflowMatch[1]);
         if (!project || !project.workflows.includes(workflowMatch[2])) return json(response, 403, { error: "workflow_denied", message: "That workflow is not allowed for this project." });
-        return json(response, 202, jobs.create(project.id, workflowMatch[2]));
+        return json(response, 202, jobs.create(project.id, workflowMatch[2], undefined, { idempotencyKey: input.idempotencyKey ?? `legacy:${project.id}:${workflowMatch[2]}:${Date.now()}` }));
       }
       const jobAction = url.pathname.match(/^\/api\/jobs\/(JOB-[A-Z0-9-]+)\/(cancel|rerun)$/);
       if (request.method === "POST" && jobAction) {
@@ -156,12 +190,12 @@ export function createPlatformServer(options = {}) {
       return json(response, 400, { error: "request_failed", message: "Request could not be processed safely." }, rebootstrap);
     }
   });
-  return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices };
+  return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices, lifecycleServices };
 }
 
 export async function startPlatform({ host = "127.0.0.1", port = 4310, ...options } = {}) {
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("M5A is local-only; host must be 127.0.0.1 or ::1.");
-  const platform = createPlatformServer({ ...options, mutationServices: options.mutationServices ?? createRegisteredMutationServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }) });
+  const platform = createPlatformServer({ ...options, mutationServices: options.mutationServices ?? createRegisteredMutationServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }), lifecycleServices: options.lifecycleServices ?? createRegisteredLifecycleServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }) });
   await new Promise((resolvePromise, reject) => platform.server.once("error", reject).listen(port, host, resolvePromise));
   return platform;
 }

@@ -75,9 +75,9 @@ function proposedSnapshot(root, pointer, command, trace, sourcePaths) {
 }
 
 export class MutationService {
-  constructor({ root, projectId, allowedPaths = [], sourcePaths = allowedPaths, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit } = {}) {
+  constructor({ root, projectId, allowedPaths = [], sourcePaths = allowedPaths, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit, requireCurrentBlueprint = false, materialBlueprintFieldsForCommand = () => [] } = {}) {
     if (!root || !projectId) throw new Error("MutationService requires a project root and project ID.");
-    this.root = resolve(root); this.projectId = projectId; this.allowedPaths = allowedPaths.map(pathPattern); this.sourcePaths = sourcePaths; this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit;
+    this.root = resolve(root); this.projectId = projectId; this.allowedPaths = allowedPaths.map(pathPattern); this.sourcePaths = sourcePaths; this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit; this.requireCurrentBlueprint = requireCurrentBlueprint; this.materialBlueprintFieldsForCommand = materialBlueprintFieldsForCommand;
   }
 
   allowsPath(path) { return this.allowedPaths.some((pattern) => pattern.test(path)); }
@@ -99,6 +99,7 @@ export class MutationService {
     assertCommand(command);
     if (command.projectId !== this.projectId) throw new Error("Mutation command project does not match this service.");
     if (command.files.some((file) => !this.allowsPath(file.path))) throw new Error("Mutation path is not approved for this action.");
+    const materialBlueprintFields = [...new Set(this.materialBlueprintFieldsForCommand(command))];
     initializeSnapshots(this.root, { trace: this.trace, sourcePaths: this.sourcePaths });
     const lock = await acquireProjectLock(this.root, { ownerId: `mutation-${randomUUID()}`, now: this.now });
     const database = openStateDatabase(this.databaseFile, { now: this.now });
@@ -111,7 +112,7 @@ export class MutationService {
       let pointer = readPointer(this.root);
       const lifecycleRecord = lifecycle(database, this.projectId);
       const staleSnapshot = pointer.snapshotHash !== command.expectedSnapshotHash;
-      const staleLifecycle = lifecycleRecord.version !== command.expectedLifecycleVersion || lifecycleRecord.guard !== command.expectedLifecycleGuard || lifecycleRecord.status === "blocked";
+      const staleLifecycle = lifecycleRecord.version !== command.expectedLifecycleVersion || lifecycleRecord.guard !== command.expectedLifecycleGuard || lifecycleRecord.status === "blocked" || (this.requireCurrentBlueprint && lifecycleRecord.guard !== "blueprint_approved");
       let staleFile = false;
       for (const file of command.files) {
         const target = resolve(snapshotRoot(this.root, pointer.snapshotHash), file.path);
@@ -151,6 +152,21 @@ export class MutationService {
         if (!lease || lease.fencing_token !== token || !guarded || guarded.version !== command.expectedLifecycleVersion || guarded.guard !== command.expectedLifecycleGuard) throw new Error("Guarded state commit rejected a stale fence or lifecycle version.");
         const journalHash = jsonHash({ command, prior: readPointer(this.root), next: next.hash });
         database.prepare("INSERT INTO immutable_audit_references (project_id, command_id, snapshot_hash, journal_hash, created_at) VALUES (?, ?, ?, ?, ?)").run(this.projectId, command.id, next.hash, journalHash, time(this.now));
+        if (materialBlueprintFields.length > 0) {
+          const changedAt = time(this.now);
+          const approvals = database.prepare(`SELECT approval.id FROM lifecycle_approvals approval
+            LEFT JOIN lifecycle_approval_invalidations invalidation ON invalidation.approval_id = approval.id
+            WHERE approval.project_id = ? AND invalidation.id IS NULL`).all(this.projectId);
+          for (const approval of approvals) {
+            database.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)")
+              .run(`INV-${randomUUID()}`, approval.id, this.projectId, "Material Blueprint change committed by canonical mutation", changedAt);
+          }
+          const advanced = database.prepare("UPDATE lifecycle_state SET version = version + 1, status = 'blueprint_review', guard = 'blueprint_required', updated_at = ? WHERE project_id = ? AND version = ? AND guard = ?")
+            .run(changedAt, this.projectId, command.expectedLifecycleVersion, command.expectedLifecycleGuard).changes;
+          if (advanced !== 1) throw new Error("Material Blueprint invalidation rejected a stale lifecycle version.");
+          database.prepare("INSERT INTO lifecycle_transitions (id, project_id, expected_version, prior_state, requested_state, resulting_version, actor_type, actor_id, reason, guard_results_json, created_at) VALUES (?, ?, ?, ?, 'blueprint_review', ?, 'system', ?, ?, ?, ?)")
+            .run(`TRN-${randomUUID()}`, this.projectId, command.expectedLifecycleVersion, lifecycleRecord.status, command.expectedLifecycleVersion + 1, `canonical-mutation:${command.id}`, "Material Blueprint change", JSON.stringify({ changedFields: materialBlueprintFields, snapshotHash: next.hash }), changedAt);
+        }
         database.prepare("UPDATE mutation_journal SET phase = 'state_committed', operation_state = 'running', updated_at = ? WHERE command_id = ? AND fencing_token = ?").run(time(this.now), command.id, token);
         database.exec("COMMIT;"); durableCheckpoint(database);
       } catch (error) { database.exec("ROLLBACK;"); throw error; }
