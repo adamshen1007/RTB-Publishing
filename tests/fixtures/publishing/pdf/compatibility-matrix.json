@@ -22,7 +22,8 @@
   "ciBoundary": {
     "workflowLabel": "macos-15-intel",
     "architecture": "x86_64",
-    "status": "implemented-pending-remote-run-evidence",
-    "requiredBeforePromotion": "Run the identical node scripts/pdf-compatibility.mjs command in GitHub Actions and retain its verified manifest and reports."
+    "status": "passed-2026-07-28",
+    "remoteEvidence": "tests/fixtures/publishing/pdf/remote-run-evidence.json",
+    "requiredBeforePromotion": "The identical node scripts/pdf-compatibility.mjs command passed in GitHub Actions; retained artifact metadata is bound in the remote evidence record."
   }
 }

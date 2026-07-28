@@ -2,7 +2,7 @@
 
 ## Result
 
-Blocked on the external first remote CI evidence run. The local/code remediation
+The remote PDF compatibility evidence gate passed. The local/code remediation
 uses RFC-008's Typst
 0.15.0 under Apache-2.0 for the explicit combined `PDF/A-2a+PDF/UA-1`
 profile. Canonical Markdown and Git remain the source authority; Typst is a
@@ -30,8 +30,8 @@ derived build intermediate in the immutable, disk-backed snapshot.
 - GitHub Actions now uses the official `macos-15-intel` label and implements
   the identical `node scripts/pdf-compatibility.mjs` command after verified
   tool setup. It has no GHCR token/download dependency and uploads compatibility
-  evidence with `always()` even when a validator fails. A remote workflow run remains to be recorded before
-  remote CI evidence is considered complete.
+  evidence with `always()` even when a validator fails. The first remote
+  workflow run is recorded below.
 - Restored an executed visual-regression check using Typst's locked native PNG
   raster at 144 PPI. The command retains its raster, baseline equality result,
   1191x1684 A4 geometry, one-page sample, and 40x20 SVG image-resolution
@@ -50,18 +50,12 @@ node scripts/pdf-compatibility.mjs
 The command regenerates the retained manifest, parses with lockfile-pinned
 `pdfjs-dist` 5.4.624, and passes veraPDF `2a` (153 rules, 7,201 checks) and
 veraPDF `ua1` (106 rules, 1,642 checks), with
-zero failed rules/checks. `node --test tests/pdf-toolchain.test.mjs` passes all
-six tests; an earlier `pnpm test` passed 69 tests. Markdown, spelling, style, citation,
-and link checks pass, with only the repository's existing transient external
-network warnings from the link checker.
-
-The latest full-suite attempt ran 71 tests: 69 passed; two pre-existing local
-platform-server tests could not bind `127.0.0.1` in this sandbox (`EPERM`).
-The focused PDF suite passed all six tests.
+zero failed rules/checks. The replacement change passed the focused six-test
+PDF suite and the full 71-test suite locally. Markdown lint and spelling also
+passed.
 
 ## Remaining gates
 
-- Record the first remote `macos-15-intel` workflow compatibility run.
 - Complete the named human VoiceOver and visual review for a release candidate.
 - Confirm rights for actual release content and fonts.
 
@@ -111,3 +105,18 @@ The focused PDF suite passed all six tests.
 - On the replacement change, the retained evidence was regenerated locally;
   `node --test tests/pdf-toolchain.test.mjs` passed 6/6 and `pnpm test` passed
   71/71. Markdown lint and spelling checks also passed.
+
+## Remote compatibility evidence — 2026-07-28
+
+- GitHub Actions [run 30323970497](https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497)
+  is green for implementation SHA `67d60df66e9b45fe7a0ea326a86f5d96e14354fe`
+  on `macos-15-intel` x86_64. Quality job `90165388216` and downstream build
+  job `90165966469` both passed.
+- The PDF compatibility fixture, compatibility-evidence upload, complete
+  quality job, and downstream build/artifact job all passed. The uploaded artifact is
+  `pdf-compatibility-67d60df66e9b45fe7a0ea326a86f5d96e14354fe`, retained for
+  14 days.
+- `tests/fixtures/publishing/pdf/remote-run-evidence.json` and its schema bind
+  the remote URLs, platform, SHA, artifact, retention, and successful statuses.
+  This closes only the remote machine-evidence gate; it does not replace the
+  required human VoiceOver/visual or release-rights reviews.

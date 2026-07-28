@@ -14,6 +14,7 @@ const json = (file) => JSON.parse(read(file));
 const sha256 = (file) => createHash("sha256").update(read(file)).digest("hex");
 const lock = json("publishing/pdf/toolchain.lock.json");
 const matrix = json("tests/fixtures/publishing/pdf/compatibility-matrix.json");
+const remoteRunEvidence = json("tests/fixtures/publishing/pdf/remote-run-evidence.json");
 const manifest = json("tests/fixtures/publishing/pdf/evidence/artifacts/manifest.json");
 const parserReport = json("tests/fixtures/publishing/pdf/evidence/artifacts/pdfjs-report.json");
 const visual = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-regression.json");
@@ -42,6 +43,7 @@ test("lock, manifest, parser, and veraPDF evidence have actionable required shap
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
   validate("manifest", manifest, "manifest");
+  validate("remote-run-evidence", remoteRunEvidence, "remote-run evidence");
   validate("visual", visual, "visual report");
   validate("pdfjs", parserReport, "PDF.js parser report");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
@@ -50,6 +52,7 @@ test("lock, manifest, parser, and veraPDF evidence have actionable required shap
   validate("visual-negative-measurements", visualMeasurements, "negative visual measurements");
   assert.throws(() => validate("visual", { schemaVersion: 1, equal: false }, "malformed visual"), /schema invalid/);
   assert.throws(() => validate("manifest", { schemaVersion: 1 }, "malformed manifest"), /schema invalid/);
+  assert.throws(() => validate("remote-run-evidence", { schemaVersion: 1 }, "malformed remote-run evidence"), /schema invalid/);
   assert.throws(() => validate("pdfjs", { schemaVersion: 1, parser: { name: "pdfjs-dist", version: "5.4.624" } }, "malformed parser report"), /schema invalid/);
   assert.throws(() => validate("verapdf", { report: { jobs: [{ validationResult: [{ compliant: false, jobEndStatus: "normal", details: { failedRules: 1, failedChecks: 0 } }] }] } }, "failed verifier"), /schema invalid/);
   assert.throws(() => validate("visual-negative", { schemaVersion: 1 }, "malformed negative visual"), /schema invalid/);
@@ -111,6 +114,14 @@ test("retained parsed PDF proves metadata, language, tagged semantics, navigatio
   assert.equal(matrix.fixture, "semantic-book.md");
   assert.equal(matrix.platforms[0].command[0], "node");
   assert.equal(matrix.platforms[0].command.at(-1), "scripts/pdf-compatibility.mjs");
+  assert.equal(matrix.ciBoundary.status, "passed-2026-07-28");
+  assert.equal(matrix.ciBoundary.remoteEvidence, "tests/fixtures/publishing/pdf/remote-run-evidence.json");
+  assert.equal(remoteRunEvidence.workflowRun.status, "passed");
+  assert.equal(remoteRunEvidence.qualityJob.status, "passed");
+  assert.equal(remoteRunEvidence.buildJob.status, "passed");
+  assert.equal(remoteRunEvidence.artifact.retentionDays, 14);
+  assert.equal(remoteRunEvidence.gates.pdfCompatibilityEvidenceUpload, "passed");
+  assert.equal(remoteRunEvidence.gates.buildPublishingArtifacts, "passed");
   assert.equal(visual.equal, true);
   assert.deepEqual([visual.width, visual.height], [1191, 1684]);
   assert.equal(visual.imageResolution, "semantic-figure.svg 40x20");

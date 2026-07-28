@@ -84,8 +84,11 @@ The shared local/CI compatibility command runs on GitHub Actions
 `macos-15-intel`, GitHub's current hosted Intel macOS label, matching the
 release-enabled x86_64 platform. The workflow installs the lock-owned tools,
 verifies their artifact and executable hashes, and invokes that exact command.
-The remote compatibility evidence remains pending until that workflow run is
-recorded. Ubuntu 24.04 is not retained as an aspirational platform.
+The GitHub Actions compatibility fixture passed on `macos-15-intel` in
+[run 30323970497](https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497)
+for implementation SHA `67d60df66e9b45fe7a0ea326a86f5d96e14354fe`.
+Its uploaded compatibility artifact is bound in the versioned remote evidence
+record. Ubuntu 24.04 is not retained as an aspirational platform.
 
 ### Licensing and installation boundary
 
@@ -179,9 +182,8 @@ screen-reader review.
 
 - Typst and validator conformance checks do not replace the required human
   VoiceOver and visual review.
-- The current release platform is deliberately narrow. The matching CI
-  `macos-15-intel` x86_64 command is implemented but remains unverified until
-  its first retained remote run.
+- The current release platform is deliberately narrow, even though the matching
+  CI `macos-15-intel` x86_64 command now has retained remote-run evidence.
 - Font coverage is deliberately narrow. Unsupported scripts, missing glyphs,
   unclassified figures, complex tables, and unreviewed layouts block rather
   than degrade.
@@ -194,8 +196,9 @@ screen-reader review.
 - [x] Tool and font artifacts have SHA-256 values or an exact repository lock.
 - [x] The `macos-x86_64` semantic fixture passed Typst, PDF.js parsing, veraPDF `2a`,
   and veraPDF `ua1`; recorded evidence includes artifact/report hashes.
-- [ ] GitHub Actions `macos-15-intel` compatibility evidence is required before
-  the remote CI result can be recorded as a platform run.
+- [x] GitHub Actions `macos-15-intel` compatibility evidence passed in run
+  `30323970497`; the artifact name, retention, URLs, SHA, and gate statuses are
+  recorded in `tests/fixtures/publishing/pdf/remote-run-evidence.json`.
 - [x] The manual procedure and waiver fields are versioned.
 - [ ] A named reviewer records a passing screen-reader and visual review for a
   specific candidate. This remains a human evidence gate.
