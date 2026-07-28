@@ -60,6 +60,28 @@ above the final nonzero exit status.
 
 Run `pnpm build` before `pnpm preview`.
 
+Preview intentionally reads only the generation named by
+`dist/books/.current/<project-id>.json`. It does not serve an older
+`dist/books/<project-id>/` directory. If the pointer is missing, malformed, or
+names a missing generation, run a fresh build; do not edit the pointer.
+
+## A Stale Writer Lock Is Reported
+
+RTB does not automatically delete a lock whose recorded process appears dead.
+An automatic path-based handoff cannot safely distinguish a stale owner from a
+rapid replacement by another writer.
+
+1. Stop Creator Studio, preview, builds, publishing commands, and every other
+   RTB Publishing process using this workspace.
+2. Confirm no RTB Publishing process is still running.
+3. Preserve the reported `writer.lock` or `workspace-output.lock` as incident
+   evidence by moving it to a separate backup directory outside `.rtb-state`.
+4. Start exactly one command and verify that it creates and later releases a
+   new lock normally.
+
+If you cannot prove that every writer is stopped, leave the lock unchanged and
+recover the workspace with an operator who can inspect the running processes.
+
 ## Port 4173 Is Already in Use
 
 Choose another port:

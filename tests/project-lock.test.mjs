@@ -79,20 +79,33 @@ test("lock authority rejects file replacement, unlink, and extra hard links", as
   });
 });
 
-test("stale lock reclamation never deletes a changed inode", async () => {
-  const root = mkdtempSync(resolve(tmpdir(), "rtb-stale-race-")), lock = projectLockPath(root); mkdirSync(resolve(lock, "..")); writeFileSync(lock, `${JSON.stringify({ pid: 2147483647, ownerId: "stale" })}\n`);
+test("stale lock recovery fails closed without changing the observed lock", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-stale-race-")), lock = projectLockPath(root), content = `${JSON.stringify({ pid: 2147483647, ownerId: "stale" })}\n`; mkdirSync(resolve(lock, "..")); writeFileSync(lock, content);
   try {
-    await assert.rejects(() => acquireProjectLock(root, { timeoutMs: 0, beforeStaleReclaim: () => { renameSync(lock, `${lock}.stale`); writeFileSync(lock, `${JSON.stringify({ pid: process.pid, ownerId: "successor" })}\n`); } }), /held by a live writer/);
-    assert.match(readFileSync(lock, "utf8"), /successor/); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
+    await assert.rejects(() => acquireProjectLock(root, { timeoutMs: 0 }), /Stale lock detected.*manual stale-lock recovery/);
+    assert.equal(readFileSync(lock, "utf8"), content); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("two stale-lock waiters serialize without reclamation artifacts", async () => {
+test("three stale-lock waiters all fail closed without reclamation artifacts", async () => {
   const root = mkdtempSync(resolve(tmpdir(), "rtb-stale-two-")), lock = projectLockPath(root); mkdirSync(resolve(lock, "..")); writeFileSync(lock, `${JSON.stringify({ pid: 2147483647, ownerId: "stale" })}\n`);
   try {
-    const acquireAndRelease = async (ownerId) => { const handle = await acquireProjectLock(root, { ownerId, timeoutMs: 1000, pollMs: 5 }); assert.equal(assertLiveProjectLock(handle, root), handle); await new Promise((done) => setTimeout(done, 20)); handle.release(); return ownerId; };
-    assert.deepEqual(new Set(await Promise.all([acquireAndRelease("waiter-a"), acquireAndRelease("waiter-b")])), new Set(["waiter-a", "waiter-b"]));
-    assert.equal(existsSync(lock), false); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
+    const results = await Promise.allSettled(["waiter-a", "waiter-b", "waiter-c"].map((ownerId) => acquireProjectLock(root, { ownerId, timeoutMs: 0 })));
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 0);
+    for (const result of results) assert.match(result.reason.message, /Stale lock detected/);
+    assert.equal(existsSync(lock), true); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("three live-lock waiters admit at most one successor after rapid release", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-live-three-"));
+  try {
+    const incumbent = await acquireProjectLock(root), blocked = await Promise.allSettled(["waiter-a", "waiter-b", "waiter-c"].map((ownerId) => acquireProjectLock(root, { ownerId, timeoutMs: 0 })));
+    assert.equal(blocked.filter((result) => result.status === "fulfilled").length, 0); incumbent.release();
+    const successors = await Promise.allSettled(["successor-a", "successor-b", "successor-c"].map((ownerId) => acquireProjectLock(root, { ownerId, timeoutMs: 0 })));
+    const accepted = successors.filter((result) => result.status === "fulfilled"); assert.equal(accepted.length, 1);
+    assert.equal(assertLiveProjectLock(accepted[0].value, root), accepted[0].value); accepted[0].value.release();
+    assert.equal(readdirSync(resolve(root, ".rtb-state")).some((name) => name.startsWith(".lock-reclaim-")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

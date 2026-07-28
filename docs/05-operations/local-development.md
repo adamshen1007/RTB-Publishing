@@ -1,5 +1,7 @@
 # Local Development
 
+<!-- cspell:words APFS -->
+
 ## Purpose
 
 This guide sets up and runs the publishing and engineering-kit workflows on
@@ -68,6 +70,19 @@ pnpm preview
 ```
 
 Open <http://127.0.0.1:4173> and press `Ctrl+C` in Terminal when finished.
+
+Each generic build writes its combined manuscript and rendered files into one
+private generation below `dist/books/.generations/`. After every file and
+directory has been flushed, RTB atomically replaces the small project pointer
+in `dist/books/.current/`. Preview resolves that pointer and never falls back
+to an older conventional output directory. If the pointer is missing or
+invalid, rebuild instead of selecting generation files by hand.
+
+The flush-and-rename protocol is designed for local APFS and ordinary Linux
+filesystems that implement file and directory `fsync`. It cannot promise
+equivalent power-loss behavior on every network, virtual, removable, or
+vendor-specific filesystem; build and publish on a supported local filesystem
+when release evidence matters.
 
 Remove generated files:
 

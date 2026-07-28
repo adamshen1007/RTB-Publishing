@@ -31,10 +31,10 @@ function ownerIsAlive(pid) {
 }
 
 /**
- * An O_EXCL lock is deliberately non-expiring. A stale file can be removed only
- * after its recorded process is proven dead; a lease expiry never authorizes it.
+ * An O_EXCL lock is deliberately non-expiring. Even a dead recorded process
+ * does not authorize automatic path mutation; stale recovery is manual.
  */
-async function acquireLockAt(root, kind, { timeoutMs = 5000, pollMs = 20, ownerId = `${process.pid}-${Date.now()}`, now = () => Date.now(), heldMessage = "Project writer lock is held by a live writer.", beforeStaleReclaim } = {}) {
+async function acquireLockAt(root, kind, { timeoutMs = 5000, pollMs = 20, ownerId = `${process.pid}-${Date.now()}`, now = () => Date.now(), heldMessage = "Project writer lock is held by a live writer." } = {}) {
   const rootIdentity = pinPhysicalDirectory(root), lockPath = kind === "workspace" ? workspaceOutputLockPath(rootIdentity.path) : projectLockPath(rootIdentity.path);
   const started = now();
   while (true) {
@@ -42,9 +42,9 @@ async function acquireLockAt(root, kind, { timeoutMs = 5000, pollMs = 20, ownerI
       return openHandle(lockPath, ownerId, now, rootIdentity, kind);
     } catch (error) {
       if (error.code !== "EEXIST") throw error;
-      let owner, observed;
-      try { observed = lstatSync(lockPath); owner = JSON.parse(readFileSync(lockPath, "utf8")); } catch { owner = undefined; }
-      if (owner && !ownerIsAlive(owner.pid)) { beforeStaleReclaim?.({ lockPath, observed }); const parentIdentity = pinPhysicalEntry(dirname(lockPath), "directory"); try { if (quarantineObserved(lockPath, observed, parentIdentity)) continue; } catch (race) { if (race.code !== "ENOENT") throw race; } continue; }
+      let owner;
+      try { owner = JSON.parse(readFileSync(lockPath, "utf8")); } catch { owner = undefined; }
+      if (owner && !ownerIsAlive(owner.pid)) throw new Error(`Stale lock detected at ${lockPath}. Automatic recovery is disabled because ownership cannot be transferred safely; stop all RTB Publishing writers and follow the documented manual stale-lock recovery procedure.`);
       if (now() - started >= timeoutMs) throw new Error(heldMessage);
       await pause(pollMs);
     }

@@ -140,11 +140,11 @@ hard-linking, or repeated release cannot unlink a successor writer's lock. This
 hierarchy ensures a workspace clean cannot race a build or finalization whose
 project root is nested below it.
 
-Dead-lock reclamation never performs read-then-unlink. A waiter renames the
-observed inode to a unique quarantine path under the pinned lock parent, checks
-that the moved inode is exactly the observed stale file, and only then removes
-it. A changed source inode is restored or retried, never deleted. Concurrent
-waiters therefore serialize without deleting a successor lock.
+Dead-lock reclamation fails closed. RTB cannot prove a safe, atomic ownership
+transfer among a stale owner and two or more contenders using pathname
+operations alone, so a waiter never renames or removes an apparently stale
+lock. Operators must stop every writer, preserve the lock as evidence outside
+`.rtb-state`, and then allow exactly one command to create a new lock.
 
 Workspace and project locks pin physical directory identity: canonical
 path plus device and inode. Lock acquisition rejects a symbolic-link lock
@@ -183,6 +183,14 @@ generation namespace, then atomically switch a private, symlink-free metadata
 pointer. Failures before the switch leave the prior pair current; failures
 after it preserve the complete new pair. No path deletes the prior good
 generation while activating a replacement.
+Before visibility changes, every generation file is flushed and every
+generation directory is flushed bottom-up; after the generation rename its
+parent is flushed. The temporary pointer, renamed pointer, and pointer parent
+are then flushed in order. Preview resolves only the validated `.current`
+pointer and never falls back to a conventional output directory. These
+durability guarantees depend on the local filesystem honoring file and
+directory `fsync`; unsupported network or virtual filesystems are outside the
+release guarantee.
 
 The release build holds that lock while it renders in unique staging,
 registers the candidate, finalizes approved material, and performs the last
@@ -204,6 +212,13 @@ the durable `verified` phase restores the prior release; recovery at or after
 that phase completes the exact new release. Each rollback phase is idempotent,
 so a second crash cannot activate unverified bytes or delete a restored prior
 release.
+
+Every promotion mutation requires a process-private branded authority bound to
+both still-live lock handles and a pinned identity snapshot of the exact
+transaction paths. Recovery validates the closed marker schema before minting
+that authority. Direct helper calls, copied objects, unsafe re-exports, and
+marker, backup, quarantine, target, or parent replacement fail before any
+rename, removal, directory creation, or marker write.
 
 Markers have one closed schema and version, a fixed phase enum, exact project
 and release identities, a cryptographically random UUID token, and a prior

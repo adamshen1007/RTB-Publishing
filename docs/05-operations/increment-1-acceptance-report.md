@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 324/324 passed in the final local quality run.
+- Repository tests: 330/330 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -84,16 +84,21 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Release verification uses an exact recursive inventory with no hidden-file
   filtering. Tests reject root and nested hidden extras, ordinary nested extras,
   unexpected directories, missing files, and file/directory type swaps.
-- Catch recovery pins promotion-state parents, marker, backup, quarantine, and
-  target identities and rechecks both locks. Replacement or lock-parent loss
-  is mutation-free and explicitly requires recovery.
-- Stale-lock quarantine tests cover changed inode identities and two simultaneous
-  waiters.
+- Catch recovery validates the marker schema before minting process-private
+  authority, then pins promotion-state parents, marker, backup, quarantine,
+  and target identities and rechecks both locks before every mutation. Direct
+  calls, unsafe re-exports, replacement, or lock-parent loss are mutation-free
+  and explicitly require recovery.
+- Stale locks fail closed without automatic reclaim. Three simultaneous stale
+  waiters preserve the lock and admit no writer; rapid live-lock release with
+  three contenders admits at most one successor without reclaim artifacts.
   Canonical identity tests cover assets, research, hard links, and final byte
   changes. Final Publish and Beta expiry are checked again after the last hook.
-- Generic builds atomically switch one durable build/output generation pointer;
-  every pre/post ready and switch failure preserves either the complete prior
-  pair or the complete new pair.
+- Generic builds recursively flush every generation file and directory, flush
+  the generation parent after rename, and flush the pointer file and parent in
+  order around one atomic build/output generation switch. Preview resolves only
+  that validated pointer, never stale conventional output. Crash tests preserve
+  either the complete prior pair or the complete new pair.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

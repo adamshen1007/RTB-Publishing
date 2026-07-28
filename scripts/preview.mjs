@@ -4,10 +4,12 @@ import { extname, normalize, resolve, sep } from "node:path";
 import { resolve as resolveOutput } from "node:path";
 import { projectOutputPath } from "./books/assemble.mjs";
 import { resolveBookProject } from "./books/discovery.mjs";
+import { resolveCurrentGeneration } from "./books/generation.mjs";
 import { DIST_DIR } from "./lib.mjs";
 
 const project = resolveBookProject(process.argv[2]);
-const BOOK_DIST_DIR = resolveOutput(DIST_DIR, "books", project.id);
+const generation = resolveCurrentGeneration(project, { outputRoot: resolveOutput(DIST_DIR, "books") });
+const BOOK_DIST_DIR = generation.outputDirectory;
 const htmlName = projectOutputPath(project, resolveOutput(DIST_DIR, "books"), "html").split("/").at(-1);
 
 if (!existsSync(resolve(BOOK_DIST_DIR, htmlName))) {

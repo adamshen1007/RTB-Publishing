@@ -4,6 +4,7 @@ import { chmodSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFi
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
+import { resolveCurrentGeneration } from "../scripts/books/generation.mjs";
 import { initializeSnapshots, materializeSnapshot, pointerPath, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
 import { buildProject, outputDispatch } from "../scripts/build-book.mjs";
 
@@ -26,10 +27,10 @@ test("MIG-003: supported one-chapter build runs and unsupported PDF profile leav
   try {
     const oneRoot = resolve(output, "one"), frenchRoot = resolve(output, "french"); cpSync("tests/fixtures/books/one-chapter", oneRoot, { recursive: true }); cpSync("tests/fixtures/books/discoverable/french", frenchRoot, { recursive: true });
     const one = discoverBookProject(oneRoot, { workspaceRoot: oneRoot });
-    const result = buildProject(one, { buildRoot: resolve(output, "build"), outputRoot: resolve(output, "dist") });
+    const result = buildProject(one, { outputRoot: resolve(output, "dist") });
     assert.ok(existsSync(result.outputs[0].file));
     const french = discoverBookProject(frenchRoot, { workspaceRoot: frenchRoot });
-    assert.throws(() => buildProject(french, { buildRoot: resolve(output, "build"), outputRoot: resolve(output, "dist") }), /no generic PDF renderer capability/);
+    assert.throws(() => buildProject(french, { outputRoot: resolve(output, "dist") }), /no generic PDF renderer capability/);
     assert.equal(existsSync(resolve(output, "dist", french.id)), false);
   } finally { rmSync(output, { recursive: true, force: true }); }
 });
@@ -81,13 +82,13 @@ test("MIG-002: discovery pins the current immutable root instead of mixing legac
 });
 
 test("generic build rejects symbolic output roots without touching their targets", () => {
-  for (const kind of ["build", "dist"]) {
+  for (const kind of ["dist"]) {
     const root = mkdtempSync(resolve(tmpdir(), `rtb-generic-${kind}-`)), external = mkdtempSync(resolve(tmpdir(), `rtb-generic-external-${kind}-`));
     try {
       cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); writeFileSync(resolve(external, "sentinel"), "untouched");
-      const project = discoverBookProject(root, { workspaceRoot: root }), buildRoot = resolve(root, "build"), outputRoot = resolve(root, "dist");
-      symlinkSync(external, kind === "build" ? buildRoot : outputRoot);
-      assert.throws(() => buildProject(project, { buildRoot, outputRoot, workspaceRoot: root }), /symbolic link|real directory/);
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist");
+      symlinkSync(external, outputRoot);
+      assert.throws(() => buildProject(project, { outputRoot, workspaceRoot: root }), /symbolic link|real directory/);
       assert.equal(readFileSync(resolve(external, "sentinel"), "utf8"), "untouched"); assert.deepEqual(new Set(["sentinel"]), new Set(readdirSync(external)));
     } finally { rmSync(root, { recursive: true, force: true }); rmSync(external, { recursive: true, force: true }); }
   }
@@ -98,8 +99,8 @@ test("generic build rejects stale pointers and hard-linked canonical inputs", ()
   let root = make("stale");
   try {
     const stale = discoverBookProject(root, { workspaceRoot: root }), prior = readPointer(root), next = materializeSnapshot(root, { sourceRoot: snapshotRoot(root, prior.snapshotHash) }); writePointer(root, { expected: prior, nextSnapshotHash: next.hash, nextVersion: prior.version + 1 });
-    assert.throws(() => buildProject(stale, { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }), /stale/);
-    const fresh = discoverBookProject(root, { workspaceRoot: root }), result = buildProject(fresh, { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }); assert.ok(existsSync(result.outputs[0].file));
+    assert.throws(() => buildProject(stale, { outputRoot: resolve(root, "dist"), workspaceRoot: root }), /stale/);
+    const fresh = discoverBookProject(root, { workspaceRoot: root }), result = buildProject(fresh, { outputRoot: resolve(root, "dist"), workspaceRoot: root }); assert.ok(existsSync(result.outputs[0].file));
   } finally { rmSync(root, { recursive: true, force: true }); }
   root = make("pointer-link");
   try {
@@ -126,12 +127,42 @@ test("canonical identity rejects hard-linked asset and research files", () => {
 test("generic build atomically switches complete build/output generations", () => {
   const root = mkdtempSync(resolve(tmpdir(), "rtb-generic-generation-"));
   try {
-    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), options = { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }, first = buildProject(project, options), initialPointer = readFileSync(first.generationPointer, "utf8");
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), options = { outputRoot: resolve(root, "dist"), workspaceRoot: root }, first = buildProject(project, options), initialPointer = readFileSync(first.generationPointer, "utf8");
     for (const hook of ["beforeGenerationReady", "afterGenerationReady", "beforeGenerationSwitch"]) {
       assert.throws(() => buildProject(project, { ...options, hooks: { [hook]: () => { throw new Error(`fault-${hook}`); } } }), new RegExp(`fault-${hook}`));
       assert.equal(readFileSync(first.generationPointer, "utf8"), initialPointer); assert.ok(existsSync(first.combinedFile)); assert.ok(existsSync(first.outputs[0].file));
     }
     assert.throws(() => buildProject(project, { ...options, hooks: { afterGenerationSwitch: () => { throw new Error("fault-after-switch"); } } }), /fault-after-switch/);
     const current = JSON.parse(readFileSync(first.generationPointer, "utf8")), generation = resolve(root, "dist", ".generations", project.id, current.generation); assert.ok(existsSync(resolve(generation, "build", "combined.md"))); assert.ok(existsSync(resolve(generation, "output-root", project.id, project.outputProfiles[0].filename)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("preview resolution serves only the complete generation selected by .current", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-preview-generation-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, first = buildProject(project, options);
+    const stale = resolve(outputRoot, project.id); mkdirSync(stale, { recursive: true }); writeFileSync(resolve(stale, "index.html"), "stale conventional output");
+    const current = resolveCurrentGeneration(project, { outputRoot }); assert.equal(current.generation, first.generation); assert.notEqual(current.outputDirectory, stale); assert.ok(existsSync(resolve(current.outputDirectory, project.outputProfiles[0].filename)));
+    const second = buildProject(project, options), refreshed = resolveCurrentGeneration(project, { outputRoot }); assert.equal(refreshed.generation, second.generation); assert.notEqual(refreshed.generationRoot, current.generationRoot);
+    const pointerBytes = readFileSync(second.generationPointer); unlinkSync(second.generationPointer); assert.throws(() => resolveCurrentGeneration(project, { outputRoot }), /No current build generation.*pnpm build/);
+    writeFileSync(second.generationPointer, "not-json\n", { mode: 0o600 }); assert.throws(() => resolveCurrentGeneration(project, { outputRoot }), /pointer is invalid.*pnpm build/);
+    writeFileSync(second.generationPointer, pointerBytes, { mode: 0o600 }); assert.equal(resolveCurrentGeneration(project, { outputRoot }).generation, second.generation);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generic generation durability barriers precede atomic visibility and preserve a switched generation", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generic-durability-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), original = readFileSync(baseline.generationPointer, "utf8"), events = [];
+    buildProject(project, { ...options, hooks: { durability: (event) => events.push(event), beforeGenerationSwitch: () => events.push("before-generation-switch"), afterGenerationSwitch: () => events.push("after-generation-switch") } });
+    const switchIndex = events.indexOf("before-generation-switch"), parentIndex = events.lastIndexOf("after-fsync-generation-parent"), firstFile = events.indexOf("after-fsync-file"), firstDirectory = events.indexOf("after-fsync-directory"), pointerFile = events.lastIndexOf("after-fsync-pointer-file"), pointerParent = events.lastIndexOf("after-fsync-pointer-parent");
+    assert.ok(firstFile >= 0 && firstFile < switchIndex); assert.ok(firstDirectory >= 0 && firstDirectory < switchIndex); assert.ok(parentIndex >= 0 && parentIndex < switchIndex); assert.ok(pointerFile > switchIndex && pointerParent > pointerFile); assert.ok(events.indexOf("after-generation-switch") > pointerParent);
+    const stable = readFileSync(baseline.generationPointer, "utf8");
+    for (const barrier of ["before-fsync-file", "before-fsync-directory", "before-fsync-generation-parent"]) {
+      assert.throws(() => buildProject(project, { ...options, hooks: { durability: (event) => { if (event === barrier) throw new Error(`crash-${barrier}`); } } }), new RegExp(`crash-${barrier}`)); assert.equal(readFileSync(baseline.generationPointer, "utf8"), stable);
+    }
+    assert.throws(() => buildProject(project, { ...options, hooks: { durability: (event, path) => { if (event === "before-fsync-pointer-file" && path === baseline.generationPointer) throw new Error("crash-after-pointer-rename"); } } }), /crash-after-pointer-rename/);
+    const switched = JSON.parse(readFileSync(baseline.generationPointer, "utf8")); assert.notEqual(switched.generation, JSON.parse(stable).generation); assert.ok(existsSync(resolve(outputRoot, ".generations", project.id, switched.generation)));
+    assert.notEqual(original, readFileSync(baseline.generationPointer, "utf8"));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
