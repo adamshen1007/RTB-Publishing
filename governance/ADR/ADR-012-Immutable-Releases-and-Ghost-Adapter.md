@@ -98,6 +98,22 @@ before commit. Direct external editor writes cannot be prevented by SQLite or
 the cooperative lock, so any mismatch observed by the stability recheck causes
 rollback.
 
+The release build holds that lock while it renders in unique staging,
+registers and promotes the candidate, finalizes, and performs the last
+verification. It passes explicit held-lock authority into finalization; the
+finalization operation never recursively acquires the lock. A legacy `reserved` identity
+without a finalization record may be adopted only when its deterministic
+release ID, candidate, real current approval and policy, current Beta, and
+existing manifest bytes exactly reproduce. Otherwise recovery requires a new
+exact Publish approval and never silently blesses the legacy row.
+
+Completed verification is historical integrity, not current eligibility. The
+completion record preserves approval actor, creation time, lifecycle version,
+and exact binding bytes proven current at `completed_at`. A later Blueprint
+invalidation or product revocation does not alter those historical facts or
+the immutable release bytes. Current distribution eligibility and revocation
+are separate mutable product decisions.
+
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest
 checksums. The local immutable manifest is the comparison authority for remote

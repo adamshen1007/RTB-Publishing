@@ -255,6 +255,19 @@ RTB Publishing operations, but it cannot prevent an external editor from
 writing directly; the pre-commit stability check detects such changes when
 they occur before the commit boundary.
 
+The app-controlled release build holds the same project lock through staging,
+candidate registration and promotion, finalization, and final byte
+verification, passing explicit held-lock authority rather than reacquiring it.
+Legacy reserved identities may be reconciled only from an exact deterministic
+identity, candidate, current real approval and policy, current Beta, and
+existing manifest match; mismatches require a new exact approval.
+
+A completed record proves historical integrity at its completion time. It
+stores the real approval facts independently of manifest JSON. Later Blueprint
+invalidation or revocation does not retroactively corrupt those immutable
+bytes; current release eligibility and distribution revocation remain separate
+mutable state.
+
 The final manifest required by ADR-012 derives from the approved envelope. It
 must preserve every material field exactly and may add only the Publish
 approval reference and an unreserved deterministic future-staging reference.

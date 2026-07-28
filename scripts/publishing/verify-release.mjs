@@ -23,8 +23,9 @@ export function verifyReleaseDirectory(directory, candidate, { manifest, root } 
   try {
     const record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ? AND project_id = ? AND candidate_hash = ? AND manifest_hash = ? AND status = 'completed'").get(manifest.releaseId, candidate.projectId, candidate.candidateHash, manifest.manifestHash);
     const identity = database.prepare("SELECT * FROM release_identities WHERE release_id = ? AND approval_id = ? AND status = 'completed'").get(manifest.releaseId, manifest.approval?.id);
-    const approval = database.prepare("SELECT id FROM lifecycle_approvals WHERE id = ? AND project_id = ? AND gate = 'publish' AND decision = 'approved' AND explicit_confirmation = 1 AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations)").get(manifest.approval?.id, candidate.projectId);
-    if (!record || record.manifest_json !== JSON.stringify(manifest) || !identity || !approval) throw new Error("Release verification requires the exact completed durable finalization, identity, and current ledger Publish approval.");
+    const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ? AND project_id = ? AND gate = 'publish' AND decision = 'approved' AND explicit_confirmation = 1").get(manifest.approval?.id, candidate.projectId);
+    const historicalApproval = approval && record?.completed_while_current === 1 && record.approval_actor_type === approval.actor_type && record.approval_actor_id === approval.actor_id && record.approval_created_at === approval.created_at && record.approval_lifecycle_version === approval.lifecycle_version && record.approval_bindings_json === approval.bindings_json && record.completed_at >= approval.created_at;
+    if (!record || record.manifest_json !== JSON.stringify(manifest) || !identity || !historicalApproval) throw new Error("Release verification requires the exact completed durable finalization, identity, and completion-time ledger Publish approval facts.");
     return true;
   } finally { database.close(); }
 }

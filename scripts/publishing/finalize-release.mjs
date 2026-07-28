@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock } from "../state/project-lock.mjs";
+import { acquireProjectLock, hasProjectLock, projectLockPath } from "../state/project-lock.mjs";
 import { loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
@@ -23,7 +23,7 @@ function currentBetaMatches(project, approvedBeta) {
   return current.state === "ready" && approvedBeta?.betaSnapshotHash === current.betaSnapshotHash && approvedBeta?.policyResultsHash === current.policyResultsHash;
 }
 
-function prepare(database, project, candidateHash, approvalId, beforeCommit) {
+function prepare(database, project, candidateHash, approvalId, releaseDirectory, beforeCommit) {
   database.exec("BEGIN IMMEDIATE");
   try {
     const existing = database.prepare("SELECT * FROM release_finalizations WHERE approval_id = ?").get(approvalId);
@@ -36,9 +36,14 @@ function prepare(database, project, candidateHash, approvalId, beforeCommit) {
     const policies = evaluateReleasePolicies(project, candidate, { database }), manifest = buildManifest(candidate, approval, policies);
     beforeCommit?.();
     if (!currentBetaMatches(project, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization commit.");
-    const at = new Date().toISOString();
-    database.prepare("INSERT INTO release_identities (release_id, project_id, candidate_hash, approval_id, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").run(manifest.releaseId, manifest.projectId, manifest.candidateHash, approval.id, at);
-    database.prepare("INSERT INTO release_finalizations VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, NULL)").run(manifest.releaseId, manifest.projectId, manifest.candidateHash, approval.id, manifest.manifestHash, JSON.stringify(manifest), at);
+    const at = new Date().toISOString(), legacy = database.prepare("SELECT * FROM release_identities WHERE release_id = ? OR approval_id = ?").get(manifest.releaseId, approval.id);
+    if (legacy) {
+      let stored;
+      try { stored = JSON.parse(readFileSync(resolve(releaseDirectory, "manifest.json"), "utf8")); } catch { stored = null; }
+      if (legacy.status !== "reserved" || legacy.project_id !== manifest.projectId || legacy.candidate_hash !== manifest.candidateHash || legacy.approval_id !== approval.id || JSON.stringify(stored) !== JSON.stringify(manifest)) throw new Error("Legacy reserved release identity cannot be adopted safely. Preserve its evidence, then obtain a new exact Publish approval before finalizing again.");
+      database.prepare("UPDATE release_identities SET status = 'pending' WHERE release_id = ?").run(manifest.releaseId);
+    } else database.prepare("INSERT INTO release_identities (release_id, project_id, candidate_hash, approval_id, status, created_at) VALUES (?, ?, ?, ?, 'pending', ?)").run(manifest.releaseId, manifest.projectId, manifest.candidateHash, approval.id, at);
+    database.prepare("INSERT INTO release_finalizations (release_id, project_id, candidate_hash, approval_id, manifest_hash, manifest_json, status, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, NULL)").run(manifest.releaseId, manifest.projectId, manifest.candidateHash, approval.id, manifest.manifestHash, JSON.stringify(manifest), at);
     database.exec("COMMIT"); durableCheckpoint(database); return { manifest, status: "pending" };
   } catch (error) { if (database.inTransaction) database.exec("ROLLBACK"); throw error; }
 }
@@ -61,23 +66,25 @@ function complete(database, root, project, releaseDirectory, manifest, beforeCom
     beforeCommit?.();
     if (!currentBetaMatches(project, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization completion commit.");
     verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
-    database.prepare("UPDATE release_finalizations SET status = 'completed', completed_at = ? WHERE release_id = ? AND status = 'pending'").run(new Date().toISOString(), record.release_id);
+    const approvalRow = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(record.approval_id);
+    database.prepare("UPDATE release_finalizations SET status = 'completed', completed_at = ?, approval_actor_type = ?, approval_actor_id = ?, approval_created_at = ?, approval_lifecycle_version = ?, approval_bindings_json = ?, completed_while_current = 1 WHERE release_id = ? AND status = 'pending'").run(new Date().toISOString(), approvalRow.actor_type, approvalRow.actor_id, approvalRow.created_at, approvalRow.lifecycle_version, approvalRow.bindings_json, record.release_id);
     database.prepare("UPDATE release_identities SET status = 'completed' WHERE release_id = ? AND status = 'pending'").run(record.release_id);
     database.exec("COMMIT"); durableCheckpoint(database);
   } catch (error) { if (database.inTransaction) database.exec("ROLLBACK"); throw error; }
 }
 
 /** Sole authority for preparing, writing, verifying, and completing a release manifest. */
-export async function finalizeRelease({ root, project, candidateHash, approvalId, releaseDirectory, hooks = {} }) {
-  const lock = await acquireProjectLock(root, { ownerId: `publication-finalization-${process.pid}` });
+export async function finalizeRelease({ root, project, candidateHash, approvalId, releaseDirectory, hooks = {}, heldLock = null }) {
+  if (heldLock && (heldLock.path !== projectLockPath(root) || !hasProjectLock(root))) throw new Error("Held publication lock authority is invalid.");
+  const lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-finalization-${process.pid}` });
   const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
   try {
-    const prepared = prepare(database, project, candidateHash, approvalId, hooks.beforePrepareCommit);
+    const prepared = prepare(database, project, candidateHash, approvalId, releaseDirectory, hooks.beforePrepareCommit);
     (hooks.writeManifest ?? writeJsonAtomic)(resolve(releaseDirectory, "manifest.json"), prepared.manifest);
     hooks.afterManifestWrite?.();
     if (prepared.status !== "completed") {
       complete(database, root, project, releaseDirectory, prepared.manifest, hooks.beforeCompleteCommit);
     } else verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ?").get(candidateHash).candidate_json), { manifest: prepared.manifest });
     return { manifest: prepared.manifest };
-  } finally { database.close(); lock.release(); }
+  } finally { database.close(); if (!heldLock) lock.release(); }
 }

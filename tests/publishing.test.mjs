@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -17,6 +17,7 @@ import { evaluateReleasePolicies } from "../scripts/publishing/policies.mjs";
 import { assertSafeMarkup } from "../scripts/publishing/verify.mjs";
 import { publicationExport } from "../scripts/notion-publication.mjs";
 import { openStateDatabase } from "../scripts/state/database.mjs";
+import { projectLockPath } from "../scripts/state/project-lock.mjs";
 
 test("SEC-004 rejects active markup and unsafe URLs while permitting inert task boxes", () => { assert.throws(() => assertSafeMarkup('<img src="x" onerror="alert(1)">', "HTML"), /security/); assert.throws(() => assertSafeMarkup('<a href="javascript:alert(1)">bad</a>', "EPUB"), /security/); assert.doesNotThrow(() => assertSafeMarkup('<input type="checkbox"></input>', "HTML")); });
 
@@ -54,14 +55,14 @@ async function publishable(item) {
   reviews.record({ kind: "rights-and-brand-review", decision: "approved", qualifiedRole: "publishing rights owner" });
   const published = await service.approve({ gate: "publish", expectedVersion: 2, actor: { type: "human", id: "creator" }, explicitConfirmation: true });
   assert.equal(published.state, "succeeded");
-  return { book, reviews, published };
+  return { book, reviews, published, service };
 }
 
 test("real lifecycle services atomically finalize current exact evidence", async () => {
   const item = releaseFixture(2);
   try {
-    const { book, reviews, published } = await publishable(item);
-    const directory = releaseDirectory(item), finalized = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+    const { book, published, service } = await publishable(item);
+    const directory = releaseDirectory(item), finalized = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory, hooks: { beforeCompleteCommit: () => assert.throws(() => openSync(projectLockPath(item.root), "wx"), /EEXIST/, "a concurrent app build cannot acquire the publication lock") } });
     const ajv = new Ajv2020({ strict: false });
     assert.equal(ajv.compile(JSON.parse(readFileSync(resolve("schemas/publishing/release-candidate.schema.json"), "utf8")))(item.candidate), true);
     assert.equal(ajv.compile(JSON.parse(readFileSync(resolve("schemas/publishing/release-manifest.schema.json"), "utf8")))(finalized.manifest), true);
@@ -69,6 +70,9 @@ test("real lifecycle services atomically finalize current exact evidence", async
     const { manifestHash, ...syntheticMaterial } = finalized.manifest, synthetic = { ...syntheticMaterial, approval: { ...syntheticMaterial.approval, id: "APR-SYNTHETIC" } }; synthetic.manifestHash = materialHash(synthetic);
     writeJson(resolve(directory, "manifest.json"), synthetic);
     assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest: synthetic, root: item.root }), /completed durable finalization/);
+    writeJson(resolve(directory, "manifest.json"), finalized.manifest);
+    assert.equal((await service.invalidateBlueprint({ expectedVersion: 3, changedFields: ["reader"] })).state, "succeeded");
+    assert.equal(verifyReleaseDirectory(directory, item.candidate, { manifest: finalized.manifest, root: item.root }), true, "later invalidation does not rewrite historical integrity");
   } finally { item.dispose(); }
 });
 
@@ -120,4 +124,17 @@ test("publication lock stability recheck rolls back canonical and receipt interl
       finally { database.close(); }
     } finally { item.dispose(); }
   }
+});
+
+test("legacy reserved identity is adopted only from an exact existing manifest", async () => {
+  const item = releaseFixture(2);
+  try {
+    const { book, published } = await publishable(item), directory = releaseDirectory(item, "legacy-release");
+    await assert.rejects(() => finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory, hooks: { afterManifestWrite: () => { throw new Error("simulate legacy interruption"); } } }), /legacy interruption/);
+    const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+    try { database.prepare("DELETE FROM release_finalizations").run(); database.prepare("UPDATE release_identities SET status = 'reserved'").run(); }
+    finally { database.close(); }
+    const adopted = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+    assert.equal(verifyReleaseDirectory(directory, item.candidate, { manifest: adopted.manifest, root: item.root }), true);
+  } finally { item.dispose(); }
 });

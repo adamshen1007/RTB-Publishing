@@ -59,3 +59,10 @@ marks its identity completed. An identical retry safely resumes a pending
 record. Only completed durable finalization verifies as a release. RTB
 Publishing does not claim hosted activation or subscriber delivery in
 Increment 1.
+
+An older `reserved` identity is adopted only when its exact candidate, current
+real approval and policy, current Beta, and existing manifest all reproduce.
+Otherwise preserve the evidence and obtain a new Publish approval. Verification
+of a completed release proves its approval and bytes were valid at completion;
+a later Blueprint invalidation does not rewrite that history. Current delivery
+eligibility or revocation is a separate product decision.
