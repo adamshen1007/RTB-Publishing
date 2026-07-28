@@ -23,6 +23,9 @@ importers:
       markdownlint-cli2:
         specifier: ^0.23.0
         version: 0.23.0
+      pdfjs-dist:
+        specifier: 5.4.624
+        version: 5.4.624
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -1295,6 +1298,9 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
+  node-readable-to-web-readable-stream@0.4.2:
+    resolution: {integrity: sha512-/cMZNI34v//jUTrI+UIo4ieHAB5EZRY/+7OmXZgBxaWBMcW2tGdceIw06RFxWxrKZ5Jp3sI2i5TsRo+CBhtVLQ==}
+
   p-limit@6.2.0:
     resolution: {integrity: sha512-kuUqqHNUqoIWp/c467RI4X6mmyuojY5jGutNU0wVTmEOOfcuwLqyMVoAi9MKi2Ak+5i9+nhmrK4ufZE8069kHA==}
     engines: {node: '>=18'}
@@ -1307,6 +1313,10 @@ packages:
 
   path-data-parser@0.1.0:
     resolution: {integrity: sha512-NOnmBpt5Y2RWbuv0LMzsayp3lVylAHLPUTut412ZA3l+C4uw4ZVkQbjShYCQ8TCpUMdPapr4YjUqLYD6v68j+w==}
+
+  pdfjs-dist@5.4.624:
+    resolution: {integrity: sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==}
+    engines: {node: '>=20.16.0 || >=22.3.0'}
 
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
@@ -2930,6 +2940,9 @@ snapshots:
 
   ms@2.1.3: {}
 
+  node-readable-to-web-readable-stream@0.4.2:
+    optional: true
+
   p-limit@6.2.0:
     dependencies:
       yocto-queue: 1.2.2
@@ -2947,6 +2960,11 @@ snapshots:
       is-hexadecimal: 2.0.1
 
   path-data-parser@0.1.0: {}
+
+  pdfjs-dist@5.4.624:
+    optionalDependencies:
+      '@napi-rs/canvas': 0.1.100
+      node-readable-to-web-readable-stream: 0.4.2
 
   pend@1.2.0: {}
 

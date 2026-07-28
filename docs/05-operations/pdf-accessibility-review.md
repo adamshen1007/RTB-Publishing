@@ -19,7 +19,7 @@ prerequisite, not the conclusion of this review.
 1. Record the exact release candidate hash, Git revision, source snapshot hash,
    PDF SHA-256, and [toolchain lock](../../publishing/pdf/toolchain.lock.json)
    SHA-256.
-2. Confirm successful retained qpdf, veraPDF `2a`, veraPDF `ua1`, font,
+2. Confirm successful retained PDF.js parser, veraPDF `2a`, veraPDF `ua1`, font,
    metadata, link, and bookmark reports with their report hashes.
 3. Verify that every meaningful figure has reviewable alternative text and that
    every decorative figure is intentionally marked as an artifact.
@@ -93,7 +93,7 @@ environment:
   screenReader: VoiceOver <version/settings>
   pdfViewer: <name and version>
 machineReports:
-  qpdf: { result: pass, sha256: <report hash> }
+  pdfjs: { result: pass, sha256: <report hash> }
   verapdf2a: { result: pass, sha256: <report hash> }
   verapdfUa1: { result: pass, sha256: <report hash> }
   retainedEvidenceManifest: { result: pass, sha256: <manifest hash> }

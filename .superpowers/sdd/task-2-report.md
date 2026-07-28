@@ -3,7 +3,7 @@
 ## Result
 
 Blocked on the external first remote CI evidence run. The local/code remediation
-is complete: RFC-008 selects Typst
+uses RFC-008's Typst
 0.15.0 under Apache-2.0 for the explicit combined `PDF/A-2a+PDF/UA-1`
 profile. Canonical Markdown and Git remain the source authority; Typst is a
 derived build intermediate in the immutable, disk-backed snapshot.
@@ -15,22 +15,22 @@ derived build intermediate in the immutable, disk-backed snapshot.
   transformation. The generated Typst file stays inside the evidence staging
   snapshot and cannot become authored content.
 - The common command verifies the exact Typst, Temurin Java, veraPDF launcher
-  and main JAR, qpdf, and Noto Serif executable/font hashes before rendering.
-  It uses a clean disk-backed staging root, qpdf, and both veraPDF profiles.
+  and main JAR, and Noto Serif executable/font hashes before rendering. It uses
+  a clean disk-backed staging root, the exact `pnpm-lock.yaml` PDF.js parser,
+  and both veraPDF profiles.
 - Retained sanitized, inspectable evidence in
-  `tests/fixtures/publishing/pdf/evidence/artifacts/`: PDF, QDF parser view,
-  qpdf integrity/outline/page reports, veraPDF `2a`/`ua1` JSON reports, the
+  `tests/fixtures/publishing/pdf/evidence/artifacts/`: PDF, the retained
+  PDF.js parse/semantic report, veraPDF `2a`/`ua1` JSON reports, the
   source/derived snapshot, and a SHA-256 freshness manifest.
 - Tests recalculate every retained artifact hash and inspect parser/profile
   evidence for title, `en-US`, tags, table/figure roles, alternative text,
-  links, bookmarks, Noto embedding, and one page.
-- Removed unused Ghostscript/ImageMagick locks. qpdf now records the exact
-  verified macOS bottle plus installed executable hash.
+  links, bookmarks, API-exposed font identifiers/families, and one page.
+- Removed unused Ghostscript/ImageMagick locks. `pdfjs-dist` 5.4.624 records
+  the exact pnpm integrity value and full lockfile SHA-256 provenance.
 - GitHub Actions now uses the official `macos-15-intel` label and implements
   the identical `node scripts/pdf-compatibility.mjs` command after verified
-  tool setup. It directly downloads the checksum-pinned qpdf Sonoma bottle
-  before extraction and uploads compatibility evidence with `always()` even
-  when a validator fails. A remote workflow run remains to be recorded before
+  tool setup. It has no GHCR token/download dependency and uploads compatibility
+  evidence with `always()` even when a validator fails. A remote workflow run remains to be recorded before
   remote CI evidence is considered complete.
 - Restored an executed visual-regression check using Typst's locked native PNG
   raster at 144 PPI. The command retains its raster, baseline equality result,
@@ -43,12 +43,13 @@ derived build intermediate in the immutable, disk-backed snapshot.
 ```text
 PDF_TYPST=/tmp/.../typst PDF_JAVA=/tmp/.../java PDF_VERAPDF=/tmp/.../verapdf \
 PDF_VERAPDF_JAR=/tmp/.../greenfield-apps-1.28.2.jar \
-PDF_QPDF=/usr/local/Cellar/qpdf/12.3.2/bin/qpdf PDF_FONT=/tmp/.../NotoSerif.ttf \
+PDF_FONT=/tmp/.../NotoSerif.ttf \
 node scripts/pdf-compatibility.mjs
 ```
 
-The command regenerated the retained manifest and passed qpdf, veraPDF `2a`
-(153 rules, 7,201 checks), and veraPDF `ua1` (106 rules, 1,642 checks), with
+The command regenerates the retained manifest, parses with lockfile-pinned
+`pdfjs-dist` 5.4.624, and passes veraPDF `2a` (153 rules, 7,201 checks) and
+veraPDF `ua1` (106 rules, 1,642 checks), with
 zero failed rules/checks. `node --test tests/pdf-toolchain.test.mjs` passes all
 six tests; an earlier `pnpm test` passed 69 tests. Markdown, spelling, style, citation,
 and link checks pass, with only the repository's existing transient external
@@ -73,7 +74,7 @@ The focused PDF suite passed all six tests.
 - Bound the fixed repository visual baseline path and SHA-256 into the retained
   manifest; tests recompute it and compare it to the visual report. CI has no
   baseline override.
-- Added versioned JSON Schemas for the manifest, visual report, qpdf reports,
+- Added versioned JSON Schemas for the manifest, visual report, parser report,
   and veraPDF reports. The focused suite validates retained JSON before semantic
   assertions and includes a malformed visual-report negative case.
 - Added a renderer-derived A5 negative raster fixture. Its retained dimensions
@@ -91,3 +92,22 @@ The focused PDF suite passed all six tests.
   detected from rendered pixels rather than from a preset boolean.
 - Added a strict schema for the retained pixel-measurement artifact and a
   rejecting negative test for missing derived bounds before semantic checks.
+
+## PDF.js remediation — 2026-07-28
+
+- Replaced the failed Homebrew qpdf 12.3.2 bottle with Apache-2.0
+  `pdfjs-dist` 5.4.624, pinned by the pnpm lockfile integrity
+  (`sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==`).
+- The parser report retains successful parsing, page count, metadata/language,
+  bookmarks, internal/external link annotations, tag/structure tree including
+  table roles and figure alternative text, plus font identifiers and families
+  where PDF.js exposes them. veraPDF remains the authoritative PDF/A/PDF/UA
+  validator.
+- Remote run `30323389374` failed only because the extracted qpdf dynamically
+  linked Homebrew OpenSSL and could not resolve `_ERR_clear_error`; evidence
+  artifact upload still succeeded. The next run is expected to avoid that
+  native-library boundary because the common parser is the pnpm-installed
+  package.
+- On the replacement change, the retained evidence was regenerated locally;
+  `node --test tests/pdf-toolchain.test.mjs` passed 6/6 and `pnpm test` passed
+  71/71. Markdown lint and spelling checks also passed.

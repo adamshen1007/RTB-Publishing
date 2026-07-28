@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { inflateSync } from "node:zlib";
+import { getDocument, version as pdfjsVersion } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -46,7 +47,6 @@ const typst = requireEnvFile("PDF_TYPST");
 const java = requireEnvFile("PDF_JAVA");
 const verapdf = requireEnvFile("PDF_VERAPDF");
 const verapdfJar = requireEnvFile("PDF_VERAPDF_JAR");
-const qpdf = requireEnvFile("PDF_QPDF");
 const font = requireEnvFile("PDF_FONT");
 const renderer = lock.tools.renderer;
 const x64 = renderer.artifacts.find((artifact) => artifact.platform === "macos-x86_64");
@@ -54,7 +54,6 @@ verify("Typst executable", typst, x64.executableSha256);
 verify("Temurin java executable", java, lock.tools.javaRuntime.artifacts[0].executableSha256);
 verify("veraPDF launcher", verapdf, lock.tools.structuralValidator.executableSha256);
 verify("veraPDF main jar", verapdfJar, lock.tools.structuralValidator.mainJarSha256);
-verify("qpdf executable", qpdf, lock.tools.pdfParser.executableSha256);
 verify("Noto Serif", font, lock.fonts[0].sha256);
 
 rmSync(out, { recursive: true, force: true });
@@ -112,22 +111,47 @@ run(typst, ["compile", "--root", snapshot, "--format", "png", "--ppi", "144", lo
 const lowRes = pngRgba(resolve(out, "visual-lowres-1.png"));
 const lowResBounds = colorBounds(lowRes, (r, g, b, a) => r > 180 && g < 80 && b < 80 && a > 0);
 writeFileSync(resolve(out, "visual-negative-measurements.json"), `${JSON.stringify({ schemaVersion: 1, clipping: { raster: "visual-clipping-1.png", renderedBounds: redBounds, clippingDetected: redBounds.maxX === clipping.width - 1 }, imageResolution: { raster: "visual-lowres-1.png", renderedBounds: lowResBounds, alteredDimensionsDetected: lowResBounds.width < 20 && lowResBounds.height < 10 } }, null, 2)}\n`);
-writeFileSync(resolve(out, "qpdf-check.txt"), run(qpdf, ["--check", rendered]).replaceAll(rendered, "semantic-book.pdf"));
-writeFileSync(resolve(out, "qpdf-outlines.json"), run(qpdf, ["--json", "--json-key=outlines", rendered]));
-writeFileSync(resolve(out, "qpdf-pages.json"), run(qpdf, ["--json", "--json-key=pages", rendered]));
-run(qpdf, ["--qdf", "--object-streams=disable", rendered, resolve(out, "semantic-book.qdf.pdf")]);
+const loadingTask = getDocument({ data: new Uint8Array(readFileSync(rendered)), disableWorker: true });
+const parsedPdf = await loadingTask.promise;
+const parsedPages = [];
+for (let pageNumber = 1; pageNumber <= parsedPdf.numPages; pageNumber += 1) {
+  const page = await parsedPdf.getPage(pageNumber);
+  const text = await page.getTextContent();
+  parsedPages.push({
+    pageNumber,
+    view: page.view,
+    annotations: (await page.getAnnotations()).map(({ subtype, dest, url, unsafeUrl, overlaidText }) => ({ subtype, dest, url, unsafeUrl, overlaidText })),
+    structTree: await page.getStructTree(),
+    text: {
+      language: text.lang,
+      fontNames: [...new Set(text.items.map((item) => item.fontName))],
+      fontFamilies: [...new Set(Object.values(text.styles).map((style) => style.fontFamily))]
+    }
+  });
+}
+const pdfMetadata = await parsedPdf.getMetadata();
+const parsedReport = {
+  schemaVersion: 1,
+  parser: { name: "pdfjs-dist", version: pdfjsVersion },
+  pageCount: parsedPdf.numPages,
+  metadata: { info: pdfMetadata.info, hasStructTree: pdfMetadata.hasStructTree },
+  markInfo: await parsedPdf.getMarkInfo(),
+  outlines: await parsedPdf.getOutline(),
+  pages: parsedPages
+};
+writeFileSync(resolve(out, "pdfjs-report.json"), `${JSON.stringify(parsedReport, null, 2)}\n`);
 const javaHome = dirname(dirname(java));
 const javaEnv = { ...process.env, JAVA_HOME: javaHome, PATH: `${dirname(java)}:${process.env.PATH}` };
 const sanitizeEvidence = (text) => text.replaceAll(rendered, "semantic-book.pdf").replaceAll(root, "<repository>").replaceAll(staging, "<staging>");
 writeFileSync(resolve(out, "verapdf-2a.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "2a", rendered], { env: javaEnv })));
 writeFileSync(resolve(out, "verapdf-ua1.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "ua1", rendered], { env: javaEnv })));
 
-const files = ["semantic-book.pdf", "semantic-book.qdf.pdf", "semantic-book-1.png", "visual-regression.json", "visual-negative-1.png", "visual-negative.json", "visual-clipping-1.png", "visual-lowres-1.png", "visual-negative-measurements.json", "qpdf-check.txt", "qpdf-outlines.json", "qpdf-pages.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ", "staging/snapshot/semantic-figure.svg"];
+const files = ["semantic-book.pdf", "semantic-book-1.png", "visual-regression.json", "visual-negative-1.png", "visual-negative.json", "visual-clipping-1.png", "visual-lowres-1.png", "visual-negative-measurements.json", "pdfjs-report.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ", "staging/snapshot/semantic-figure.svg"];
 const manifest = {
   schemaVersion: 1,
   generatedBy: "scripts/pdf-compatibility.mjs",
   sourceSnapshot: { markdownSha256: sha256(fixture), figureSha256: sha256(figure), derivedTypstSha256: sha256(typstInput), transformerSha256: sha256(resolve(root, "scripts/pdf-compatibility.mjs")), toolchainLockSha256: sha256(resolve(root, "publishing/pdf/toolchain.lock.json")), visualBaseline: { path: "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png", sha256: baselineSha256 } },
-  tools: { typst: sha256(typst), java: sha256(java), verapdf: sha256(verapdf), verapdfJar: sha256(verapdfJar), qpdf: sha256(qpdf), font: sha256(font) },
+  tools: { typst: sha256(typst), java: sha256(java), verapdf: sha256(verapdf), verapdfJar: sha256(verapdfJar), parser: { name: "pdfjs-dist", version: pdfjsVersion, packageLockSha256: sha256(resolve(root, "pnpm-lock.yaml")) }, font: sha256(font) },
   files: Object.fromEntries(files.map((file) => [file, sha256(resolve(out, file))]))
 };
 writeFileSync(resolve(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);

@@ -15,9 +15,7 @@ const sha256 = (file) => createHash("sha256").update(read(file)).digest("hex");
 const lock = json("publishing/pdf/toolchain.lock.json");
 const matrix = json("tests/fixtures/publishing/pdf/compatibility-matrix.json");
 const manifest = json("tests/fixtures/publishing/pdf/evidence/artifacts/manifest.json");
-const qdf = read("tests/fixtures/publishing/pdf/evidence/artifacts/semantic-book.qdf.pdf").toString("latin1");
-const outlines = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-outlines.json");
-const pages = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-pages.json");
+const parserReport = json("tests/fixtures/publishing/pdf/evidence/artifacts/pdfjs-report.json");
 const visual = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-regression.json");
 const visualNegative = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-negative.json");
 const visualMeasurements = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-negative-measurements.json");
@@ -33,28 +31,26 @@ const requireValidationReport = (value, label) => {
   assert.ok(Array.isArray(value.report.jobs[0]?.validationResult), `${label}.report.jobs[0].validationResult must be an array`);
 };
 
-test("lock, manifest, qpdf, and veraPDF evidence have actionable required shapes", () => {
+test("lock, manifest, parser, and veraPDF evidence have actionable required shapes", () => {
   requireObject(lock, "toolchain lock");
   assert.equal(lock.schemaVersion, 2, "toolchain lock schemaVersion must be 2");
   requireObject(manifest.sourceSnapshot, "manifest.sourceSnapshot");
   requireObject(manifest.tools, "manifest.tools");
   requireObject(manifest.files, "manifest.files");
-  assert.ok(Array.isArray(outlines.outlines), "qpdf outlines must be an array");
-  assert.ok(Array.isArray(pages.pages), "qpdf pages must be an array");
+  assert.ok(Array.isArray(parserReport.outlines), "PDF.js outlines must be an array");
+  assert.ok(Array.isArray(parserReport.pages), "PDF.js pages must be an array");
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
   validate("manifest", manifest, "manifest");
   validate("visual", visual, "visual report");
-  validate("qpdf-outlines", outlines, "qpdf outlines");
-  validate("qpdf-pages", pages, "qpdf pages");
+  validate("pdfjs", parserReport, "PDF.js parser report");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
   validate("visual-negative", visualNegative, "negative visual report");
   validate("visual-negative-measurements", visualMeasurements, "negative visual measurements");
   assert.throws(() => validate("visual", { schemaVersion: 1, equal: false }, "malformed visual"), /schema invalid/);
   assert.throws(() => validate("manifest", { schemaVersion: 1 }, "malformed manifest"), /schema invalid/);
-  assert.throws(() => validate("qpdf-outlines", { version: 2 }, "malformed outlines"), /schema invalid/);
-  assert.throws(() => validate("qpdf-pages", { version: 2 }, "malformed pages"), /schema invalid/);
+  assert.throws(() => validate("pdfjs", { schemaVersion: 1, parser: { name: "pdfjs-dist", version: "5.4.624" } }, "malformed parser report"), /schema invalid/);
   assert.throws(() => validate("verapdf", { report: { jobs: [{ validationResult: [{ compliant: false, jobEndStatus: "normal", details: { failedRules: 1, failedChecks: 0 } }] }] } }, "failed verifier"), /schema invalid/);
   assert.throws(() => validate("visual-negative", { schemaVersion: 1 }, "malformed negative visual"), /schema invalid/);
   assert.throws(() => validate("visual-negative-measurements", { schemaVersion: 1, clipping: { raster: "visual-clipping-1.png", clippingDetected: true }, imageResolution: {} }, "missing derived measurements"), /schema invalid/);
@@ -66,10 +62,13 @@ test("locks actual executable, runtime, and font bytes", () => {
   assert.equal(lock.tools.javaRuntime.artifacts[0].executableSha256, manifest.tools.java);
   assert.equal(lock.tools.structuralValidator.executableSha256, manifest.tools.verapdf);
   assert.equal(lock.tools.structuralValidator.mainJarSha256, manifest.tools.verapdfJar);
-  assert.equal(lock.tools.pdfParser.executableSha256, manifest.tools.qpdf);
+  assert.equal(lock.tools.pdfParser.name, manifest.tools.parser.name);
+  assert.equal(lock.tools.pdfParser.version, manifest.tools.parser.version);
+  assert.equal(manifest.tools.parser.packageLockSha256, sha256("pnpm-lock.yaml"));
   assert.equal(lock.fonts[0].sha256, manifest.tools.font);
-  for (const value of Object.values(manifest.tools)) assert.match(value, hex);
-  assert.match(lock.tools.pdfParser.bottle.sha256, hex);
+  for (const [name, value] of Object.entries(manifest.tools)) if (name !== "parser") assert.match(value, hex);
+  assert.match(lock.tools.pdfParser.packageIntegrity, /^sha512-/);
+  assert.match(read("pnpm-lock.yaml").toString(), /pdfjs-dist@5\.4\.624:[\s\S]*integrity: sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo\/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr\+0WxFJJmUr45hQzg==/);
   assert.equal("visualRasterizer" in lock.tools, false);
   assert.equal("visualComparator" in lock.tools, false);
 });
@@ -83,10 +82,9 @@ test("retained evidence is fresh, inspectable, and passes both veraPDF profiles"
   assert.equal(manifest.sourceSnapshot.visualBaseline.path, "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png");
   assert.equal(manifest.sourceSnapshot.visualBaseline.sha256, sha256(manifest.sourceSnapshot.visualBaseline.path));
   assert.equal(visual.baselineSha256, manifest.sourceSnapshot.visualBaseline.sha256);
-  assert.match(read("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-check.txt").toString(), /No syntax or stream encoding errors found/);
-  assert.equal(outlines.outlines[0].title, "Chapter one");
-  assert.equal(outlines.outlines[0].kids[0].title, "Fixture values");
-  assert.equal(pages.pages.length, 1);
+  assert.equal(parserReport.pageCount, 1);
+  assert.equal(parserReport.outlines[0].title, "Chapter one");
+  assert.equal(parserReport.outlines[0].items[0].title, "Fixture values");
   for (const flavour of ["2a", "ua1"]) {
     const result = json(`tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-${flavour}.json`).report.jobs[0].validationResult[0];
     assert.equal(result.compliant, true, flavour);
@@ -96,7 +94,19 @@ test("retained evidence is fresh, inspectable, and passes both veraPDF profiles"
 });
 
 test("retained parsed PDF proves metadata, language, tagged semantics, navigation, font, and alternative text", () => {
-  for (const token of ["/Lang (en-US)", "/Title (PDF Toolchain Compatibility Fixture)", "/StructTreeRoot", "/Marked true", "/S /Table", "/S /THead", "/S /TH", "/S /TR", "/S /TD", "/S /Figure", "/Alt (A navy rectangle used by the compatibility fixture.)", "https://example.com/", "/Dest (chapter-one)", "/BaseFont /", "NotoSerif-Regular"]) assert.ok(qdf.includes(token), token);
+  const roles = JSON.stringify(parserReport.pages[0].structTree);
+  assert.equal(parserReport.metadata.info.Title, "PDF Toolchain Compatibility Fixture");
+  assert.equal(parserReport.metadata.info.Author, "Fixture Author");
+  assert.equal(parserReport.metadata.info.Language, "en-US");
+  assert.equal(parserReport.metadata.hasStructTree, true);
+  assert.equal(parserReport.markInfo.Marked, true);
+  for (const role of ["Table", "THead", "TH", "TR", "TD", "Figure"]) assert.match(roles, new RegExp(`\\"role\\":\\"${role}\\"`));
+  assert.match(roles, /A navy rectangle used by the compatibility fixture\./);
+  assert.ok(parserReport.pages[0].annotations.some((annotation) => annotation.dest === "chapter-one"));
+  assert.ok(parserReport.pages[0].annotations.some((annotation) => annotation.url === "https://example.com/"));
+  assert.equal(parserReport.pages[0].text.language, "en-US");
+  assert.ok(parserReport.pages[0].text.fontNames.length > 0, "PDF.js exposes parsed font identifiers");
+  assert.ok(parserReport.pages[0].text.fontFamilies.length > 0, "PDF.js exposes parsed font families");
   assert.match(read("tests/fixtures/publishing/pdf/evidence/artifacts/semantic-book.pdf").toString("latin1"), /^%PDF-1\.7/);
   assert.equal(matrix.fixture, "semantic-book.md");
   assert.equal(matrix.platforms[0].command[0], "node");

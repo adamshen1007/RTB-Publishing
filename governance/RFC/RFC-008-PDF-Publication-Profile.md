@@ -1,6 +1,6 @@
 # RFC-008 — PDF Publication Profile
 
-<!-- cspell:words Typst verapdf qpdf Noto Temurin WeasyPrint -->
+<!-- cspell:words Typst verapdf pdfjs Noto Temurin WeasyPrint -->
 
 ## Status
 
@@ -23,8 +23,11 @@ official documentation states that compatible PDF/A and PDF/UA standards can
 be combined, and that PDF/UA export enables additional checks.
 
 The machine gate uses veraPDF Greenfield 1.28.2 separately for `2a` and
-`ua1` and qpdf 12.3.2 to reject malformed or encrypted PDFs. The exact artifacts, runtimes,
-fonts, command arguments, checksums, and repository locks are in
+`ua1`. It uses the Apache-2.0 `pdfjs-dist` 5.4.624 parser, installed only by
+the exact `pnpm-lock.yaml` integrity record, to parse the PDF and retain its
+page, metadata, navigation, font-identifier, and structure-tree evidence.
+veraPDF remains authoritative for PDF/A and PDF/UA conformance. The exact
+artifacts, runtimes, fonts, command arguments, checksums, and repository locks are in
 [toolchain.lock.json](../../publishing/pdf/toolchain.lock.json).
 
 ## Motivation
@@ -91,8 +94,10 @@ The lock is nevertheless not a legal conclusion about the Noto Serif font or
 other content. The setup step downloads the exact architecture artifact,
 recalculates its SHA-256, installs it in a user-writable directory, and checks
 `typst --version`. It repeats that verification for veraPDF, the pinned Temurin
-JRE, qpdf, renderer-native raster baseline, and font before use. Package-manager
-`latest` or an unpinned system copy is not an accepted release tool.
+JRE, renderer-native raster baseline, and font before use. `pdfjs-dist` is
+installed by `pnpm install --frozen-lockfile`; the lock records the exact
+registry integrity value and the retained manifest records the full lockfile
+SHA-256. Package-manager `latest` or an unpinned system copy is not accepted.
 
 ### Validation roles
 
@@ -102,10 +107,10 @@ JRE, qpdf, renderer-native raster baseline, and font before use. Package-manager
 | Java runtime | Eclipse Temurin JRE 21.0.11+10 | missing, wrong-version, or checksum-mismatched runtime |
 | structural validator | veraPDF Greenfield 1.28.2, `--flavour ua1` | any machine-verifiable PDF/UA-1 failure |
 | archival-profile validator | veraPDF Greenfield 1.28.2, `--flavour 2a` | any PDF/A-2a failure |
-| parser / integrity check | qpdf 12.3.2 | failed `--check`, encryption, bad signature, or unreadable page tree |
+| parser / structural evidence | `pdfjs-dist` 5.4.624 | failed parse, wrong page count/metadata/language, missing outline/link/structure-tree evidence; font identifiers/families are retained where the API exposes them |
 | visual regression | Typst 0.15.0 native PNG at 144 PPI | changed raster hash, wrong one-page A4 geometry, missing 40x20 fixture image declaration, or retained baseline/diff mismatch |
 
-The sanitized compatibility PDF, qpdf outputs, veraPDF JSON reports, derived
+The sanitized compatibility PDF, `pdfjs-report.json`, veraPDF JSON reports, derived
 Typst input, and a hash manifest are retained at the evidence location. Tests
 recalculate each manifest hash and inspect those retained parser/profile
 artifacts. A passing report does not by itself establish accessibility
@@ -161,10 +166,12 @@ class waiver is invalid.
 On 2026-07-28, the locked Typst x86_64 macOS artifact compiled the canonical
 Markdown fixture through the versioned derived-Typst transformation with only
 the locked Noto Serif font and the required profile flags.
-qpdf 12.3.2 reported no syntax or stream-encoding errors and no encryption.
+`pdfjs-dist` 5.4.624 parsed one page and retained metadata, `en-US`, outline,
+internal/external links, marked structure tree, table roles, figure alternative
+text, and the font identifiers/families exposed by its API.
 veraPDF 1.28.2 passed `2a` with 153 rules / 7,201 checks and `ua1` with 106
 rules / 1,642 checks, with zero failed rules and checks. The retained evidence
-includes the parseable PDF, QDF parser view, qpdf reports, veraPDF reports,
+includes the parseable PDF, PDF.js parser report, veraPDF reports,
 and freshness manifest. This is machine prototype evidence, not a completed
 screen-reader review.
 
@@ -185,7 +192,7 @@ screen-reader review.
 - [x] The combined profile, open-source renderer, validators, parser, fonts,
   platform boundary, and manual procedure are named/versioned.
 - [x] Tool and font artifacts have SHA-256 values or an exact repository lock.
-- [x] The `macos-x86_64` semantic fixture passed Typst, qpdf, veraPDF `2a`,
+- [x] The `macos-x86_64` semantic fixture passed Typst, PDF.js parsing, veraPDF `2a`,
   and veraPDF `ua1`; recorded evidence includes artifact/report hashes.
 - [ ] GitHub Actions `macos-15-intel` compatibility evidence is required before
   the remote CI result can be recorded as a platform run.
@@ -213,5 +220,5 @@ screen-reader review.
 - [Typst 0.15.0 release notes](https://typst.app/docs/changelog/0.15.0/) and [source repository licence](https://github.com/typst/typst) — selected version and Apache-2.0 licence.
 - [WeasyPrint API reference](https://doc.courtbouillon.org/weasyprint/stable/api_reference.html) and [LibreOffice PDF/UA help](https://help.libreoffice.org/latest/gu/text/shared/01/ref_pdf_export_universal_accessibility.html) — alternatives examined.
 - [veraPDF validation](https://docs.verapdf.org/validation/) and [CLI validation profiles](https://docs.verapdf.org/cli/validation/) — PDF/A-2a and PDF/UA-1 validation flavours and machine-only PDF/UA scope.
-- [veraPDF 1.28.2 archive](https://software.verapdf.org/releases/1.28), [Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10), and [qpdf 12.3.2 release](https://github.com/qpdf/qpdf/releases/tag/v12.3.2) — locked validation/runtime/parser artifacts.
+- [veraPDF 1.28.2 archive](https://software.verapdf.org/releases/1.28), [Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10), and [PDF.js releases](https://github.com/mozilla/pdf.js/releases) — locked validation/runtime/parser artifacts.
 - [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) — `macos-15-intel` Intel runner label.

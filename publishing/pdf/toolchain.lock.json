@@ -77,15 +77,14 @@
       ]
     },
     "pdfParser": {
-      "name": "qpdf",
-      "version": "12.3.2",
-      "bottle": {
-        "platform": "macos-x86_64",
-        "url": "https://ghcr.io/v2/homebrew/core/qpdf/blobs/sha256:ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f",
-        "sha256": "ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f"
-      },
-      "executableSha256": "fa469a69544255d2fd1be205a0927d5629b6a7ee94a0f36b47f5235acdba5db4",
-      "installation": "Homebrew Sonoma bottle only; verify the bottle and installed executable hashes before use."
+      "name": "pdfjs-dist",
+      "version": "5.4.624",
+      "license": "Apache-2.0",
+      "packageManager": "pnpm",
+      "lockfile": "pnpm-lock.yaml",
+      "packageIntegrity": "sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==",
+      "provenance": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-5.4.624.tgz",
+      "installation": "pnpm install --frozen-lockfile installs the exact lockfile package; the retained manifest records the full lockfile SHA-256."
     },
     "visualRegression": {
       "name": "Typst native PNG raster",

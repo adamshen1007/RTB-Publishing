@@ -14,7 +14,7 @@
     {
       "id": "macos-x86_64",
       "status": "passed-2026-07-28",
-      "rendererArtifact": "Typst 0.15.0 macOS x86_64 with pinned qpdf, Temurin, veraPDF, and Noto Serif",
+      "rendererArtifact": "Typst 0.15.0 macOS x86_64 with lockfile-pinned pdfjs-dist, Temurin, veraPDF, and Noto Serif",
       "command": ["node", "scripts/pdf-compatibility.mjs"],
       "evidence": "tests/fixtures/publishing/pdf/evidence/artifacts/manifest.json"
     }
