@@ -81,7 +81,7 @@ test("public promotion boundary rejects missing, stale, wrong-root, and caller-s
     workspaceLock = await acquireWorkspaceOutputLock(item.workspaceRoot, { ownerId: "right-workspace" }); projectLock = await acquireProjectLock(item.legacyRoot, { ownerId: "right-project" });
     await assert.rejects(() => call({ heldWorkspaceLock: workspaceLock, heldLock: projectLock, outputRoot: outside }), /cannot select/); noMutation();
     const forgedProject = { ...item.project, id: "forged-project" }, forgedManifest = { ...manifest, projectId: "forged-project" };
-    await assert.rejects(() => call({ project: forgedProject, manifest: forgedManifest, heldWorkspaceLock: workspaceLock, heldLock: projectLock }), /current workspace discovery/); noMutation();
+    await assert.rejects(() => call({ project: forgedProject, manifest: forgedManifest, heldWorkspaceLock: workspaceLock, heldLock: projectLock }), /pinned manifest|current workspace discovery/); noMutation();
     workspaceLock.release(); projectLock.release();
     const module = await import("../scripts/publishing/finalize-release.mjs");
     assert.equal("completeFinalizedRelease" in module, false, "callers cannot obtain or replay the one-time completion capability");
@@ -175,6 +175,28 @@ test("material verification cannot complete after live approval authority expire
   } finally { item.dispose(); }
 });
 
+test("final completion hook rechecks Publish and Beta expiry", async (context) => {
+  for (const gate of ["publish", "beta"]) await context.test(gate, async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`final-expiry-${gate}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+      let clock = Date.now(); const expires = new Date(clock + 60_000).toISOString(), databaseBefore = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { if (gate === "publish") databaseBefore.prepare("UPDATE lifecycle_approvals SET expires_at = ? WHERE id = ?").run(expires, approval.id); else databaseBefore.prepare("UPDATE lifecycle_approvals SET expires_at = ? WHERE project_id = ? AND gate = 'beta'").run(expires, item.project.id); } finally { databaseBefore.close(); }
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { now: () => clock, beforeCompleteCommit: () => { clock += 120_000; } } }), /expiry|expired/);
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); } finally { database.close(); }
+    } finally { item.dispose(); }
+  });
+});
+
+test("canonical asset or research byte changes before completion leave release pending", async () => {
+  const item = fixture();
+  try {
+    mkdirSync(resolve(item.legacyRoot, "assets"), { recursive: true }); writeFileSync(resolve(item.legacyRoot, "assets", "proof.txt"), "before"); item.project = resolveBookProject(item.legacyRoot, { workspaceRoot: item.workspaceRoot });
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("asset-race") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { beforeCompleteCommit: () => writeFileSync(resolve(item.legacyRoot, "assets", "proof.txt"), "after") } }), /snapshot or material changed/);
+    const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); } finally { database.close(); }
+  } finally { item.dispose(); }
+});
+
 test("stale canonical pointers before lock, after render, and before completion never publish", async (context) => {
   await context.test("before locks", async () => {
     const item = fixture({ snapshots: true });
@@ -226,13 +248,33 @@ test("verified promotion capability rejects copied replacements of every output 
         const target = level === "target" ? release : level === "project" ? resolve(release, "..") : resolve(release, "..", "..");
         const displaced = `${target}-displaced`; renameSync(target, displaced); cpSync(displaced, target, { recursive: true }); replacedTarget = target; displacedTarget = displaced;
       };
-      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replace } }), /identity changed|physical identity/);
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replace } }), /identity changed|physical identity|recovery is required/);
       assert.equal(existsSync(replacedTarget), true, "failure cleanup must not mutate a replacement namespace"); assert.equal(existsSync(displacedTarget), true);
       const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
       try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
       finally { database.close(); }
     } finally { item.dispose(); }
   });
+});
+
+test("lost lock-parent authority preserves successor state and promoted evidence", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("lock-parent-loss") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate); let release;
+    const replaceLockParent = ({ release: target }) => { release = target; const state = resolve(item.legacyRoot, ".rtb-state"), displaced = resolve(item.legacyRoot, ".rtb-state-displaced"); renameSync(state, displaced); mkdirSync(state); writeFileSync(resolve(state, "successor-proof"), "untouched"); };
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replaceLockParent } }), /recovery is required/);
+    assert.equal(readFileSync(resolve(item.legacyRoot, ".rtb-state", "successor-proof"), "utf8"), "untouched"); assert.equal(existsSync(release), true, "untrusted catch path must preserve promoted evidence");
+  } finally { item.dispose(); }
+});
+
+test("replaced promotion marker makes catch mutation-free and recovery-required", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("marker-loss") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate); let replacement, displaced, release;
+    const replaceMarker = ({ release: target, promotion }) => { release = target; replacement = promotion.marker; displaced = `${replacement}.displaced`; const bytes = readFileSync(replacement); renameSync(replacement, displaced); writeFileSync(replacement, bytes); };
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replaceMarker } }), /recovery is required/);
+    assert.equal(existsSync(replacement), true); assert.equal(existsSync(displaced), true); assert.equal(existsSync(release), true);
+  } finally { item.dispose(); }
 });
 
 test("immutable release verification rejects external and internal symbolic links without mutating targets", async () => {
@@ -254,5 +296,12 @@ test("immutable release verification rejects external and internal symbolic link
     unlinkSync(resolve(completed.release, pdfName)); writeFileSync(resolve(completed.release, pdfName), "pdf-links");
     const retained = resolve(completed.release, "source-snapshot", "book.md"), outsideSource = resolve(item.workspaceRoot, "outside-source"); writeFileSync(outsideSource, readFileSync(retained)); unlinkSync(retained); linkSync(outsideSource, retained);
     assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /one link/);
+    unlinkSync(retained); writeFileSync(retained, "# Snapshot\n");
+    for (const extra of [".payload", "source-snapshot/.hidden", "source-snapshot/nested/extra.txt"]) {
+      const path = resolve(completed.release, extra); mkdirSync(resolve(path, ".."), { recursive: true }); writeFileSync(path, "unexpected");
+      assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /Release directory drift/); rmSync(path, { force: true });
+    }
+    const unexpectedDirectory = resolve(completed.release, "unexpected-directory"); mkdirSync(unexpectedDirectory); assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /Release directory drift/); rmSync(unexpectedDirectory, { recursive: true });
+    const verificationFile = resolve(completed.release, "verification.json"), savedVerification = readFileSync(verificationFile); unlinkSync(verificationFile); mkdirSync(verificationFile); assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /Release directory drift/); rmSync(verificationFile, { recursive: true }); writeFileSync(verificationFile, savedVerification);
   } finally { item.dispose(); }
 });

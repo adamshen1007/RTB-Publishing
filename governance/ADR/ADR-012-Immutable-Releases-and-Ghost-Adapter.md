@@ -123,6 +123,13 @@ before the final database commit and before promotion cleanup. Released,
 forged, wrong-root, replaced, non-canonical, and replayed authority cannot
 complete a ledger row.
 
+The release tree is an exact recursive inventory, not a top-level allowlist.
+Every directory and private regular file—including dotfiles and nested retained
+sources—must match the candidate-declared source inventory and the fixed
+candidate, verification, manifest, and artifact set. Extra or missing paths,
+unexpected directories, type changes, links, and hash drift fail closed. The
+completion capability binds the inventory, hashes, and physical identities.
+
 Held-lock authority is a process-private live handle, not a caller-supplied
 path or owner string. It is accepted only for the exact project root that
 created it. The handle pins the lock parent and lock file, retains an open file
@@ -132,6 +139,12 @@ those facts still match, so parent replacement, file replacement, unlinking,
 hard-linking, or repeated release cannot unlink a successor writer's lock. This
 hierarchy ensures a workspace clean cannot race a build or finalization whose
 project root is nested below it.
+
+Dead-lock reclamation never performs read-then-unlink. A waiter renames the
+observed inode to a unique quarantine path under the pinned lock parent, checks
+that the moved inode is exactly the observed stale file, and only then removes
+it. A changed source inode is restored or retried, never deleted. Concurrent
+waiters therefore serialize without deleting a successor lock.
 
 Workspace and project locks pin physical directory identity: canonical
 path plus device and inode. Lock acquisition rejects a symbolic-link lock
@@ -157,6 +170,19 @@ discovery rules. It renders only into unique, physically validated staging
 directories and moves verified outputs into validated final namespaces. It
 rejects stale project views, symbolic output roots, multiply linked snapshot
 files, and multiply linked canonical pointer files.
+
+Canonical identity inventories every non-state directory and private regular
+file recursively, including assets and research inputs, with relative path,
+type, and hash. Discovery stores that identity rather than recomputing the
+caller's side from live bytes. The final completion boundary rechecks current
+Publish and Beta validity and expiry using a fresh time after the last hook.
+
+Generic builds publish one complete generation containing both build material
+and rendered output. They durably move the verified generation into a retained
+generation namespace, then atomically switch a private, symlink-free metadata
+pointer. Failures before the switch leave the prior pair current; failures
+after it preserve the complete new pair. No path deletes the prior good
+generation while activating a replacement.
 
 The release build holds that lock while it renders in unique staging,
 registers the candidate, finalizes approved material, and performs the last

@@ -102,6 +102,10 @@ The capability also pins the complete output directory chain and every exact
 candidate, manifest, verification, artifact, and retained-source file. A copied
 replacement of the immutable root, project namespace, or release target fails
 closed before completion and before cleanup.
+Verification inventories the complete recursive release tree, including hidden
+files and nested directories. Only the declared artifacts, retained snapshot
+files, and fixed candidate, verification, and manifest records are allowed.
+Any extra, missing, linked, type-changed, or hash-changed entry blocks release.
 The prior release backup remains until the promoted directory passes exact
 verification again. Every rename has durable intent and completion phases.
 Before durable material verification, failure or restart restores the prior
@@ -117,6 +121,11 @@ containment, regular expected files, and a recursively symbolic-link-free
 tree.
 `pnpm clean` and other build output writers take the same workspace lock, so a
 clean at repository root cannot race a build under a nested book directory.
+
+Promotion recovery and cleanup also require the original lock authority and
+pinned `.promotion-state`, marker, backup, quarantine, target, and parent
+identities. If any is replaced, RTB reports that recovery is required and
+preserves both the successor namespace and existing evidence without mutation.
 
 An older `reserved` identity is adopted only when its exact candidate, current
 real approval and policy, current Beta, and existing manifest all reproduce.

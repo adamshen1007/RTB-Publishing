@@ -24,10 +24,11 @@ test("MIG-003: profile dispatch is data-driven for one, 23, and French PDF/EPUB 
 test("MIG-003: supported one-chapter build runs and unsupported PDF profile leaves no output", () => {
   const output = mkdtempSync(resolve(tmpdir(), "rtb-book-build-"));
   try {
-    const one = discoverBookProject("tests/fixtures/books/one-chapter", { workspaceRoot: "tests/fixtures/books/one-chapter" });
+    const oneRoot = resolve(output, "one"), frenchRoot = resolve(output, "french"); cpSync("tests/fixtures/books/one-chapter", oneRoot, { recursive: true }); cpSync("tests/fixtures/books/discoverable/french", frenchRoot, { recursive: true });
+    const one = discoverBookProject(oneRoot, { workspaceRoot: oneRoot });
     const result = buildProject(one, { buildRoot: resolve(output, "build"), outputRoot: resolve(output, "dist") });
     assert.ok(existsSync(result.outputs[0].file));
-    const french = discoverBookProject("tests/fixtures/books/discoverable/french", { workspaceRoot: "tests/fixtures/books/discoverable/french" });
+    const french = discoverBookProject(frenchRoot, { workspaceRoot: frenchRoot });
     assert.throws(() => buildProject(french, { buildRoot: resolve(output, "build"), outputRoot: resolve(output, "dist") }), /no generic PDF renderer capability/);
     assert.equal(existsSync(resolve(output, "dist", french.id)), false);
   } finally { rmSync(output, { recursive: true, force: true }); }
@@ -48,7 +49,7 @@ test("MIG-002: empty, duplicate, and cyclic/symlink workspaces fail safely", () 
     assert.throws(() => discoverBooks(root), /Duplicate Book Project ID/);
     rmSync(resolve(root, "two"), { recursive: true, force: true });
     symlinkSync(root, resolve(root, "one", "cycle"));
-    assert.equal(discoverBooks(root).length, 1);
+    assert.throws(() => discoverBooks(root), /symbolic link/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -109,5 +110,28 @@ test("generic build rejects stale pointers and hard-linked canonical inputs", ()
   try {
     const pointer = readPointer(root), manifest = resolve(snapshotRoot(root, pointer.snapshotHash), "book.project.yaml"), outside = resolve(root, "manifest-copy"); writeFileSync(outside, readFileSync(manifest)); unlinkSync(manifest); linkSync(outside, manifest);
     assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /multiply linked|private regular file/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("canonical identity rejects hard-linked asset and research files", () => {
+  for (const relativePath of ["assets/figure.txt", "research/notes/source.txt"]) {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-canonical-hardlink-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const file = resolve(root, relativePath), outside = resolve(root, "outside-copy"); mkdirSync(resolve(file, ".."), { recursive: true }); writeFileSync(outside, "canonical"); linkSync(outside, file);
+      assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /multiply linked/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+test("generic build atomically switches complete build/output generations", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generic-generation-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), options = { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }, first = buildProject(project, options), initialPointer = readFileSync(first.generationPointer, "utf8");
+    for (const hook of ["beforeGenerationReady", "afterGenerationReady", "beforeGenerationSwitch"]) {
+      assert.throws(() => buildProject(project, { ...options, hooks: { [hook]: () => { throw new Error(`fault-${hook}`); } } }), new RegExp(`fault-${hook}`));
+      assert.equal(readFileSync(first.generationPointer, "utf8"), initialPointer); assert.ok(existsSync(first.combinedFile)); assert.ok(existsSync(first.outputs[0].file));
+    }
+    assert.throws(() => buildProject(project, { ...options, hooks: { afterGenerationSwitch: () => { throw new Error("fault-after-switch"); } } }), /fault-after-switch/);
+    const current = JSON.parse(readFileSync(first.generationPointer, "utf8")), generation = resolve(root, "dist", ".generations", project.id, current.generation); assert.ok(existsSync(resolve(generation, "build", "combined.md"))); assert.ok(existsSync(resolve(generation, "output-root", project.id, project.outputProfiles[0].filename)));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

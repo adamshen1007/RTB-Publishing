@@ -243,6 +243,10 @@ Check:
 - Finalization reloads the current candidate, Beta, Publish approval, and exact
   review policy. A rejection, invalidation, newer candidate, or detected
   canonical/receipt change makes it fail closed.
+- If RTB says **recovery is required**, stop and preserve `.promotion-state`
+  and the immutable release directories exactly as they are. Do not rename or
+  delete them. Restore the original project/workspace path authority, then run
+  the same build command again so RTB can inspect and recover the evidence.
 - A `409` or “material changed” message means your page or command is stale.
   Refresh and inspect the current exact material before trying again.
 

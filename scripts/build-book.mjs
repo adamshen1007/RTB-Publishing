@@ -1,12 +1,12 @@
-import { existsSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, openSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, delimiter, dirname, relative, resolve, sep } from "node:path";
 import { BUILD_DIR, DIST_DIR, ROOT, run } from "./lib.mjs";
 import { assembleBook, projectOutputPath } from "./books/assemble.mjs";
-import { assertCurrentProjectIdentity, projectCanonicalIdentity, resolveBookProject } from "./books/discovery.mjs";
+import { assertCurrentProjectIdentity, pinnedProjectCanonicalHash, resolveBookProject } from "./books/discovery.mjs";
 import { verifyOutputs } from "./verify-outputs.mjs";
 import { buildRelease } from "./publishing/project-build.mjs";
-import { acquireProjectLockImmediate, acquireWorkspaceOutputLockImmediate, assertNoSymlinkPath, ensurePhysicalDirectory, pinPhysicalDirectory } from "./state/project-lock.mjs";
+import { acquireProjectLockImmediate, acquireWorkspaceOutputLockImmediate, assertNoSymlinkPath, assertPinnedEntry, ensurePhysicalDirectory, pinPhysicalDirectory, pinPhysicalEntry } from "./state/project-lock.mjs";
 export { buildRelease };
 
 export function outputDispatch(project) {
@@ -28,26 +28,27 @@ export function buildProject(project, { buildRoot = BUILD_DIR, outputRoot = reso
   };
   const physicalBuildRoot = physicalize(buildRoot), physicalOutputRoot = physicalize(outputRoot), workspaceLock = acquireWorkspaceOutputLockImmediate(workspace, { ownerId: `book-build-output-${process.pid}` });
   let lock;
-  const token = randomUUID(); let buildDirectory, outputDirectory, stagingBuild, stagingOutput;
+  const token = randomUUID(); let buildDirectory, outputDirectory, stagingGeneration, stagingBuild, stagingOutputRoot, stagingOutput, readyGeneration, switched = false;
   try {
     assertNoSymlinkPath(workspace, requested.legacyRoot, { allowMissing: false }); lock = acquireProjectLockImmediate(requested.legacyRoot ?? ROOT, { ownerId: `book-build-${process.pid}` });
-    project = resolveBookProject(requested.legacyRoot, { workspaceRoot: workspace }); if (projectCanonicalIdentity(project).materialHash !== projectCanonicalIdentity(requested).materialHash) throw new Error("Caller Book Project snapshot is stale; rediscover it and start a fresh build."); hooks.afterRediscovery?.({ project }); assertCurrentProjectIdentity(project);
+    project = resolveBookProject(requested.legacyRoot, { workspaceRoot: workspace }); if (pinnedProjectCanonicalHash(project) !== pinnedProjectCanonicalHash(requested)) throw new Error("Caller Book Project snapshot is stale; rediscover it and start a fresh build."); hooks.afterRediscovery?.({ project }); assertCurrentProjectIdentity(project);
     for (const root of [physicalBuildRoot, physicalOutputRoot]) { let ancestor = root; while (!existsSync(ancestor)) ancestor = dirname(ancestor); ensurePhysicalDirectory(pinPhysicalDirectory(ancestor).path, root); }
-    buildDirectory = resolve(physicalBuildRoot, project.id); outputDirectory = resolve(physicalOutputRoot, project.id); stagingBuild = resolve(physicalBuildRoot, ".staging", `${project.id}-${token}`); const stagingRoot = resolve(physicalOutputRoot, ".staging", token); stagingOutput = resolve(stagingRoot, project.id); ensurePhysicalDirectory(physicalBuildRoot, resolve(stagingBuild, "diagrams")); ensurePhysicalDirectory(physicalOutputRoot, stagingOutput);
+    stagingGeneration = resolve(physicalOutputRoot, ".staging", `${project.id}-${token}`); stagingBuild = resolve(stagingGeneration, "build"); stagingOutputRoot = resolve(stagingGeneration, "output-root"); stagingOutput = resolve(stagingOutputRoot, project.id); ensurePhysicalDirectory(physicalOutputRoot, resolve(stagingBuild, "diagrams")); ensurePhysicalDirectory(physicalOutputRoot, stagingOutput);
     const combinedFile = resolve(stagingBuild, "combined.md"), assembled = assembleBook(project, { diagramsDirectory: resolve(stagingBuild, "diagrams") }); writeFileSync(combinedFile, assembled.markdown);
     const shared = [combinedFile, "--from=markdown+yaml_metadata_block", "--standalone", "--toc", `--resource-path=${[stagingBuild, project.root, ROOT].join(delimiter)}`];
     for (const profile of outputDispatch(project)) {
-      const output = projectOutputPath(project, stagingRoot, profile.format);
+      const output = projectOutputPath(project, stagingOutputRoot, profile.format);
       if (profile.format === "html") run("pandoc", [...shared, "--to=html5", "--embed-resources", `--css=${resolve(ROOT, "publishing", "styles.css")}`, "--output", output]);
       else if (profile.format === "epub") run("pandoc", [...shared, "--to=epub3", `--css=${resolve(ROOT, "publishing", "epub.css")}`, "--output", output]);
       else throw new Error(`Book Project ${project.id} declares PDF output ${profile.path}, but no generic PDF renderer capability is configured.`);
     }
-    hooks.afterRender?.({ project, buildDirectory: stagingBuild, outputDirectory: stagingOutput }); assertCurrentProjectIdentity(project); const outputs = verifyOutputs(project, { outputRoot: stagingRoot });
-    for (const [root, target] of [[physicalBuildRoot, buildDirectory], [physicalOutputRoot, outputDirectory]]) { assertNoSymlinkPath(root, target); if (existsSync(target)) rmSync(target, { recursive: true, force: true }); }
-    ensurePhysicalDirectory(physicalBuildRoot, resolve(buildDirectory, "..")); ensurePhysicalDirectory(physicalOutputRoot, resolve(outputDirectory, "..")); renameSync(stagingBuild, buildDirectory); renameSync(stagingOutput, outputDirectory); rmSync(stagingRoot, { recursive: true, force: true });
-    return { project, buildDirectory, outputDirectory, combinedFile: resolve(buildDirectory, "combined.md"), diagramCount: assembled.diagramCount, outputs: outputs.map((item) => ({ ...item, file: resolve(outputDirectory, basename(item.file)) })) };
+    hooks.afterRender?.({ project, buildDirectory: stagingBuild, outputDirectory: stagingOutput }); assertCurrentProjectIdentity(project); const outputs = verifyOutputs(project, { outputRoot: stagingOutputRoot });
+    readyGeneration = resolve(physicalOutputRoot, ".generations", project.id, token); ensurePhysicalDirectory(physicalOutputRoot, dirname(readyGeneration)); hooks.beforeGenerationReady?.({ project, generation: readyGeneration }); renameSync(stagingGeneration, readyGeneration); hooks.afterGenerationReady?.({ project, generation: readyGeneration });
+    buildDirectory = resolve(readyGeneration, "build"); outputDirectory = resolve(readyGeneration, "output-root", project.id); const currentDirectory = resolve(physicalOutputRoot, ".current"), current = resolve(currentDirectory, `${project.id}.json`); ensurePhysicalDirectory(physicalOutputRoot, currentDirectory); assertNoSymlinkPath(physicalOutputRoot, current); const pointerParent = pinPhysicalEntry(currentDirectory, "directory"), priorPointer = existsSync(current) ? pinPhysicalEntry(current, "file") : null;
+    const temporary = `${current}.${token}.tmp`; writeFileSync(temporary, `${JSON.stringify({ schemaVersion: 1, projectId: project.id, generation: token })}\n`, { mode: 0o600 }); let fd = openSync(temporary, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } const temporaryIdentity = pinPhysicalEntry(temporary, "file"); hooks.beforeGenerationSwitch?.({ project, generation: readyGeneration, pointer: current }); assertPinnedEntry(pointerParent, "directory"); assertPinnedEntry(temporaryIdentity, "file"); if (priorPointer) assertPinnedEntry(priorPointer, "file"); else if (existsSync(current)) throw new Error("Generic build generation pointer changed before atomic switch."); renameSync(temporary, current); fd = openSync(current, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } fd = openSync(currentDirectory, "r"); try { fsyncSync(fd); } finally { closeSync(fd); } switched = true; hooks.afterGenerationSwitch?.({ project, generation: readyGeneration, pointer: current });
+    return { project, buildDirectory, outputDirectory, combinedFile: resolve(buildDirectory, "combined.md"), diagramCount: assembled.diagramCount, generation: token, generationPointer: current, outputs: outputs.map((item) => ({ ...item, file: resolve(outputDirectory, relative(stagingOutput, item.file)) })) };
   } catch (error) {
-    if (stagingBuild) rmSync(stagingBuild, { recursive: true, force: true }); if (stagingOutput) rmSync(resolve(stagingOutput, ".."), { recursive: true, force: true });
+    if (stagingGeneration) rmSync(stagingGeneration, { recursive: true, force: true }); if (readyGeneration && !switched) rmSync(readyGeneration, { recursive: true, force: true });
     throw error;
   } finally { lock?.release(); workspaceLock.release(); }
 }

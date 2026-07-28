@@ -1,6 +1,7 @@
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { writeJsonAtomic } from "./common.mjs";
+import { assertPinnedEntry, pinPhysicalEntry } from "../state/project-lock.mjs";
 
 const PHASES = new Set(["prepared", "backup-intent", "backup-complete", "activate-intent", "activate-complete", "material-verified", "ledger-completed", "commit-cleanup-intent", "commit-cleanup-complete", "rollback-quarantine-intent", "rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent", "rollback-cleanup-complete"]);
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -28,8 +29,20 @@ export function promotionContext(input) {
 }
 
 function validatePaths(context) { for (const path of [context.outputRoot, dirname(context.staging), dirname(context.target), dirname(context.marker), context.staging, context.target, context.backup, context.quarantine, context.marker]) safeExisting(path); }
+export function pinPromotionTransaction(context) {
+  validatePaths(context);
+  const paths = [...new Set([context.outputRoot, dirname(context.staging), dirname(context.target), dirname(context.marker), context.staging, context.target, context.backup, context.quarantine, context.marker])];
+  return paths.map((path) => existsSync(path) ? { path, missing: false, expected: lstatSync(path).isDirectory() ? "directory" : "file", identity: pinPhysicalEntry(path, lstatSync(path).isDirectory() ? "directory" : "file") } : { path, missing: true });
+}
+export function assertPromotionTransaction(authority) {
+  for (const entry of authority) {
+    if (entry.missing) { if (existsSync(entry.path)) throw new Error(`Promotion transaction identity changed: ${entry.path}`); }
+    else assertPinnedEntry(entry.identity, entry.expected);
+  }
+  return true;
+}
 function markerValue(context, phase, hadPrior) { return { schemaVersion: 1, projectId: context.projectId, releaseId: context.releaseId, token: context.token, phase, hadPrior }; }
-function writeMarker(context, phase, hadPrior, hook) { event(hook, `before-marker-${phase}`, context); ensure(context, dirname(context.marker)); if (context.testOnlySkipDurability) writeFileSync(context.marker, `${JSON.stringify(markerValue(context, phase, hadPrior))}\n`); else { writeJsonAtomic(context.marker, markerValue(context, phase, hadPrior)); syncDirectory(dirname(context.marker)); } event(hook, `after-marker-${phase}`, context); return { ...context, phase, hadPrior }; }
+function writeMarker(context, phase, hadPrior, hook) { event(hook, `before-marker-${phase}`, context); ensure(context, dirname(context.marker)); if (context.testOnlySkipDurability) writeFileSync(context.marker, `${JSON.stringify(markerValue(context, phase, hadPrior))}\n`); else { writeJsonAtomic(context.marker, markerValue(context, phase, hadPrior)); syncDirectory(dirname(context.marker)); } const next = { ...context, phase, hadPrior }, authority = pinPromotionTransaction(next); try { event(hook, `after-marker-${phase}`, next); } catch (error) { error.promotionContext = next; error.promotionAuthority = authority; throw error; } return next; }
 function readMarker(context) {
   const value = JSON.parse(readFileSync(context.marker, "utf8"));
   if (!exactKeys(value, ["schemaVersion", "projectId", "releaseId", "token", "phase", "hadPrior"]) || value.schemaVersion !== 1 || value.projectId !== context.projectId || value.releaseId !== context.releaseId || value.token !== context.token || !PHASES.has(value.phase) || typeof value.hadPrior !== "boolean") throw new Error("Promotion recovery marker is malformed or mismatched; no filesystem mutation was performed.");

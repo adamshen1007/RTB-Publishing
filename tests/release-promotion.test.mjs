@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
-import { beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "../scripts/publishing/promotion-state.mjs";
+import { assertPromotionTransaction, beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, pinPromotionTransaction, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "../scripts/publishing/promotion-state.mjs";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 function fixture(suffix = "", { fast = false } = {}) { const outputRoot = mkdtempSync(resolve(tmpdir(), `rtb-promotion-${suffix}`)), input = { outputRoot, projectId: "book", releaseId: "REL-EXACT", token: TOKEN, testOnlySkipDurability: fast }, context = promotionContext(input); mkdirSync(context.target, { recursive: true }); mkdirSync(context.staging, { recursive: true }); writeFileSync(resolve(context.target, "identity"), "prior"); writeFileSync(resolve(context.staging, "identity"), "new"); return { outputRoot, input, context, dispose: () => rmSync(outputRoot, { recursive: true, force: true }) }; }
@@ -12,6 +12,15 @@ function recoverAll(input) { for (const context of promotionMarkers(input.output
 
 test("verified promotion retains backup until durable ledger completion then commits", () => { const item = fixture("success-"); try { let state = beginPromotion(item.input); assert.equal(identity(state), "new"); assert.equal(readFileSync(resolve(state.backup, "identity"), "utf8"), "prior"); state = markPromotionMaterialVerified(state); state = markPromotionLedgerCompleted(state); commitPromotion(state); assert.equal(identity(state), "new"); assert.equal(existsSync(state.backup), false); assert.equal(existsSync(state.marker), false); } finally { item.dispose(); } });
 test("unverified promotion rollback restores the prior release", () => { const item = fixture("rollback-"); try { const state = beginPromotion(item.input); rollbackPromotion(state); assert.equal(identity(state), "prior"); assert.equal(existsSync(state.marker), false); } finally { item.dispose(); } });
+
+test("pinned promotion authority rejects state, marker, backup, and quarantine replacement", async (context) => {
+  for (const kind of ["state", "marker", "backup"]) await context.test(kind, () => {
+    const item = fixture(`replace-${kind}-`); try { const state = beginPromotion(item.input), authority = pinPromotionTransaction(state), path = kind === "state" ? dirname(state.marker) : state[kind], displaced = `${path}.displaced`; renameSync(path, displaced); if (kind === "marker") writeFileSync(path, readFileSync(displaced)); else cpSync(displaced, path, { recursive: true }); assert.throws(() => assertPromotionTransaction(authority), /identity changed|unsafe/); assert.equal(existsSync(displaced), true); } finally { item.dispose(); }
+  });
+  await context.test("quarantine", () => {
+    const item = fixture("replace-quarantine-"); try { let error; try { const state = beginPromotion(item.input); rollbackPromotion(state, (name) => { if (name === "after-marker-rollback-quarantine-complete") throw new Error("stop"); }); } catch (caught) { error = caught; } const state = error.promotionContext, authority = error.promotionAuthority, displaced = `${state.quarantine}.displaced`; renameSync(state.quarantine, displaced); cpSync(displaced, state.quarantine, { recursive: true }); assert.throws(() => assertPromotionTransaction(authority), /identity changed|unsafe/); assert.equal(existsSync(displaced), true); } finally { item.dispose(); }
+  });
+});
 
 const beginEvents = ["before-marker-prepared", "after-marker-prepared", "before-marker-backup-intent", "after-marker-backup-intent", "before-old-to-backup", "after-old-to-backup", "before-marker-backup-complete", "after-marker-backup-complete", "before-marker-activate-intent", "after-marker-activate-intent", "before-staging-to-target", "after-staging-to-target", "before-marker-activate-complete", "after-marker-activate-complete"];
 const rollbackEvents = ["before-marker-rollback-quarantine-intent", "after-marker-rollback-quarantine-intent", "before-target-quarantine", "after-target-quarantine", "before-marker-rollback-quarantine-complete", "after-marker-rollback-quarantine-complete", "before-marker-rollback-restore-intent", "after-marker-rollback-restore-intent", "before-backup-restore", "after-backup-restore", "before-marker-rollback-restore-complete", "after-marker-rollback-restore-complete", "before-marker-rollback-cleanup-intent", "after-marker-rollback-cleanup-intent", "before-quarantine-cleanup", "after-quarantine-cleanup", "before-marker-rollback-cleanup-complete", "after-marker-rollback-cleanup-complete", "before-marker-cleanup", "after-marker-cleanup"];

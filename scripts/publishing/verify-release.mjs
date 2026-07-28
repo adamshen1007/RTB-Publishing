@@ -56,15 +56,33 @@ function reconcileApprovalFacts(database, record, identity, approval, candidate,
   return database.prepare("SELECT * FROM release_finalizations WHERE release_id = ?").get(record.release_id);
 }
 function inside(root, path) { const value = relative(resolve(root), resolve(path)); return value !== ".." && !value.startsWith(`..${sep}`); }
-function assertSafeTree(directory) {
-  const rootStat = lstatSync(directory);
+function safeReleaseRelative(path) { if (typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.split("/").some((part) => !part || part === "." || part === "..")) throw new Error(`Release inventory contains an unsafe path: ${path}`); return path; }
+function parents(path) { const values = [], parts = path.split("/"); for (let index = 1; index < parts.length; index += 1) values.push(parts.slice(0, index).join("/")); return values; }
+export function releaseTreeInventory(directory, candidate, { manifest } = {}) {
+  const root = resolve(directory), rootStat = lstatSync(root);
   if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new Error("Release directory must be a real directory, not a symbolic link.");
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = resolve(directory, entry.name), stat = lstatSync(path);
-    if (stat.isSymbolicLink()) throw new Error(`Release material cannot contain symbolic links: ${entry.name}`);
-    if (stat.isDirectory()) assertSafeTree(path);
-    else if (!stat.isFile() || stat.nlink !== 1) throw new Error(`Release material must contain private regular files with one link only: ${entry.name}`);
-  }
+  const expectedFiles = new Map();
+  for (const name of ["candidate.json", "verification.json", ...(manifest ? ["manifest.json"] : [])]) expectedFiles.set(name, null);
+  for (const artifact of Object.values(candidate.artifacts)) expectedFiles.set(safeReleaseRelative(artifact.path), artifact.sha256);
+  for (const record of candidate.snapshot.bundle.files) expectedFiles.set(safeReleaseRelative(`${candidate.snapshot.bundle.path}/${record.path}`), record.sha256);
+  const expectedDirectories = new Set([...expectedFiles.keys()].flatMap(parents));
+  const actual = [];
+  const walk = (directoryPath, prefix = "") => {
+    for (const name of readdirSync(directoryPath).sort()) {
+      const relativePath = prefix ? `${prefix}/${name}` : name, path = resolve(directoryPath, name), stat = lstatSync(path);
+      if (stat.isSymbolicLink()) throw new Error(`Release material cannot contain symbolic links: ${relativePath}`);
+      if (stat.isDirectory()) { actual.push({ path: relativePath, type: "directory" }); walk(path, relativePath); }
+      else if (stat.isFile() && stat.nlink === 1) actual.push({ path: relativePath, type: "file", sha256: fileHash(path) });
+      else throw new Error(`Release material must contain private regular files with one link only: ${relativePath}`);
+    }
+  };
+  walk(root);
+  const expected = [...expectedDirectories].map((path) => ({ path, type: "directory" })).concat([...expectedFiles].map(([path, sha256]) => ({ path, type: "file", sha256 }))).sort((left, right) => left.path.localeCompare(right.path) || left.type.localeCompare(right.type));
+  const actualByKey = new Map(actual.map((item) => [`${item.type}:${item.path}`, item])), expectedByKey = new Map(expected.map((item) => [`${item.type}:${item.path}`, item]));
+  const extras = [...actualByKey.keys()].filter((key) => !expectedByKey.has(key)), missing = [...expectedByKey.keys()].filter((key) => !actualByKey.has(key));
+  if (extras.length || missing.length) throw new Error(`Release directory drift: extra=${extras.join(",")} missing=${missing.join(",")}`);
+  for (const item of expected) if (item.type === "file" && item.sha256 && actualByKey.get(`file:${item.path}`).sha256 !== item.sha256) throw new Error(`Release file drift: ${item.path}`);
+  return actual.sort((left, right) => left.path.localeCompare(right.path) || left.type.localeCompare(right.type));
 }
 function assertImmutableLocation(directory, candidate, manifest, immutableRoot) {
   if (!manifest || !immutableRoot) return;
@@ -74,9 +92,7 @@ function assertImmutableLocation(directory, candidate, manifest, immutableRoot) 
   if (realDirectory !== resolve(realRoot, candidate.projectId, manifest.releaseId) || !inside(realRoot, realDirectory)) throw new Error("Immutable release path escapes its trusted real output root.");
 }
 export function verifyReleaseDirectoryMaterial(directory, candidate, { manifest, immutableRoot } = {}) {
-  assertImmutableLocation(directory, candidate, manifest, immutableRoot); assertSafeTree(directory);
-  verifyCandidate(candidate); const expected = new Set(Object.values(candidate.artifacts).map((item) => item.path).concat(["candidate.json", "verification.json", candidate.snapshot.bundle.path])); if (manifest) expected.add("manifest.json");
-  const actual = new Set(readdirSync(directory).filter((name) => !name.startsWith("."))); const extras = [...actual].filter((name) => !expected.has(name)), missing = [...expected].filter((name) => !actual.has(name)); if (extras.length || missing.length) throw new Error(`Release directory drift: extra=${extras.join(",")} missing=${missing.join(",")}`);
+  assertImmutableLocation(directory, candidate, manifest, immutableRoot); verifyCandidate(candidate); releaseTreeInventory(directory, candidate, { manifest });
   for (const artifact of Object.values(candidate.artifacts)) { const file = resolve(directory, artifact.path); if (!existsSync(file) || fileHash(file) !== artifact.sha256) throw new Error(`Release artifact drift: ${basename(file)}`); }
   for (const record of candidate.snapshot.bundle.files) { const file = resolve(directory, candidate.snapshot.bundle.path, record.path); if (!existsSync(file) || fileHash(file) !== record.sha256) throw new Error(`Retained source snapshot drift: ${record.path}`); }
   const storedCandidate = JSON.parse(readFileSync(resolve(directory, "candidate.json"), "utf8")); if (stable(storedCandidate) !== stable(candidate)) throw new Error("Stored candidate.json does not match the verified candidate.");

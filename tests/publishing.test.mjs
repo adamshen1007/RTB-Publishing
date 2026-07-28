@@ -151,7 +151,7 @@ test("pending finalization resumes after manifest write and verification failure
     try {
       const { book, published } = await publishable(item), directory = releaseDirectory(item, `release-${failure}`);
       const hooks = failure === "write" ? { writeManifest: () => { throw new Error("injected manifest write failure"); } } : { afterManifestWrite: () => writeFileSync(resolve(directory, "book.pdf"), "corrupt") };
-      await assert.rejects(() => finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory, hooks }), /injected manifest write failure|Release artifact drift/);
+      await assert.rejects(() => finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory, hooks }), /injected manifest write failure|Release (?:artifact|file) drift/);
       const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
       try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
       finally { database.close(); }

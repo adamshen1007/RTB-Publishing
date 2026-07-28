@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BUILD_DIR, DIST_DIR, ROOT } from "../lib.mjs";
-import { assertCurrentProjectIdentity, projectCanonicalIdentity, resolveBookProject } from "../books/discovery.mjs";
+import { assertCurrentProjectIdentity, pinnedProjectCanonicalHash, resolveBookProject } from "../books/discovery.mjs";
 import { createCandidate } from "./candidate.mjs";
 import { renderEpub } from "./epub.mjs";
 import { renderHtml } from "./html.mjs";
@@ -17,8 +17,8 @@ import { evaluateReleasePolicies, pendingReleasePolicies } from "./policies.mjs"
 import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
 import { streamResourceFixture } from "./resource-proof.mjs";
-import { acquireProjectLock, acquireWorkspaceOutputLock, assertNoSymlinkPath, ensurePhysicalDirectory, pinPhysicalDirectory } from "../state/project-lock.mjs";
-import { promotionMarkers, recoverPromotion } from "./promotion-state.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, ensurePhysicalDirectory, pinPhysicalDirectory } from "../state/project-lock.mjs";
+import { assertPromotionTransaction, pinPromotionTransaction, promotionMarkers, recoverPromotion } from "./promotion-state.mjs";
 export { beginPromotion, commitPromotion, markPromotionLedgerCompleted, markPromotionMaterialVerified, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "./promotion-state.mjs";
 
 function argumentsOf(input) { const values = input[0] === "--" ? input.slice(1) : input, result = { project: null, lifecycleVersion: 0, approvalId: null, resourceFixture: null, resourceReport: null }; for (let index = 0; index < values.length; index += 1) { const value = values[index]; if (value === "--lifecycle-version") result.lifecycleVersion = Number(values[++index]); else if (value === "--approval-id") result.approvalId = values[++index]; else if (value === "--resource-fixture") result.resourceFixture = resolve(values[++index]); else if (value === "--resource-report") result.resourceReport = resolve(values[++index]); else if (!result.project) result.project = value; else throw new Error(`Unknown publishing argument: ${value}`); } if (!Number.isInteger(result.lifecycleVersion) || result.lifecycleVersion < 0) throw new Error("--lifecycle-version must be a non-negative integer."); if (Boolean(result.resourceFixture) !== Boolean(result.resourceReport)) throw new Error("--resource-fixture and --resource-report must be provided together."); return result; }
@@ -42,7 +42,7 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
   try {
     publicationLock = await acquireProjectLock(requestedProject.legacyRoot, { ownerId: `release-build-${process.pid}` });
     project = resolveBookProject(requestedProject.legacyRoot, { workspaceRoot: physicalWorkspace });
-    if (projectCanonicalIdentity(project).materialHash !== projectCanonicalIdentity(requestedProject).materialHash) throw new Error("Caller Book Project snapshot is stale; rediscover it and start a fresh build.");
+    if (pinnedProjectCanonicalHash(project) !== pinnedProjectCanonicalHash(requestedProject)) throw new Error("Caller Book Project snapshot is stale; rediscover it and start a fresh build.");
     await hooks.afterRediscovery?.({ project });
     assertCurrentProjectIdentity(project);
     for (const format of ["html", "pdf", "epub"]) if (!project.outputProfiles.some((profile) => profile.format === format)) throw new Error(`Book Project ${project.id} must declare ${format.toUpperCase()} output for a release candidate.`);
@@ -71,7 +71,15 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     }
     const destination = publishedDirectory ?? candidateDirectory, outputs = Object.fromEntries(Object.entries(stagedOutputs).map(([format, file]) => [format, resolve(destination, basename(file))]));
     if (resourceReport) writeJson(resourceReport, resourceProof); return { project, snapshot, outputs, verification, candidate, releasePolicies, manifest, candidateDirectory, publishedDirectory, release: publishedDirectory, verificationCommand: manifest ? releaseVerificationCommand(project, manifest, physicalWorkspace) : null };
-  } catch (error) { if (promotionInput) for (const pending of promotionMarkers(promotionInput.outputRoot, project.id, promotionInput.releaseId)) { const recovered = recoverPromotion(pending); if (recovered.state === "rolled-back") await hooks.afterPromotionRollback?.({ release: pending.target, promotion: pending }); } if (staging) rmSync(staging, { recursive: true, force: true }); throw error; }
+  } catch (error) {
+    let mutationAuthority = !error.recoveryRequired;
+    try { assertLiveWorkspaceOutputLock(workspaceLock, physicalWorkspace); if (publicationLock) assertLiveProjectLock(publicationLock, requestedProject.legacyRoot); }
+    catch { mutationAuthority = false; }
+    if (promotionInput && mutationAuthority) for (const pending of promotionMarkers(promotionInput.outputRoot, project.id, promotionInput.releaseId)) { const transaction = pinPromotionTransaction(pending); assertPromotionTransaction(transaction); const recovered = recoverPromotion(pending); if (recovered.state === "rolled-back") await hooks.afterPromotionRollback?.({ release: pending.target, promotion: pending }); }
+    if (staging && mutationAuthority) rmSync(staging, { recursive: true, force: true });
+    if (!mutationAuthority) { if (error.recoveryRequired) throw error; throw new Error("Publishing lock authority was lost; recovery is required and no cleanup mutation was attempted.", { cause: error }); }
+    throw error;
+  }
   finally { publicationLock?.release(); workspaceLock.release(); }
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) { const options = argumentsOf(process.argv.slice(2)), result = await buildRelease(resolveBookProject(options.project), { lifecycleVersion: options.lifecycleVersion, approvalId: options.approvalId, resourceFixture: options.resourceFixture, resourceReport: options.resourceReport, env: process.env }); console.log(`✓ Verified HTML, PDF, and EPUB candidate ${result.candidate.candidateHash}`); console.log(`✓ ${result.publishedDirectory ?? result.candidateDirectory}`); if (result.verificationCommand) console.log(`✓ Verify this exact release with:\n${result.verificationCommand}`); else console.log("! Candidate remains in dist/candidates: exact human Publish approval and named manual reviews are required before dist/releases can change."); }

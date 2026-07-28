@@ -58,7 +58,7 @@ function projectFromManifest(manifestFile, { workspaceRoot = ROOT, preferCanonic
   const parts = [...blueprint.parts].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
   const partIds = new Set(parts.map((part) => part.id));
   for (const chapter of chapters) if (chapter.part_id && !partIds.has(chapter.part_id)) throw new Error(`Book Project ${manifest.id} chapter ${chapter.id} references an unknown part.`);
-  return {
+  const project = {
     id: manifest.id,
     manifest,
     blueprint,
@@ -76,6 +76,7 @@ function projectFromManifest(manifestFile, { workspaceRoot = ROOT, preferCanonic
     workspacePath: safeRelative(workspace, legacyRoot),
     workspaceRoot: workspace,
   };
+  return { ...project, canonicalMaterialHash: projectCanonicalIdentity(project).materialHash };
 }
 
 /** Read a declared Book Project; arbitrary paths are never followed outside its root. */
@@ -109,6 +110,19 @@ export function resolveBookProject(projectArgument, { workspaceRoot = ROOT } = {
 
 export function projectCanonicalIdentity(project) {
   const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const excluded = new Set([".git", ".rtb-state", ".rtb-content", ".rtb-publishing", "node_modules", "build", "dist", "coverage", ".next", ".cache", ".tmp"]);
+  const inventory = [];
+  const walk = (directory, prefix = "") => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+      if (excluded.has(entry.name)) continue;
+      const path = resolve(directory, entry.name), relativePath = prefix ? `${prefix}/${entry.name}` : entry.name, status = lstatSync(path);
+      if (status.isSymbolicLink()) throw new Error(`Canonical inventory contains a symbolic link: ${relativePath}`);
+      if (status.isDirectory()) { inventory.push({ path: relativePath, type: "directory" }); walk(path, relativePath); }
+      else if (status.isFile() && status.nlink === 1) inventory.push({ path: relativePath, type: "file", sha256: digest(readFileSync(path)) });
+      else throw new Error(`Canonical inventory contains an unsupported or multiply linked entry: ${relativePath}`);
+    }
+  };
+  walk(project.root);
   const material = {
     id: project.id,
     root: realpathSync(project.root),
@@ -122,12 +136,15 @@ export function projectCanonicalIdentity(project) {
     blueprint: project.blueprint,
     metadataHash: digest(project.metadata),
     chapters: project.chapters.map((chapter) => ({ id: chapter.id, order: chapter.order, sourcePath: relative(project.root, chapter.sourcePath).split(sep).join("/"), contentHash: digest(readFileSync(chapter.sourcePath)) })),
+    inventory,
   };
   return { ...material, materialHash: digest(JSON.stringify(material)) };
 }
 
+export function pinnedProjectCanonicalHash(project) { if (project.id !== project.manifest?.id) throw new Error("Book Project identity does not match its pinned manifest."); return project.canonicalMaterialHash ?? projectCanonicalIdentity(project).materialHash; }
+
 export function assertCurrentProjectIdentity(project) {
   const current = resolveBookProject(project.legacyRoot, { workspaceRoot: project.workspaceRoot });
-  if (projectCanonicalIdentity(current).materialHash !== projectCanonicalIdentity(project).materialHash) throw new Error("Canonical Book Project snapshot or material changed after it was pinned; rebuild from the fresh project.");
+  if (current.canonicalMaterialHash !== pinnedProjectCanonicalHash(project)) throw new Error("Canonical Book Project snapshot or material changed after it was pinned; rebuild from the fresh project.");
   return current;
 }

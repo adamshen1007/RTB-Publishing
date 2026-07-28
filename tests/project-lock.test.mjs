@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -77,6 +77,23 @@ test("lock authority rejects file replacement, unlink, and extra hard links", as
     try { const handle = await acquireProjectLock(root), lock = projectLockPath(root); linkSync(lock, `${lock}.alias`); assert.throws(() => assertLiveProjectLock(handle, root), /physical identity/); handle.release(); }
     finally { rmSync(root, { recursive: true, force: true }); }
   });
+});
+
+test("stale lock reclamation never deletes a changed inode", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-stale-race-")), lock = projectLockPath(root); mkdirSync(resolve(lock, "..")); writeFileSync(lock, `${JSON.stringify({ pid: 2147483647, ownerId: "stale" })}\n`);
+  try {
+    await assert.rejects(() => acquireProjectLock(root, { timeoutMs: 0, beforeStaleReclaim: () => { renameSync(lock, `${lock}.stale`); writeFileSync(lock, `${JSON.stringify({ pid: process.pid, ownerId: "successor" })}\n`); } }), /held by a live writer/);
+    assert.match(readFileSync(lock, "utf8"), /successor/); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("two stale-lock waiters serialize without reclamation artifacts", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-stale-two-")), lock = projectLockPath(root); mkdirSync(resolve(lock, "..")); writeFileSync(lock, `${JSON.stringify({ pid: 2147483647, ownerId: "stale" })}\n`);
+  try {
+    const acquireAndRelease = async (ownerId) => { const handle = await acquireProjectLock(root, { ownerId, timeoutMs: 1000, pollMs: 5 }); assert.equal(assertLiveProjectLock(handle, root), handle); await new Promise((done) => setTimeout(done, 20)); handle.release(); return ownerId; };
+    assert.deepEqual(new Set(await Promise.all([acquireAndRelease("waiter-a"), acquireAndRelease("waiter-b")])), new Set(["waiter-a", "waiter-b"]));
+    assert.equal(existsSync(lock), false); assert.equal(readdirSync(resolve(lock, "..")).some((name) => name.startsWith(".lock-reclaim-")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("clean waits for a nested project's workspace output lock before removing outputs", async () => {
