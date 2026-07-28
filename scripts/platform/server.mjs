@@ -32,8 +32,13 @@ const cookies = (request) => Object.fromEntries((request.headers.cookie ?? "").s
 export class LocalSessionManager {
   constructor({ now = () => Date.now(), ttlMs = 5 * 60 * 1000 } = {}) { this.now = now; this.ttlMs = ttlMs; this.sessions = new Map(); }
   issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
-  authorize(id, csrfToken, capability) { const session = this.sessions.get(id); if (!session || session.expiresAt <= this.now() || session.csrfToken !== csrfToken || session.capability !== capability) return null; return session; }
-  rotate(id) { const session = this.sessions.get(id); if (!session || session.expiresAt <= this.now()) return null; session.csrfToken = randomBytes(24).toString("hex"); session.capability = randomBytes(24).toString("hex"); session.expiresAt = this.now() + this.ttlMs; return session; }
+  consume(id, csrfToken, capability) {
+    const session = this.sessions.get(id);
+    if (!session || session.expiresAt <= this.now() || session.csrfToken !== csrfToken || session.capability !== capability) return null;
+    // Rotate synchronously before any body or service await: the old pair is one-use.
+    session.csrfToken = randomBytes(24).toString("hex"); session.capability = randomBytes(24).toString("hex"); session.expiresAt = this.now() + this.ttlMs;
+    return session;
+  }
   cookie(session) { return `rtb_session=${session.id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.ttlMs / 1000)}`; }
 }
 
@@ -44,7 +49,12 @@ function mutationServiceFor(options, projectId) {
 }
 
 const registeredPolicies = {
-  "rtb-publishing-core": { registeredRoot: ROOT, root: resolve(ROOT, "books/volume-01-yc-playbook"), paths: ["chapters/*.md", "worksheets/*.md"] }
+  "rtb-publishing-core": {
+    registeredRoot: ROOT,
+    root: resolve(ROOT, "books/volume-01-yc-playbook"),
+    paths: ["chapters/*.md", "worksheets/*.md"],
+    sourcePaths: ["*.md", "*.yaml", "chapters/*.md", "worksheets/*.md", "references/*.md", "reviews/*.md", "assets/*", "diagrams/*", "releases/*.md"]
+  }
 };
 
 /** Only committed registered projects with a reviewed policy gain a writer. */
@@ -54,7 +64,7 @@ export function createRegisteredMutationServices({ workspaceFile, localFile, now
   for (const project of workspace.projects) {
     const policy = registeredPolicies[project.id];
     if (!policy || project.source === "local" || project.kind !== "repository" || resolve(ROOT, project.path) !== policy.registeredRoot) continue;
-    services.set(project.id, new MutationService({ root: policy.root, projectId: project.id, allowedPaths: policy.paths, now }));
+    services.set(project.id, new MutationService({ root: policy.root, projectId: project.id, allowedPaths: policy.paths, sourcePaths: policy.sourcePaths, now }));
   }
   return services;
 }
@@ -66,6 +76,7 @@ export function createPlatformServer(options = {}) {
   const sessions = options.sessions ?? new LocalSessionManager({ now: options.now, ttlMs: options.sessionTtlMs });
   const requests = new Map();
   const server = createHttpServer(async (request, response) => {
+    let rebootstrap;
     try {
       const address = request.socket.remoteAddress ?? "unknown";
       const minute = Math.floor(Date.now() / 60000);
@@ -95,12 +106,13 @@ export function createPlatformServer(options = {}) {
       if (request.method === "POST" && mutationMatch) {
         const service = mutationServiceFor(options, mutationMatch[1]);
         const host = request.headers.host;
-        const session = sessions.authorize(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service) return json(response, 403, { error: "mutation_denied", message: "This project has no approved local mutation service." });
         if (url.search || !sameListener || !loopbackHost(host) || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Mutation requests must use the direct loopback origin." });
         if (!exactJson(request.headers["content-type"])) return json(response, 415, { error: "content_type", message: "Mutation requests require exact application/json." });
         if (request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "origin", message: "Mutation requests require the configured same origin." });
         if (!session) return json(response, 403, { error: "mutation_auth", message: "Refresh the local session before submitting a mutation." });
+        rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
         const sessionKey = `${session.id}:${mutationMatch[1]}:${minute}`;
         const sessionCount = (requests.get(sessionKey) ?? 0) + 1;
         requests.set(sessionKey, sessionCount);
@@ -109,8 +121,7 @@ export function createPlatformServer(options = {}) {
         if (input.command !== "replace_files" || input.projectId !== mutationMatch[1]) return json(response, 403, { error: "mutation_denied", message: "Only the approved replace-files command is available for this project." });
         if (!Array.isArray(input.files) || input.files.some((file) => !service.allowsPath(file?.path))) return json(response, 403, { error: "path_denied", message: "This action cannot change that file." });
         const result = await service.execute(input);
-        const nextSession = sessions.rotate(session.id);
-        return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result, nextSession ? { "x-rtb-publishing-next-csrf": nextSession.csrfToken, "x-rtb-publishing-next-capability": nextSession.capability } : {});
+        return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result, rebootstrap);
       }
       const workflowMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows\/([a-z-]+)$/);
       if (request.method === "POST" && workflowMatch) {
@@ -141,7 +152,7 @@ export function createPlatformServer(options = {}) {
       }
       return json(response, 404, { error: "not_found", message: "Route not found." });
     } catch {
-      return json(response, 400, { error: "request_failed", message: "Request could not be processed safely." });
+      return json(response, 400, { error: "request_failed", message: "Request could not be processed safely." }, rebootstrap);
     }
   });
   return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices };

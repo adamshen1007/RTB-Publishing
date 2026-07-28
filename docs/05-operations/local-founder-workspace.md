@@ -98,14 +98,20 @@ an arbitrary command.
 
 The dashboard never receives repository paths or writes files directly. The
 only registered mutation policy currently applies to the RTB Publishing book's
-declared chapter and worksheet Markdown paths. It creates immutable filesystem
-snapshots beneath the book source root and changes visibility through one
-durable current-root pointer. SQLite stores only leases, lifecycle guards,
-journal phases, and audit locators; deleting it does not delete manuscript
-content.
+declared chapter and worksheet Markdown paths. It writes immutable canonical
+Markdown/YAML snapshots and the durable current-root pointer under the
+Git-visible `.rtb-content/` directory. SQLite, locks, preimages, and temporary
+files live only under ignored `.rtb-state/`; deleting that directory does not
+delete manuscript content and the operational index can be rebuilt.
 
-Snapshots exclude Git metadata, local state, dependency and generated output
-directories, and secret-shaped files. A local request must reach the exact
+Existing build commands still read the legacy working-tree manuscript path.
+They do not project a snapshot back into that path. The `.rtb-content/current.json`
+pointer is the forward-compatible canonical read boundary that WP96 discovery
+and assembly must consume before the legacy working-tree path is retired.
+
+Snapshots are selected from the reviewed project policy and exclude Git
+metadata, local state, dependency and generated output directories, and
+secret-shaped files. A local request must reach the exact
 loopback listener origin with a short-lived session-bound CSRF/capability pair.
 Every accepted mutation rotates that pair. Unregistered and local-overlay
 projects remain read-only.

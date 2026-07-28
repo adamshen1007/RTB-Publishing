@@ -3,15 +3,17 @@ import { basename, dirname, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
 export const STATE_DIRECTORY = ".rtb-state";
-const deniedSegments = new Set([".git", ".rtb-state", ".env", ".ssh", "node_modules", "build", "dist", "coverage", "credentials", "secrets", "keys"]);
-const excludedDirectories = new Set([".git", STATE_DIRECTORY, "node_modules", "build", "dist", "coverage", ".next", ".cache", ".ssh", ".aws", ".gnupg", ".credentials", ".secrets", "credentials", "secrets", "keys"]);
-const sensitiveFile = (name) => name.startsWith(".env") || [".npmrc", ".netrc", "id_rsa", "id_ed25519", "credentials", "secrets"].includes(name) || /(?:credential|secret|token)/i.test(name) || /\.(?:key|pem|p12|pfx)$/i.test(name);
+export const CONTENT_DIRECTORY = ".rtb-content";
+const deniedSegments = new Set([".git", STATE_DIRECTORY, CONTENT_DIRECTORY, ".env", ".ssh", "node_modules", "build", "dist", "coverage", "credentials", "secrets", "keys"]);
+const excludedDirectories = new Set([".git", STATE_DIRECTORY, CONTENT_DIRECTORY, ".rtb-publishing", "node_modules", "build", "dist", "output", "coverage", ".next", ".cache", ".tmp", ".vale", ".pnpm-store", ".ssh", ".aws", ".gnupg", ".credentials", ".secrets", ".idea", ".vscode", "credentials", "secrets", "keys"]);
+const sensitiveFile = (name) => name.startsWith(".env") || [".npmrc", ".netrc", ".DS_Store", "Thumbs.db", "id_rsa", "id_ed25519", "credentials", "secrets"].includes(name) || /(?:credential|secret|token)/i.test(name) || /\.(?:key|pem|p12|pfx)$/i.test(name);
 
 export function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 export function stateDirectory(root) { return resolve(root, STATE_DIRECTORY); }
-export function snapshotsDirectory(root) { return resolve(stateDirectory(root), "snapshots"); }
+export function contentDirectory(root) { return resolve(root, CONTENT_DIRECTORY); }
+export function snapshotsDirectory(root) { return resolve(contentDirectory(root), "snapshots"); }
 export function preimagesDirectory(root) { return resolve(stateDirectory(root), "preimages"); }
-export function pointerPath(root) { return resolve(stateDirectory(root), "current.json"); }
+export function pointerPath(root) { return resolve(contentDirectory(root), "current.json"); }
 
 export function assertSafeRelativePath(path) {
   if (typeof path !== "string" || path.length === 0 || path.length > 240) throw new Error("Mutation path must be a bounded non-empty relative path.");
@@ -25,11 +27,14 @@ function fsyncFile(path, trace) { const fd = openSync(path, "r"); try { fsyncSyn
 function fsyncDirectory(path, trace) { const fd = openSync(path, "r"); try { fsyncSync(fd); trace?.("directory", path); } finally { closeSync(fd); } }
 
 export function ensureStateDirectories(root) {
-  for (const directory of [stateDirectory(root), snapshotsDirectory(root), preimagesDirectory(root)]) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  for (const directory of [stateDirectory(root), preimagesDirectory(root), contentDirectory(root), snapshotsDirectory(root)]) mkdirSync(directory, { recursive: true, mode: 0o700 });
 }
 
 function children(directory) { return readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)); }
 function excluded(entry) { return excludedDirectories.has(entry.name) || (entry.isDirectory() ? entry.name.startsWith(".env") : sensitiveFile(entry.name)); }
+function sourcePattern(pattern) { assertSafeRelativePath(pattern.replaceAll("*", "placeholder")); return new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`); }
+function sourceAllowed(root, file, patterns) { return patterns.length === 0 || patterns.some((pattern) => pattern.test(relative(root, file).split(sep).join("/"))); }
+function compileSourcePaths(paths = []) { return paths.map(sourcePattern); }
 
 function assertNoSymlinkTree(root, directory = root) {
   for (const entry of children(directory)) {
@@ -42,39 +47,39 @@ function assertNoSymlinkTree(root, directory = root) {
   }
 }
 
-function treeEntries(root, directory = root, entries = []) {
+function treeEntries(root, directory = root, entries = [], patterns = []) {
   for (const entry of children(directory)) {
     if (excluded(entry)) continue;
     const full = resolve(directory, entry.name);
-    if (entry.isDirectory()) treeEntries(root, full, entries);
-    else entries.push(relative(root, full).split(sep).join("/"));
+    if (entry.isDirectory()) treeEntries(root, full, entries, patterns);
+    else if (sourceAllowed(root, full, patterns)) entries.push(relative(root, full).split(sep).join("/"));
   }
   return entries;
 }
 
-export function snapshotHash(root) {
+export function snapshotHash(root, { sourcePaths = [] } = {}) {
   assertNoSymlinkTree(root);
   const digest = createHash("sha256");
-  for (const path of treeEntries(root)) {
+  for (const path of treeEntries(root, root, [], compileSourcePaths(sourcePaths))) {
     const bytes = readFileSync(resolve(root, path));
     digest.update(path); digest.update("\0"); digest.update(sha256(bytes)); digest.update("\0");
   }
   return digest.digest("hex");
 }
 
-function copyTree(source, destination) {
+function copyTree(source, destination, { sourceRoot = source, sourcePaths = [] } = {}) {
   assertNoSymlinkTree(source);
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   for (const entry of children(source)) {
     if (excluded(entry)) continue;
     const from = resolve(source, entry.name); const to = resolve(destination, entry.name);
-    if (entry.isDirectory()) copyTree(from, to);
-    else copyFileSync(from, to);
+    if (entry.isDirectory()) copyTree(from, to, { sourceRoot, sourcePaths });
+    else if (sourceAllowed(sourceRoot, from, compileSourcePaths(sourcePaths))) copyFileSync(from, to);
   }
 }
 
-function durableTree(root, trace) {
-  for (const path of treeEntries(root)) fsyncFile(resolve(root, path), trace);
+function durableTree(root, trace, sourcePaths = []) {
+  for (const path of treeEntries(root, root, [], compileSourcePaths(sourcePaths))) fsyncFile(resolve(root, path), trace);
   const directories = [root];
   const collect = (directory) => { for (const entry of children(directory)) if (entry.isDirectory()) { const full = resolve(directory, entry.name); directories.push(full); collect(full); } };
   collect(root);
@@ -98,21 +103,21 @@ export function verifySnapshot(root, hash) {
   return snapshot;
 }
 
-export function initializeSnapshots(root, { trace } = {}) {
+export function initializeSnapshots(root, { trace, sourcePaths } = {}) {
   ensureStateDirectories(root);
   assertNoSymlinkTree(root);
   if (existsSync(pointerPath(root))) return readPointer(root);
-  const initial = materializeSnapshot(root, { trace });
+  const initial = materializeSnapshot(root, { trace, sourcePaths });
   writePointer(root, { expected: null, nextSnapshotHash: initial.hash, nextVersion: 1, trace });
   return readPointer(root);
 }
 
-export function materializeSnapshot(projectRoot, { sourceRoot = projectRoot, changes = [], trace } = {}) {
+export function materializeSnapshot(projectRoot, { sourceRoot = projectRoot, sourcePaths = [], changes = [], trace } = {}) {
   const root = resolve(projectRoot);
   const source = resolve(sourceRoot);
   ensureStateDirectories(root);
   const temporary = resolve(stateDirectory(root), `snapshot-${randomUUID()}`);
-  copyTree(source, temporary);
+  copyTree(source, temporary, { sourceRoot: source, sourcePaths });
   for (const change of changes) {
     const path = assertSafeRelativePath(change.path);
     const target = resolve(temporary, path);
@@ -120,11 +125,11 @@ export function materializeSnapshot(projectRoot, { sourceRoot = projectRoot, cha
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, change.content, { encoding: "utf8", mode: 0o600 });
   }
-  durableTree(temporary, trace);
-  const hash = snapshotHash(temporary);
+  durableTree(temporary, trace, sourcePaths);
+  const hash = snapshotHash(temporary, { sourcePaths });
   const finalRoot = snapshotRoot(root, hash);
   if (existsSync(finalRoot)) rmSync(temporary, { recursive: true, force: true });
-  else { renameSync(temporary, finalRoot); fsyncDirectory(snapshotsDirectory(root), trace); }
+  else { renameSync(temporary, finalRoot); fsyncDirectory(snapshotsDirectory(root), trace); fsyncDirectory(contentDirectory(root), trace); }
   return { hash, root: finalRoot };
 }
 

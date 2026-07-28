@@ -69,37 +69,37 @@ function existingResult(database, command) {
   return JSON.parse(row.result_json);
 }
 
-function proposedSnapshot(root, pointer, command, trace) {
+function proposedSnapshot(root, pointer, command, trace, sourcePaths) {
   // A conflict never discards user-proposed bytes: the immutable snapshot is a review artifact.
-  return materializeSnapshot(root, { sourceRoot: snapshotRoot(root, pointer.snapshotHash), changes: command.files, trace }).hash;
+  return materializeSnapshot(root, { sourceRoot: snapshotRoot(root, pointer.snapshotHash), sourcePaths, changes: command.files, trace }).hash;
 }
 
 export class MutationService {
-  constructor({ root, projectId, allowedPaths = [], databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit } = {}) {
+  constructor({ root, projectId, allowedPaths = [], sourcePaths = allowedPaths, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit } = {}) {
     if (!root || !projectId) throw new Error("MutationService requires a project root and project ID.");
-    this.root = resolve(root); this.projectId = projectId; this.allowedPaths = allowedPaths.map(pathPattern); this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit;
+    this.root = resolve(root); this.projectId = projectId; this.allowedPaths = allowedPaths.map(pathPattern); this.sourcePaths = sourcePaths; this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit;
   }
 
   allowsPath(path) { return this.allowedPaths.some((pattern) => pattern.test(path)); }
 
   async recover() {
-    initializeSnapshots(this.root, { trace: this.trace });
+    initializeSnapshots(this.root, { trace: this.trace, sourcePaths: this.sourcePaths });
     const lock = await acquireProjectLock(this.root, { ownerId: `recovery-${randomUUID()}`, now: this.now });
     const database = openStateDatabase(this.databaseFile, { now: this.now });
     try { initializeLifecycle(database, this.projectId, { now: this.now }); return recoverProject({ root: this.root, projectId: this.projectId, database, now: this.now, trace: this.trace }); }
     finally { database.close(); lock.release(); }
   }
 
-  current() { initializeSnapshots(this.root, { trace: this.trace }); return readPointer(this.root); }
+  current() { initializeSnapshots(this.root, { trace: this.trace, sourcePaths: this.sourcePaths }); return readPointer(this.root); }
   read(path) { return readSnapshotFile(this.root, path); }
-  openReader() { initializeSnapshots(this.root, { trace: this.trace }); return openSnapshotReader(this.root); }
+  openReader() { initializeSnapshots(this.root, { trace: this.trace, sourcePaths: this.sourcePaths }); return openSnapshotReader(this.root); }
   readFiles(paths) { return this.openReader().readFiles(paths); }
 
   async execute(command) {
     assertCommand(command);
     if (command.projectId !== this.projectId) throw new Error("Mutation command project does not match this service.");
     if (command.files.some((file) => !this.allowsPath(file.path))) throw new Error("Mutation path is not approved for this action.");
-    initializeSnapshots(this.root, { trace: this.trace });
+    initializeSnapshots(this.root, { trace: this.trace, sourcePaths: this.sourcePaths });
     const lock = await acquireProjectLock(this.root, { ownerId: `mutation-${randomUUID()}`, now: this.now });
     const database = openStateDatabase(this.databaseFile, { now: this.now });
     let token;
@@ -119,7 +119,7 @@ export class MutationService {
         if (actual !== file.expectedHash) staleFile = true;
       }
       if (staleSnapshot || staleLifecycle || staleFile) {
-        const proposed = proposedSnapshot(this.root, pointer, command, this.trace);
+        const proposed = proposedSnapshot(this.root, pointer, command, this.trace, this.sourcePaths);
         const result = stateResult(command, "conflict", "The project changed before this mutation; prior and proposed snapshots are preserved.", pointer, proposed);
         insertJournal(database, command, pointer, lock.ownerId, token, "complete", "conflict", { conflict: { staleSnapshot, staleLifecycle, staleFile } }, proposed, this.now);
         database.prepare("UPDATE mutation_journal SET result_json = ? WHERE command_id = ?").run(JSON.stringify(result), command.id); durableCheckpoint(database);
@@ -129,7 +129,7 @@ export class MutationService {
       const preimages = preservePreimages(this.root, pointer.snapshotHash, command.files.map((file) => file.path), { trace: this.trace });
       insertJournal(database, command, pointer, lock.ownerId, token, "intent_durable", "running", { preimages }, null, this.now);
       if (this.crashAt === "intent_durable") throw new InjectedMutationCrash("intent_durable");
-      const next = materializeSnapshot(this.root, { sourceRoot: snapshotRoot(this.root, pointer.snapshotHash), changes: command.files, trace: this.trace });
+      const next = materializeSnapshot(this.root, { sourceRoot: snapshotRoot(this.root, pointer.snapshotHash), sourcePaths: this.sourcePaths, changes: command.files, trace: this.trace });
       database.prepare("UPDATE mutation_journal SET next_snapshot_hash = ?, phase = 'snapshot_prepared', updated_at = ? WHERE command_id = ?").run(next.hash, time(this.now), command.id); durableCheckpoint(database);
       if (this.crashAt === "snapshot_prepared") throw new InjectedMutationCrash("snapshot_prepared");
       // This durable bridge represents every pointer-write instruction window.

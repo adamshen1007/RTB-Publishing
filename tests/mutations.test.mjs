@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { request as httpRequest } from "node:http";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import { MutationService, InjectedMutationCrash } from "../scripts/state/mutation-journal.mjs";
 import { sha256, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
@@ -13,7 +14,7 @@ function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), "rtb-mutations-"));
   writeFileSync(resolve(root, "chapter.md"), "before\n");
   writeFileSync(resolve(root, "worksheet.md"), "before worksheet\n");
-  const service = new MutationService({ root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
+  const service = new MutationService({ root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"], sourcePaths: ["chapter.md", "worksheet.md", "README.md"] });
   return { root, service, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 function command(service, changes, id = "MUT-TEST-001") {
@@ -73,6 +74,10 @@ test("canonical snapshots exclude Git, state, generated, and secret material", (
     writeFileSync(resolve(item.root, ".env"), "TOKEN=secret\n");
     writeFileSync(resolve(item.root, "private.pem"), "secret-key\n");
     mkdirSync(resolve(item.root, "dist")); writeFileSync(resolve(item.root, "dist", "output.html"), "generated\n");
+    mkdirSync(resolve(item.root, "output")); writeFileSync(resolve(item.root, "output", "artifact.txt"), "generated\n");
+    mkdirSync(resolve(item.root, ".tmp")); writeFileSync(resolve(item.root, ".tmp", "scratch.txt"), "local\n");
+    mkdirSync(resolve(item.root, ".vale")); writeFileSync(resolve(item.root, ".vale", "cache.txt"), "local\n");
+    writeFileSync(resolve(item.root, ".DS_Store"), "local\n"); writeFileSync(resolve(item.root, "Thumbs.db"), "local\n");
     writeFileSync(resolve(item.root, "README.md"), "canonical markdown\n");
     const pointer = item.service.current();
     const snapshot = snapshotRoot(item.root, pointer.snapshotHash);
@@ -80,6 +85,11 @@ test("canonical snapshots exclude Git, state, generated, and secret material", (
     assert.equal(existsSync(resolve(snapshot, ".env")), false);
     assert.equal(existsSync(resolve(snapshot, "private.pem")), false);
     assert.equal(existsSync(resolve(snapshot, "dist")), false);
+    assert.equal(existsSync(resolve(snapshot, "output")), false);
+    assert.equal(existsSync(resolve(snapshot, ".tmp")), false);
+    assert.equal(existsSync(resolve(snapshot, ".vale")), false);
+    assert.equal(existsSync(resolve(snapshot, ".DS_Store")), false);
+    assert.equal(existsSync(resolve(snapshot, "Thumbs.db")), false);
     assert.equal(readFileSync(resolve(snapshot, "README.md"), "utf8"), "canonical markdown\n");
   } finally { item.dispose(); }
 });
@@ -168,14 +178,28 @@ test("MUT-013 rebuilds derived SQLite state without changing canonical snapshots
   try {
     await item.service.execute(command(item.service, [{ path: "chapter.md", content: "durable\n" }]));
     const pointer = item.service.current();
-    rmSync(resolve(item.root, ".rtb-state", "state.sqlite"), { force: true });
-    rmSync(resolve(item.root, ".rtb-state", "state.sqlite-wal"), { force: true });
-    rmSync(resolve(item.root, ".rtb-state", "state.sqlite-shm"), { force: true });
+    rmSync(resolve(item.root, ".rtb-state"), { recursive: true, force: true });
     const rebuilt = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
     assert.equal(rebuilt.current().snapshotHash, pointer.snapshotHash);
     assert.equal(rebuilt.read("chapter.md").content, "durable\n");
     await rebuilt.recover();
     assert.equal(existsSync(resolve(item.root, ".rtb-state", "state.sqlite")), true);
+    assert.equal(existsSync(resolve(item.root, ".rtb-content", "current.json")), true);
+  } finally { item.dispose(); }
+});
+
+test("successful mutation writes a Git-visible canonical snapshot and pointer", async () => {
+  const item = fixture();
+  try {
+    writeFileSync(resolve(item.root, ".gitignore"), ".rtb-state/\n");
+    execFileSync("git", ["init"], { cwd: item.root });
+    execFileSync("git", ["add", "chapter.md", "worksheet.md", ".gitignore"], { cwd: item.root });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-m", "fixture"], { cwd: item.root });
+    await item.service.execute(command(item.service, [{ path: "chapter.md", content: "git-visible\n" }], "MUT-GIT-001"));
+    const status = execFileSync("git", ["status", "--porcelain"], { cwd: item.root, encoding: "utf8" });
+    assert.match(status, /\?\? \.rtb-content\//);
+    assert.doesNotMatch(status, /\.rtb-state/);
+    assert.equal(item.service.read("chapter.md").content, "git-visible\n");
   } finally { item.dispose(); }
 });
 
@@ -213,17 +237,48 @@ test("SEC-001/002/003/006 mutation HTTP boundary has one fixed command and rejec
     assert.equal(crossSession.status, 403);
     const missingCapability = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...authHeaders(session), "x-rtb-publishing-capability": "wrong" }, body: JSON.stringify(valid) });
     assert.equal(missingCapability.status, 403);
-    const arbitrary = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files?token=no`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
+    const querySession = await issueSession();
+    const arbitrary = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files?token=no`, { method: "POST", headers: authHeaders(querySession), body: JSON.stringify(valid) });
     assert.equal(arbitrary.status, 400);
     const unsupported = await fetch(`${base}/api/projects/fixture-book/mutations/other`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
     assert.equal(unsupported.status, 404);
     const oversized = { ...valid, id: "MUT-HTTP-003", files: [{ ...valid.files[0], content: "x".repeat(300 * 1024) }] };
-    const tooLarge = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(oversized) });
+    const sizeSession = await issueSession();
+    const tooLarge = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(sizeSession), body: JSON.stringify(oversized) });
     assert.equal(tooLarge.status, 400);
+    session = await issueSession();
     clock += 1001;
     const expired = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
     assert.equal(expired.status, 403);
   } finally { await new Promise((done) => platform.server.close(done)); item.dispose(); }
+});
+
+test("a session capability is consumed synchronously and execution failures return a safe re-bootstrap pair", async () => {
+  const item = fixture();
+  const platform = createPlatformServer({ mutationService: item.service });
+  await new Promise((done) => platform.server.listen(0, "127.0.0.1", done));
+  const { port } = platform.server.address(); const base = `http://127.0.0.1:${port}`;
+  const issue = async () => { const response = await fetch(`${base}/api/session`); return { body: await response.json(), cookie: response.headers.get("set-cookie")?.split(";")[0] }; };
+  const input = command(item.service, [{ path: "chapter.md", content: "concurrent\n" }], "MUT-SESSION-RACE");
+  try {
+    const session = await issue();
+    const headers = { "content-type": "application/json", origin: base, "sec-fetch-site": "same-origin", cookie: session.cookie, "x-rtb-publishing-csrf": session.body.csrfToken, "x-rtb-publishing-capability": session.body.mutationCapability };
+    const [first, second] = await Promise.all([fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(input) }), fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(input) })]);
+    assert.deepEqual(new Set([first.status, second.status]), new Set([200, 403]));
+  } finally { await new Promise((done) => platform.server.close(done)); }
+  const failingService = { projectId: "fixture-book", allowsPath: () => true, execute: async () => { throw new Error("token=private-value"); } };
+  const failingPlatform = createPlatformServer({ mutationService: failingService });
+  await new Promise((done) => failingPlatform.server.listen(0, "127.0.0.1", done));
+  const failingPort = failingPlatform.server.address().port; const failingBase = `http://127.0.0.1:${failingPort}`;
+  try {
+    const sessionResponse = await fetch(`${failingBase}/api/session`); const session = { body: await sessionResponse.json(), cookie: sessionResponse.headers.get("set-cookie")?.split(";")[0] };
+    const headers = { "content-type": "application/json", origin: failingBase, "sec-fetch-site": "same-origin", cookie: session.cookie, "x-rtb-publishing-csrf": session.body.csrfToken, "x-rtb-publishing-capability": session.body.mutationCapability };
+    const failed = await fetch(`${failingBase}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(input) });
+    assert.equal(failed.status, 400);
+    assert.ok(failed.headers.get("x-rtb-publishing-next-csrf"));
+    assert.ok(failed.headers.get("x-rtb-publishing-next-capability"));
+    assert.doesNotMatch(JSON.stringify(await failed.json()), /private-value|token=/);
+  } finally { await new Promise((done) => failingPlatform.server.close(done)); item.dispose(); }
 });
 
 test("normal platform startup wires only registered reviewed mutation services", async () => {
