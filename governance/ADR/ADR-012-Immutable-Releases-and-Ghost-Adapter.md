@@ -200,12 +200,14 @@ pointer while holding the workspace output lock, so build, retention, and clean
 cannot replace or delete served bytes midway. A successful build retains current
 plus two complete predecessors under both build locks. Retention is a
 pointer-aware quarantine transaction: it writes project-and-token-scoped
-durable evidence, rechecks the exact pointer before each recursive generation
-move, restores all moves if the pointer changes, and never removes shared or
-other-project evidence. Per-entry `move_pending` and `delete_pending` records
-close the rename and removal crash windows; recovery restores or resumes exact
-owned state. Bounded synchronous reclaim deletes quarantined generations and
-removes only a terminal owned transaction directory. These
+closed-schema version 3 evidence bound to the exact pointer bytes and hash,
+rechecks the pointer before every recursive move, before `delete_pending`, and
+immediately before every removal, restores still-owned quarantine if the
+pointer changes, and never removes shared or other-project evidence. Atomic
+journal-temp recovery and per-entry `move_pending`/`delete_pending` states
+close journal-write, rename, and removal crash windows. Bounded reclaim durably
+renames the completed transaction to a terminal tombstone before removal;
+recovery completes either side of that terminal boundary. These
 durability guarantees depend on the local filesystem
 honoring file and directory `fsync`; unsupported network or virtual filesystems
 are outside the release guarantee.
@@ -238,8 +240,9 @@ identity, and exact durable candidate, manifest, identity, and finalization
 rows. Every durable marker phase is also transactionally bound in SQLite to its
 token, candidate, manifest, phase, marker hash, evidence hash, and active or
 terminal status. Before marker replacement, a `binding_pending` record binds
-the exact next marker bytes, evidence, phase, and owned temporary token.
-Recovery can retry only an exact old-marker-plus-temporary state or activate an
+the exact next marker bytes, evidence, phase, and owned temporary token before
+the temporary file is created. Recovery can reconstruct that exact missing
+temp, retry only an exact old-marker-plus-temporary state, or activate an
 exact new-marker state. Recovery reads that trusted binding before marker bytes and
 validates the closed schema and exact recursive transaction evidence before
 reconstructing coordinator state. Direct helper
@@ -263,9 +266,14 @@ release ID, candidate, real current approval and policy, current Beta, and
 existing manifest bytes exactly reproduce. Otherwise recovery requires a new
 exact Publish approval and never silently blesses the legacy row.
 Migration 009 moves unbound legacy promotion evidence into a durable migration
-quarantine under the held locks. Completed evidence requires exact ledger and
-target verification; pending or malformed evidence invalidates the old Publish
-approval and requires a fresh exact approval and rebuild.
+quarantine under the held locks. It flushes an exact-path journal before the
+first marker, backup, quarantine, or staging move, records a checkpoint for each
+move and receipt, and safely resumes that journal after interruption. Completed
+evidence requires exact ledger and target verification; pending or malformed
+evidence invalidates the old Publish approval before any evidence move and
+requires a fresh exact approval and rebuild. The draft-v9 table conversion
+preserves active, committed, and rolled-back rows exactly; malformed rows roll
+back the conversion rather than dropping evidence.
 
 Completed verification is not a shortcut around authority reconstruction. It
 always proves exact finalization, identity, candidate registry JSON and row,

@@ -51,10 +51,16 @@ function reconcilePendingMarker(projectRoot, context, candidate, manifest, hook)
   if (binding.binding_state !== "binding_pending") return binding;
   const markerBytes = binding.pending_marker_json && Buffer.from(binding.pending_marker_json), facts = markerBytes && { markerHash: digest(markerBytes), evidenceHash: digest(Buffer.from(JSON.stringify(JSON.parse(markerBytes).evidence))), phase: binding.pending_phase, tempToken: binding.pending_temp_token, markerJson: binding.pending_marker_json };
   if (!facts || facts.markerHash !== binding.pending_marker_hash || facts.evidenceHash !== binding.pending_evidence_hash || !PHASES.has(facts.phase) || !UUID.test(facts.tempToken)) throw new Error("Promotion pending marker binding is malformed; recovery was not attempted.");
-  const temporary = `${context.marker}.${facts.tempToken}.tmp`, markerExists = existsSync(context.marker), markerHash = markerExists ? digest(readFileSync(context.marker)) : null, temporaryExists = existsSync(temporary), temporaryHash = temporaryExists ? digest(readFileSync(temporary)) : null, oldMatches = binding.marker_hash === null ? !markerExists : markerHash === binding.marker_hash;
+  const temporary = `${context.marker}.${facts.tempToken}.tmp`, markerExists = existsSync(context.marker), markerHash = markerExists ? digest(readFileSync(context.marker)) : null, oldMatches = binding.marker_hash === null ? !markerExists : markerHash === binding.marker_hash; let temporaryExists = existsSync(temporary), temporaryHash = null;
+  if (temporaryExists) {
+    const temporaryEntry = lstatSync(temporary); if (temporaryEntry.isSymbolicLink() || !temporaryEntry.isFile() || temporaryEntry.nlink !== 1) { const error = new Error("Promotion pending marker temporary evidence is unsafe; recovery was not attempted."); error.recoveryRequired = true; throw error; }
+    if (oldMatches && temporaryEntry.size === 0) { rmSync(temporary); syncDirectory(dirname(temporary)); temporaryExists = false; }
+    else temporaryHash = digest(readFileSync(temporary));
+  }
   if (markerHash === facts.markerHash && !temporaryExists) {
     finalizeMarkerBinding(projectRoot, context, candidate, manifest, facts);
-  } else if (oldMatches && temporaryExists && temporaryHash === facts.markerHash) {
+  } else if (oldMatches && (!temporaryExists || temporaryHash === facts.markerHash)) {
+    if (!temporaryExists) { const fd = openSync(temporary, "wx", 0o600); try { writeFileSync(fd, markerBytes); fsyncSync(fd); } finally { closeSync(fd); } syncDirectory(dirname(temporary)); }
     renameSync(temporary, context.marker); syncDirectory(dirname(context.marker)); event(hook, `after-atomic-marker-${facts.phase}`, context); finalizeMarkerBinding(projectRoot, context, candidate, manifest, facts);
   } else { const error = new Error("Promotion pending marker state is mismatched; exact recovery evidence was preserved."); error.recoveryRequired = true; throw error; }
   database = openStateDatabase(databaseFile(projectRoot)); try { return database.prepare("SELECT * FROM promotion_transactions WHERE token = ?").get(context.token); } finally { database.close(); }
@@ -120,10 +126,13 @@ function createEngine(initial, locks, hook, candidate, manifest, recoveredAuthor
   function writeMarker(phase, hadPrior) {
     guard(); event(hook, `before-marker-${phase}`, context); guard(); ensureOwned(dirname(context.marker), `ensure-marker-parent-${phase}`); guard();
     const before = authority, value = markerValue(context, phase, hadPrior, authority), bytes = Buffer.from(`${JSON.stringify(value)}\n`), tempToken = randomUUID(), temporary = `${context.marker}.${tempToken}.tmp`; if (existsSync(temporary)) throw new Error("Promotion marker temporary path already exists.");
-    const fd = openSync(temporary, "wx", 0o600); try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); } const owned = pathRecord(temporary); if (owned.hash !== digest(bytes) || owned.bytes !== bytes.length) throw new Error("Promotion marker temporary bytes changed before rename.");
-    prepareMarkerBinding(locks.projectRoot, context, candidate, manifest, value, bytes, tempToken); event(hook, `after-marker-binding-pending-${phase}`, context);
-    renameSync(temporary, context.marker); syncDirectory(dirname(context.marker)); event(hook, `after-atomic-marker-${phase}`, context);
-    const marker = rebase(owned, context.marker); validateUnchanged(before, new Set([context.marker])); assertRecord({ path: temporary, missing: true }); assertRecord(marker); const next = { ...context, phase, hadPrior }; advance(next, new Map([[context.marker, marker]])); finalizeMarkerBinding(locks.projectRoot, context, candidate, manifest, { ...pendingMarkerFacts(value, bytes), phase, tempToken }); event(hook, `after-marker-${phase}`, context); return context;
+    prepareMarkerBinding(locks.projectRoot, context, candidate, manifest, value, bytes, tempToken);
+    try {
+      event(hook, `after-marker-binding-pending-${phase}`, context);
+      const fd = openSync(temporary, "wx", 0o600); try { event(hook, `after-marker-temp-create-${phase}`, context); writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); } event(hook, `after-marker-temp-fsync-${phase}`, context); const owned = pathRecord(temporary); if (owned.hash !== digest(bytes) || owned.bytes !== bytes.length) throw new Error("Promotion marker temporary bytes changed before rename.");
+      renameSync(temporary, context.marker); syncDirectory(dirname(context.marker)); event(hook, `after-atomic-marker-${phase}`, context);
+      const marker = rebase(owned, context.marker); validateUnchanged(before, new Set([context.marker])); assertRecord({ path: temporary, missing: true }); assertRecord(marker); const next = { ...context, phase, hadPrior }; advance(next, new Map([[context.marker, marker]])); finalizeMarkerBinding(locks.projectRoot, context, candidate, manifest, { ...pendingMarkerFacts(value, bytes), phase, tempToken }); event(hook, `after-marker-${phase}`, context); return context;
+    } catch (error) { error.recoveryRequired = true; throw error; }
   }
   function removeMarker() { event(hook, "before-marker-cleanup", context); removeOwned(context.marker, { force: true }, "marker-cleanup"); event(hook, "after-marker-cleanup", context); }
   function rollbackFromCurrent() {
@@ -151,8 +160,61 @@ function createEngine(initial, locks, hook, candidate, manifest, recoveredAuthor
 
 function markerContexts(outputRoot, projectId, releaseId) { const root = resolve(outputRoot, ".promotion-state"); if (!existsSync(root)) return []; const entry = lstatSync(root); if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("Promotion state root is unsafe."); return readdirSync(root).filter((name) => name.startsWith(`${projectId}-${releaseId}-`) && name.endsWith(".json")).sort().map((name) => { const token = basename(name, ".json").slice(`${projectId}-${releaseId}-`.length); return contextFor({ outputRoot, projectId, releaseId, token }); }); }
 
-function quarantineLegacyPromotionMarkers({ projectRoot, outputRoot, projectId, releaseId, candidate, manifest, verifyCompleted }) {
+function writeMigrationJson(file, value) {
+  const temporary = `${file}.${randomUUID()}.tmp`, bytes = Buffer.from(`${JSON.stringify(value)}\n`), fd = openSync(temporary, "wx", 0o600);
+  try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
+  syncDirectory(dirname(temporary)); renameSync(temporary, file); syncDirectory(dirname(file));
+}
+function migrationJournalRoot(stateRoot, projectId, releaseId) { return resolve(stateRoot, "migration-journals", projectId, releaseId); }
+
+function migrationJournalValue(file, stateRoot, outputRoot, projectId, releaseId) {
+  const id = basename(file, ".json");
+  if (!UUID.test(id)) throw new Error("Legacy promotion migration journal has an unsafe identifier.");
+  const value = JSON.parse(readFileSync(file, "utf8")), receiptRoot = resolve(stateRoot, "migration-quarantine", id), marker = resolve(stateRoot, `${projectId}-${releaseId}-${value.token}.json`), allowed = new Set([marker, resolve(stateRoot, `${projectId}-${releaseId}-${value.token}.backup`), resolve(stateRoot, `${projectId}-${releaseId}-${value.token}.quarantine`), resolve(outputRoot, ".staging", `${projectId}-${value.token}`)]);
+  if (!exactKeys(value, ["schemaVersion", "id", "projectId", "releaseId", "token", "disposition", "candidateHash", "manifestHash", "receiptRoot", "receiptState", "actions", "createdAt", "updatedAt"]) || value.schemaVersion !== 1 || value.id !== id || value.projectId !== projectId || value.releaseId !== releaseId || !UUID.test(value.token) || !["completed-terminal-evidence", "pending-reapproval-required"].includes(value.disposition) || value.receiptRoot !== receiptRoot || !["pending", "done"].includes(value.receiptState) || !Array.isArray(value.actions)) throw new Error("Legacy promotion migration journal is malformed or belongs to different authority.");
+  const destinations = new Set();
+  for (const action of value.actions) {
+    if (!exactKeys(action, ["source", "destination", "record", "state"]) || !allowed.has(action.source) || action.destination !== resolve(receiptRoot, basename(action.source)) || !inside(receiptRoot, action.destination) || destinations.has(action.destination) || !["pending", "done"].includes(action.state) || action.record?.path !== action.source) throw new Error("Legacy promotion migration journal contains an unsafe action.");
+    destinations.add(action.destination);
+  }
+  return value;
+}
+
+function resumeLegacyMigration({ file, stateRoot, outputRoot, projectId, releaseId, hook }) {
+  let journal = migrationJournalValue(file, stateRoot, outputRoot, projectId, releaseId);
+  mkdirSync(journal.receiptRoot, { recursive: true, mode: 0o700 }); assertNoSymlinkPath(stateRoot, journal.receiptRoot, { allowMissing: false }); pinPhysicalEntry(journal.receiptRoot, "directory"); syncDirectory(journal.receiptRoot); syncDirectory(dirname(journal.receiptRoot));
+  for (let index = 0; index < journal.actions.length; index += 1) {
+    const action = journal.actions[index];
+    if (action.state === "done") { if (existsSync(action.source) || !existsSync(action.destination)) throw new Error("Completed legacy migration action no longer matches its journal."); assertRecord(action.record, { at: action.destination }); continue; }
+    event(hook, `before-legacy-migration-move-${index}`, journal);
+    if (existsSync(action.source) && !existsSync(action.destination)) { assertRecord(action.record); renameSync(action.source, action.destination); syncDirectory(dirname(action.source)); syncDirectory(journal.receiptRoot); event(hook, `after-legacy-migration-rename-${index}`, journal); }
+    else if (!existsSync(action.source) && existsSync(action.destination)) assertRecord(action.record, { at: action.destination });
+    else throw new Error("Pending legacy migration action has ambiguous source and destination state.");
+    action.state = "done"; journal.updatedAt = new Date().toISOString(); writeMigrationJson(file, journal); event(hook, `after-legacy-migration-checkpoint-${index}`, journal);
+  }
+  const receiptFile = resolve(journal.receiptRoot, "migration-receipt.json"), receipt = { schemaVersion: 1, projectId, releaseId, token: journal.token, disposition: journal.disposition, candidateHash: journal.candidateHash, manifestHash: journal.manifestHash, migratedAt: journal.updatedAt, files: journal.actions.map((action) => basename(action.source)) };
+  if (journal.receiptState === "pending") { event(hook, "before-legacy-migration-receipt", journal); if (!existsSync(receiptFile)) writeMigrationJson(receiptFile, receipt); else if (readFileSync(receiptFile, "utf8") !== `${JSON.stringify(receipt)}\n`) throw new Error("Legacy promotion migration receipt changed during recovery."); journal.receiptState = "done"; journal.updatedAt = new Date().toISOString(); writeMigrationJson(file, journal); event(hook, "after-legacy-migration-receipt", journal); }
+  const archived = resolve(journal.receiptRoot, "migration-journal.json");
+  if (existsSync(archived)) throw new Error("Legacy promotion migration terminal journal collision.");
+  renameSync(file, archived); syncDirectory(dirname(file)); syncDirectory(journal.receiptRoot); event(hook, "after-legacy-migration-terminal", journal);
+  return journal;
+}
+
+function recoverLegacyMigrations({ stateRoot, outputRoot, projectId, releaseId, hook }) {
+  const journalRoot = migrationJournalRoot(stateRoot, projectId, releaseId); if (!existsSync(journalRoot)) return [];
+  const entry = lstatSync(journalRoot); if (entry.isSymbolicLink() || !entry.isDirectory()) throw new Error("Legacy promotion migration journal root is unsafe.");
+  const recovered = [];
+  for (const name of readdirSync(journalRoot).sort()) {
+    if (!UUID.test(basename(name, ".json")) || !name.endsWith(".json")) throw new Error("Legacy promotion migration journal root contains unexpected evidence.");
+    recovered.push(resumeLegacyMigration({ file: resolve(journalRoot, name), stateRoot, outputRoot, projectId, releaseId, hook }));
+  }
+  return recovered;
+}
+
+function quarantineLegacyPromotionMarkers({ projectRoot, outputRoot, projectId, releaseId, candidate, manifest, verifyCompleted, hook }) {
   const stateRoot = resolve(outputRoot, ".promotion-state"); if (!existsSync(stateRoot)) return;
+  const recovered = recoverLegacyMigrations({ stateRoot, outputRoot, projectId, releaseId, hook });
+  if (recovered.some((item) => item.disposition === "pending-reapproval-required")) throw new Error("Legacy in-flight promotion evidence was durably quarantined. Obtain a fresh exact Publish approval and rebuild; do not restore the quarantined marker.");
   const prefix = `${projectId}-${releaseId}-`, names = readdirSync(stateRoot).filter((name) => name.startsWith(prefix) && name.endsWith(".json")).sort();
   for (const name of names) {
     const marker = resolve(stateRoot, name), token = basename(name, ".json").slice(prefix.length), database = openStateDatabase(databaseFile(projectRoot)); let binding, finalization;
@@ -161,11 +223,11 @@ function quarantineLegacyPromotionMarkers({ projectRoot, outputRoot, projectId, 
     if (!finalization || finalization.manifest_hash !== manifest.manifestHash) throw new Error("Legacy promotion evidence does not match an exact durable finalization; no migration mutation was performed.");
     if (finalization.status === "completed") verifyCompleted();
     else { const invalidation = openStateDatabase(databaseFile(projectRoot)); try { invalidation.exec("BEGIN IMMEDIATE"); invalidation.prepare("INSERT OR IGNORE INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)").run(`INV-PROMOTION-MIGRATION-${digest(Buffer.from(`${projectId}:${releaseId}:${token}`)).slice(0, 20).toUpperCase()}`, finalization.approval_id, projectId, "Legacy unbound promotion evidence requires a fresh exact Publish approval and rebuild.", new Date().toISOString()); invalidation.exec("COMMIT"); durableCheckpoint(invalidation); } catch (error) { if (invalidation.inTransaction) invalidation.exec("ROLLBACK"); throw error; } finally { invalidation.close(); } }
-    const quarantineRoot = resolve(stateRoot, "migration-quarantine"), receiptRoot = resolve(quarantineRoot, `${Date.now()}-${randomUUID()}`); mkdirSync(receiptRoot, { recursive: true, mode: 0o700 }); syncDirectory(receiptRoot); syncDirectory(quarantineRoot);
-    const stem = basename(name, ".json"), candidates = [marker, resolve(stateRoot, `${stem}.backup`), resolve(stateRoot, `${stem}.quarantine`), resolve(outputRoot, ".staging", `${projectId}-${token}`)].filter((path) => existsSync(path)), records = candidates.map((path) => pathRecord(path, { recursive: true }));
-    for (let index = 0; index < candidates.length; index += 1) { const source = candidates[index], destination = resolve(receiptRoot, basename(source)); assertRecord(records[index]); if (existsSync(destination)) throw new Error("Legacy promotion migration quarantine collision."); renameSync(source, destination); syncDirectory(dirname(source)); syncDirectory(receiptRoot); assertRecord(rebase(records[index], destination)); }
-    const receipt = { schemaVersion: 1, projectId, releaseId, token, disposition: finalization.status === "completed" ? "completed-terminal-evidence" : "pending-reapproval-required", candidateHash: candidate.candidateHash, manifestHash: manifest.manifestHash, migratedAt: new Date().toISOString(), files: candidates.map((path) => basename(path)) }, receiptBytes = Buffer.from(`${JSON.stringify(receipt)}\n`), receiptFile = resolve(receiptRoot, "migration-receipt.json"), fd = openSync(receiptFile, "wx", 0o600); try { writeFileSync(fd, receiptBytes); fsyncSync(fd); } finally { closeSync(fd); } syncDirectory(receiptRoot);
-    if (finalization.status !== "completed") throw new Error(`Legacy in-flight promotion evidence was moved to ${receiptRoot}. Obtain a fresh exact Publish approval and rebuild; do not restore the quarantined marker.`);
+    const quarantineRoot = resolve(stateRoot, "migration-quarantine"), journalRoot = migrationJournalRoot(stateRoot, projectId, releaseId), id = randomUUID(), receiptRoot = resolve(quarantineRoot, id); mkdirSync(quarantineRoot, { recursive: true, mode: 0o700 }); mkdirSync(journalRoot, { recursive: true, mode: 0o700 }); mkdirSync(receiptRoot, { recursive: true, mode: 0o700 }); assertNoSymlinkPath(stateRoot, quarantineRoot, { allowMissing: false }); assertNoSymlinkPath(stateRoot, journalRoot, { allowMissing: false }); assertNoSymlinkPath(stateRoot, receiptRoot, { allowMissing: false }); pinPhysicalEntry(quarantineRoot, "directory"); pinPhysicalEntry(journalRoot, "directory"); pinPhysicalEntry(receiptRoot, "directory"); syncDirectory(receiptRoot); syncDirectory(quarantineRoot); syncDirectory(journalRoot); syncDirectory(stateRoot);
+    const stem = basename(name, ".json"), candidates = [marker, resolve(stateRoot, `${stem}.backup`), resolve(stateRoot, `${stem}.quarantine`), resolve(outputRoot, ".staging", `${projectId}-${token}`)].filter((path) => existsSync(path)), now = new Date().toISOString(), journal = { schemaVersion: 1, id, projectId, releaseId, token, disposition: finalization.status === "completed" ? "completed-terminal-evidence" : "pending-reapproval-required", candidateHash: candidate.candidateHash, manifestHash: manifest.manifestHash, receiptRoot, receiptState: "pending", actions: candidates.map((source) => ({ source, destination: resolve(receiptRoot, basename(source)), record: pathRecord(source, { recursive: true }), state: "pending" })), createdAt: now, updatedAt: now }, journalFile = resolve(journalRoot, `${id}.json`);
+    writeMigrationJson(journalFile, journal); event(hook, "after-legacy-migration-journal", journal);
+    const completed = resumeLegacyMigration({ file: journalFile, stateRoot, outputRoot, projectId, releaseId, hook });
+    if (completed.disposition !== "completed-terminal-evidence") throw new Error(`Legacy in-flight promotion evidence was moved to ${receiptRoot}. Obtain a fresh exact Publish approval and rebuild; do not restore the quarantined marker.`);
   }
 }
 
@@ -198,7 +260,7 @@ export async function promoteFinalizedRelease(options) {
   if (!workspaceLock || !projectLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
   if (!token) throw new Error("Immutable release promotion requires its internal transaction token.");
   const authority = canonicalAuthority({ root, workspaceRoot, project, manifest, workspaceLock, projectLock }); authority.workspaceLock = workspaceLock; authority.projectLock = projectLock;
-  quarantineLegacyPromotionMarkers({ projectRoot: root, outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, candidate, manifest, verifyCompleted: () => verifyReleaseDirectory(authority.target, candidate, { manifest, root, heldLock: projectLock, immutableRoot: authority.immutableRoot, workspaceRoot, heldWorkspaceLock: workspaceLock }) });
+  quarantineLegacyPromotionMarkers({ projectRoot: root, outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, candidate, manifest, hook: hooks.legacyMigration, verifyCompleted: () => verifyReleaseDirectory(authority.target, candidate, { manifest, root, heldLock: projectLock, immutableRoot: authority.immutableRoot, workspaceRoot, heldWorkspaceLock: workspaceLock }) });
   const database = openStateDatabase(databaseFile(root)); let status; try { status = exactDurableAuthority(database, project.id, manifest.releaseId, candidate, manifest); } finally { database.close(); }
   const promotion = openCanonicalPromotion({ workspaceRoot, projectRoot: root, project, candidate, manifest, releaseId: manifest.releaseId, token, workspaceLock, projectLock, hook: hooks.promotionBoundary }); let context, output;
   for (const recovered of promotion.recoverPending()) if (recovered.state === "completion-required") context = recovered.context;

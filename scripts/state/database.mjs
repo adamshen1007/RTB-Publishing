@@ -41,7 +41,10 @@ function reconcilePromotionTransactionSchema(database) {
       CREATE INDEX promotion_transactions_release ON promotion_transactions(project_id, release_id, status);
     `);
     database.exec("COMMIT; PRAGMA wal_checkpoint(FULL);");
-  } catch (error) { database.exec("ROLLBACK;"); throw error; }
+  } catch (error) {
+    database.exec("ROLLBACK;");
+    throw new Error("Legacy draft-v9 promotion rows could not be migrated safely; correct the malformed legacy row before retrying.", { cause: error });
+  }
 }
 
 export function migrationFiles(directory = migrationsDirectory) {

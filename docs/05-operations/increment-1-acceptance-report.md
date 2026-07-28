@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 357/357 passed in the final local quality run.
+- Repository tests: 437/437 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -86,7 +86,9 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   unexpected directories, missing files, and file/directory type swaps.
 - Marker replacement first persists `binding_pending` with the expected phase,
   marker/evidence hashes, canonical bytes, and owned temporary token. Recovery
-  retries an exact old-marker state or activates an exact new-marker state.
+  can recreate a missing exact temp from the database, retries an exact
+  old-marker state, or activates an exact new-marker state. The database commit
+  precedes every marker-temp creation.
   Active recovery then requires an exact SQLite promotion-transaction binding
   for project, release, candidate, manifest, token, phase, marker hash, and
   evidence hash before validating closed marker schema version 2 and its
@@ -102,9 +104,13 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   one SQLite transaction. Completed ledger pairs reconcile and complete
   exact cleanup evidence before verification and cannot enter pre-verification
   mutation. Migration 009 quarantines completed legacy evidence after exact
-  verification and invalidates pending or malformed legacy approval authority.
-  Six pending, forged, stale, and mismatched cases plus 60 real-ledger crash
-  boundaries cover begin, rollback, commit, and every atomic marker window.
+  verification and invalidates pending or malformed legacy approval authority
+  before any evidence move. Exact-path migration journals checkpoint all four
+  legacy evidence classes, the receipt, and terminal archive. Draft-v9 active,
+  committed, and rolled-back rows are preserved exactly; malformed rows roll
+  back actionably. Pending, forged, stale, and mismatched cases plus the
+  real-ledger crash matrix cover begin, rollback, commit, and every database,
+  marker-temp, and atomic marker window.
 - Stale locks fail closed without automatic reclaim. Three simultaneous stale
   waiters preserve the lock and admit no writer; rapid live-lock release with
   three contenders admits at most one successor without reclaim artifacts.
@@ -119,10 +125,11 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   request, opens without following links, reads descriptor-only, and rechecks
   descriptor, path, and pointer under the workspace lock. Retention keeps
   current plus two predecessors and transactionally quarantines recursively
-  pinned older generations under project/token durable evidence while
-  rechecking the pointer before every move. Per-entry move and delete journals
-  restore rename gaps or resume bounded reclaim; terminal cleanup removes only
-  its owned transaction directory and never shared GC evidence.
+  pinned older generations under project/token version 3 durable evidence bound
+  to the exact pointer bytes. Pointer checks occur before every move, before
+  `delete_pending`, and immediately before each removal. Atomic journal-temp
+  recovery restores rename gaps or resumes bounded reclaim; terminal cleanup
+  uses a durably renamed tombstone and never removes shared GC evidence.
   Crash, in-place edit, replacement, clean-exclusion, staging collision, pointer
   switch, and GC restoration tests preserve complete generations without
   trusting successor paths.

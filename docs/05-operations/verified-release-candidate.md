@@ -120,8 +120,10 @@ transaction path except the marker itself. Recovery derives only the recorded
 pre-state or the one exact post-state allowed by an interrupted intent phase;
 it never adopts a live filesystem snapshot. Before marker replacement, SQLite
 records `binding_pending` with the next phase, marker/evidence hashes,
-canonical marker JSON, and owned temporary token. Recovery retries an exact
-old-marker-plus-temporary state or activates an exact new-marker state; every
+canonical marker JSON, and owned temporary token before creating that
+temporary file. Recovery can reconstruct a missing exact temp from those
+database bytes, retry an exact old-marker-plus-temporary state, or activate an
+exact new-marker state; every
 other combination fails closed with evidence preserved. Active recovery then
 requires the token, phase, marker hash, and evidence hash to match the durable
 row bound to the exact candidate, manifest, identity, and finalization.
@@ -153,9 +155,15 @@ without adopting the replacement.
 Completed identity/finalization pairs reconcile exact `ledger_completed`
 cleanup evidence and verify the target; they cannot re-enter pre-verification
 promotion mutation. Migration 009 never blesses an unbound legacy marker.
-Completed legacy evidence is quarantined only after exact ledger and target
-verification. Pending or malformed legacy evidence is quarantined, invalidates
-the old Publish approval, and requires a fresh exact approval and rebuild.
+Before any legacy marker, backup, quarantine, or staging move, migration 009
+writes and flushes an exact-path journal. It records a checkpoint for every
+move and the final receipt, and retry safely resumes the journal before scanning
+new markers. Completed legacy evidence is quarantined only after exact ledger and
+target verification. Pending or malformed legacy evidence first invalidates
+the old Publish approval, is then durably quarantined, and requires a fresh
+exact approval and rebuild. Draft-v9 promotion rows preserve their exact
+lifecycle status and evidence fields while binding columns are added;
+malformed rows roll back the conversion with an actionable error.
 
 Dead-process lock files are not reclaimed automatically. Because pathname
 rename and removal cannot provide a safe three-actor ownership transfer, stale

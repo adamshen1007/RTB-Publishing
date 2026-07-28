@@ -83,12 +83,19 @@ back to an older conventional output directory. If the pointer
 is missing or invalid, rebuild instead of selecting generation files by hand.
 The successful build keeps the current generation and two complete
 predecessors. Older generations first move into a project-and-token-scoped
-private quarantine with a durable transaction record while the exact pointer is
-rechecked before every move. Any pointer change restores all moved generations.
+private quarantine with a closed-schema version 3 transaction record that binds
+the exact pointer bytes and hash while the pointer is rechecked before every
+move, before `delete_pending`, and again immediately before every removal. Any
+pointer change restores every still-owned quarantined generation, including a
+generation newly selected after quarantine.
 Each rename is preceded by `move_pending`; each bounded removal is preceded by
-`delete_pending`. A restart restores an interrupted move or resumes an exact
-owned deletion. Successful cleanup removes its terminal project-scoped
-transaction directory and never removes shared or other-project `.gc` data.
+`delete_pending`. Journal writes use a file-fsynced owned temporary file and an
+atomic rename; recovery either promotes that exact complete temp or removes an
+exact empty pre-write temp. A restart restores an interrupted move or resumes
+an exact owned deletion. Successful cleanup first renames the completed
+transaction to a project-scoped terminal tombstone, flushes its parent, and
+only then removes it. Recovery finishes either side of that terminal boundary
+and never removes shared or other-project `.gc` data.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux
 filesystems that implement file and directory `fsync`. It cannot promise

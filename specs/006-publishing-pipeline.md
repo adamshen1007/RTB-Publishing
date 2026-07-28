@@ -59,13 +59,16 @@ the selected regular file without following symbolic links, pins the descriptor
 identity, reads only from that descriptor, then rechecks the descriptor, path,
 and pointer before returning bytes. A successful build retains the current
 generation and two complete predecessors; retention runs only under the
-workspace and project locks. It rechecks the exact pointer before every move,
-writes a project-and-token-scoped durable transaction record, and quarantines
-complete recursively pinned generations. A pointer change restores every move.
-Each move is journaled before rename and each bounded deletion is journaled
-before removal. Recovery distinguishes exact source-only and destination-only
-states, resumes deletion after a crash, and removes only the owned terminal
-transaction directory without touching another project.
+workspace and project locks. It writes a project-and-token-scoped closed-schema
+version 3 transaction bound to the exact pointer bytes and hash, and rechecks
+that pointer before every move, before each `delete_pending` transition, and
+immediately before each removal. A pointer change restores still-owned
+quarantine, including a generation newly selected after quarantine. Atomic
+journal-temp recovery and per-entry `move_pending`/`delete_pending` states close
+journal-write, rename, and removal crash windows. After bounded deletion, the
+transaction is durably renamed to a terminal tombstone before removal; recovery
+completes either side of that terminal boundary without touching another
+project.
 
 The generic `buildProject` API has no separate `buildRoot`: build intermediates
 are deliberately co-located with their rendered files so a pointer can never
