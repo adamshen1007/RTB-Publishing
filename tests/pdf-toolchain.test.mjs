@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { assertSafeCompatibilityOutput } from "../scripts/pdf-output-path.mjs";
+import { assertSafeCompatibilityOutput, assertTrustedCompatibilityRoot } from "../scripts/pdf-output-path.mjs";
 import Ajv from "ajv/dist/2020.js";
 
 const root = resolve(import.meta.dirname, "..");
@@ -44,11 +44,17 @@ test("lock, manifest, qpdf, and veraPDF evidence have actionable required shapes
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
   validate("manifest", manifest, "manifest");
   validate("visual", visual, "visual report");
-  validate("qpdf", outlines, "qpdf outlines");
-  validate("qpdf", pages, "qpdf pages");
+  validate("qpdf-outlines", outlines, "qpdf outlines");
+  validate("qpdf-pages", pages, "qpdf pages");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
+  validate("visual-negative", visualNegative, "negative visual report");
   assert.throws(() => validate("visual", { schemaVersion: 1, equal: false }, "malformed visual"), /schema invalid/);
+  assert.throws(() => validate("manifest", { schemaVersion: 1 }, "malformed manifest"), /schema invalid/);
+  assert.throws(() => validate("qpdf-outlines", { version: 2 }, "malformed outlines"), /schema invalid/);
+  assert.throws(() => validate("qpdf-pages", { version: 2 }, "malformed pages"), /schema invalid/);
+  assert.throws(() => validate("verapdf", { report: { jobs: [{ validationResult: [{ compliant: false, jobEndStatus: "normal", details: { failedRules: 1, failedChecks: 0 } }] }] } }, "failed verifier"), /schema invalid/);
+  assert.throws(() => validate("visual-negative", { schemaVersion: 1 }, "malformed negative visual"), /schema invalid/);
 });
 
 test("locks actual executable, runtime, and font bytes", () => {
@@ -112,7 +118,7 @@ test("canonical Markdown is transformed only into the derived Typst snapshot", (
 });
 
 test("compatibility output deletion rejects roots, parents, traversal, and symlinks", () => {
-  const safe = mkdtempSync(resolve(tmpdir(), "rtb-pdf-safe-"));
+  const safe = mkdtempSync("/private/tmp/rtb-pdf-safe-");
   const child = resolve(safe, "evidence");
   mkdirSync(child);
   assert.equal(assertSafeCompatibilityOutput({ output: child, safeRoots: [safe] }), child);
@@ -120,7 +126,11 @@ test("compatibility output deletion rejects roots, parents, traversal, and symli
   const linked = resolve(safe, "linked");
   symlinkSync(tmpdir(), linked);
   assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linked, "evidence"), safeRoots: [safe] }), /symbolic link/);
-  const linkedRoot = resolve(tmpdir(), `rtb-pdf-linked-root-${Date.now()}`);
+  const linkedRoot = resolve("/private/tmp", `rtb-pdf-linked-root-${Date.now()}`);
   symlinkSync(safe, linkedRoot);
-  assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linkedRoot, "evidence"), safeRoots: [linkedRoot] }), /root may not be a symbolic link/);
+  assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linkedRoot, "evidence"), safeRoots: [linkedRoot] }), /symbolic link/);
+  mkdirSync(resolve(safe, "root"));
+  const trusted = resolve("/private/tmp", `rtb-pdf-trusted-${Date.now()}`);
+  symlinkSync(safe, trusted);
+  assert.throws(() => assertTrustedCompatibilityRoot({ root: resolve(trusted, "root"), trustedParent: trusted }), /symbolic link/);
 });

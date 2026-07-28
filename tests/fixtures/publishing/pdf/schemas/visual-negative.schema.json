@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["schemaVersion","fixture","raster","width","height","expectedProductionGeometry","geometryRegressionDetected"],"properties":{"schemaVersion":{"const":1},"fixture":{"const":"a5-page-geometry"},"raster":{"const":"visual-negative-1.png"},"geometryRegressionDetected":{"const":true}}}

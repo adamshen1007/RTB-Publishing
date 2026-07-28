@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { assertSafeCompatibilityOutput } from "./pdf-output-path.mjs";
+import { assertSafeCompatibilityOutput, assertTrustedCompatibilityRoot } from "./pdf-output-path.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const lock = JSON.parse(readFileSync(resolve(root, "publishing/pdf/toolchain.lock.json"), "utf8"));
@@ -13,8 +13,7 @@ const outArgument = process.argv[2] === "--out" ? process.argv[3] : defaultOut;
 const repositoryEvidenceRoot = resolve(root, "tests/fixtures/publishing/pdf/evidence");
 const envRoot = process.env.PDF_COMPATIBILITY_ROOT && resolve(process.env.PDF_COMPATIBILITY_ROOT);
 const trustedParent = process.env.PDF_TRUSTED_COMPATIBILITY_PARENT && resolve(process.env.PDF_TRUSTED_COMPATIBILITY_PARENT);
-if (envRoot && (!trustedParent || !envRoot.startsWith(`${trustedParent}/`))) throw new Error("PDF_COMPATIBILITY_ROOT must be a child of PDF_TRUSTED_COMPATIBILITY_PARENT");
-const safeRoots = [repositoryEvidenceRoot, envRoot].filter(Boolean);
+const safeRoots = [repositoryEvidenceRoot, envRoot && assertTrustedCompatibilityRoot({ root: envRoot, trustedParent })].filter(Boolean);
 const out = assertSafeCompatibilityOutput({ output: outArgument, safeRoots });
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
