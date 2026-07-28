@@ -35,6 +35,49 @@ async function issueAndBootstrap(base, forged = false) {
 function rotate(headers, response) { return { ...headers, "x-rtb-publishing-csrf": response.headers.get("x-rtb-publishing-next-csrf"), "x-rtb-publishing-capability": response.headers.get("x-rtb-publishing-next-capability") }; }
 async function workspace(base, headers) { return (await fetch(`${base}/api/workspace`, { headers: { cookie: headers.cookie } })).json(); }
 
+test("Blueprint approval consumes a session-bound exact-material intent", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-platform-blueprint-intent-"));
+  const bindings = new StaticLifecycleBindingProvider({ blueprint: { briefHash: "brief", sourcePolicyHash: "source", budgetsHash: "budget", egressPolicyHash: "egress", blueprintHash: "blueprint-one" } });
+  const lifecycle = new LifecycleService({ root, projectId: "fixture-book", bindingProvider: bindings });
+  const platform = createPlatformServer({ lifecycleService: lifecycle });
+  await new Promise((done) => platform.server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${platform.server.address().port}`;
+  try {
+    let { headers } = await issueAndBootstrap(base);
+    const displayed = await workspace(base, headers), staleIntent = displayed.lifecycle["fixture-book"].gates.blueprint.intent;
+    assert.match(staleIntent, /^[a-f0-9]{48}$/);
+    bindings.values.blueprint = { ...bindings.values.blueprint, blueprintHash: "blueprint-two" };
+    const staleHeaders = headers;
+    const stale = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: staleIntent }) });
+    assert.equal(stale.status, 409); assert.match((await stale.json()).message, /material changed/); headers = rotate(headers, stale);
+    assert.notEqual(headers["x-rtb-publishing-csrf"], staleHeaders["x-rtb-publishing-csrf"]);
+    assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+    const rotatedCapabilityReplay = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers: staleHeaders, body: JSON.stringify({ confirm: true, intent: staleIntent }) });
+    assert.equal(rotatedCapabilityReplay.status, 403);
+
+    const versionOnly = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, expectedVersion: 0 }) });
+    assert.equal(versionOnly.status, 400); assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+
+    ({ headers } = await issueAndBootstrap(base));
+    const forgedMaterialRevision = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: "forged", materialRevision: "browser-forgery" }) });
+    assert.equal(forgedMaterialRevision.status, 400); assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+
+    ({ headers } = await issueAndBootstrap(base));
+    const missing = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true }) });
+    assert.equal(missing.status, 409); headers = rotate(headers, missing);
+    assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+    const current = await workspace(base, headers), intent = current.lifecycle["fixture-book"].gates.blueprint.intent;
+    const forged = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: `${intent}-forged` }) });
+    assert.equal(forged.status, 409); headers = rotate(headers, forged);
+    assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+    const approved = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent }) });
+    assert.equal(approved.status, 202); headers = rotate(headers, approved);
+    assert.equal(lifecycle.status().lifecycle.version, 1); assert.equal(lifecycle.status().approvals.length, 1);
+    const replay = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent }) });
+    assert.equal(replay.status, 409); assert.equal(lifecycle.status().lifecycle.version, 1); assert.equal(lifecycle.status().approvals.length, 1);
+  } finally { await new Promise((done) => platform.server.close(done)); rmSync(root, { recursive: true, force: true }); }
+});
+
 test("guided publication routes are loopback-authenticated, server-authoritative, rotating, and durable", async () => {
   const root = mkdtempSync(resolve(tmpdir(), "rtb-platform-lifecycle-"));
   const blueprint = { briefHash: "brief", sourcePolicyHash: "source", budgetsHash: "budget", egressPolicyHash: "egress", blueprintHash: "blueprint" };
@@ -61,7 +104,8 @@ test("guided publication routes are loopback-authenticated, server-authoritative
     assert.equal(replayAfterForgedGate.status, 403, "a consumed capability cannot be replayed");
 
     ({ headers } = await issueAndBootstrap(base));
-    const blueprintApproval = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, expectedVersion: 0 }) });
+    const blueprintView = await workspace(base, headers);
+    const blueprintApproval = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: blueprintView.lifecycle["fixture-book"].gates.blueprint.intent }) });
     assert.equal(blueprintApproval.status, 202); headers = rotate(headers, blueprintApproval);
 
     const forgedBeta = await fetch(`${base}/api/projects/fixture-book/lifecycle/beta-preparation`, { method: "POST", headers, body: JSON.stringify({ confirm: true, betaSnapshotHash: "f".repeat(64), reviewerId: "browser" }) });

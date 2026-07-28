@@ -249,6 +249,10 @@ Check:
   the same build command again so RTB can inspect and recover the evidence.
 - A `409` or “material changed” message means your page or command is stale.
   Refresh and inspect the current exact material before trying again.
+- Creator Studio issues a one-time, session-bound approval intent for the
+  displayed Blueprint, Beta, or Publish material. The intent is opaque: do not
+  supply a lifecycle version or material revision yourself. If it is stale or
+  already used, refresh the page to receive a new intent before deciding.
 
 ## Completion Checklist
 

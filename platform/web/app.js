@@ -36,7 +36,7 @@ function lifecyclePanel(project, lifecycle) {
     const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
     row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
     const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
-    const needsIntent = ["beta", "publish"].includes(gate), action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator || (needsIntent && !result.intent); action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version, result.intent)); row.append(action); section.append(row);
+    const action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator || !result.intent; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, result.intent)); row.append(action); section.append(row);
     const approval = lifecycle.approvals?.filter((item) => item.gate === gate && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
     if (gate === "publish" && approval) {
       const handoff = node("p", "muted", `Stored Publish approval ${approval.id}. Create the immutable manifest with:`);
@@ -136,9 +136,9 @@ async function jobAction(job, action) {
   const result = await response.json(); if (!response.ok) return showNotice(result.message); showNotice(""); await refresh();
 }
 
-async function confirmGate(project, gate, expectedVersion, intent) {
+async function confirmGate(project, gate, intent) {
   if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
-  const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, ...(["beta", "publish"].includes(gate) ? { intent } : { expectedVersion }) };
+  const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, intent };
   const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
   const result = await response.json();
   captureRotation(response); if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);

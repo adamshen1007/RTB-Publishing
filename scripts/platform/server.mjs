@@ -134,9 +134,9 @@ function publicationStatus({ lifecycleServices, releaseReviewServices, betaPrepa
   const publicationProjects = [];
   const lifecycle = Object.fromEntries([...lifecycleServices].map(([projectId, service]) => {
     const status = service.status();
-    if (session?.operatorId) for (const gate of ["beta", "publish"]) {
+    if (session?.operatorId) for (const gate of ["blueprint", "beta", "publish"]) {
       const material = status.gates?.[gate];
-      if (material?.ok && material.materialRevision) material.intent = sessions.issueIntent(session, { action: "lifecycle-gate", projectId, gate, lifecycleVersion: status.lifecycle.version, materialRevision: material.materialRevision });
+      if (material?.ok && material.materialRevision) material.intent = sessions.issueIntent(session, { action: "lifecycle-gate", projectId, gate, lifecycleVersion: status.lifecycle.version, expectedMaterialRevision: material.materialRevision });
     }
     const projectPath = service.projectPath ?? null;
     if (projectPath && releaseReviewServices.has(projectId)) {
@@ -227,13 +227,13 @@ export function createPlatformServer(options = {}) {
       if (request.method === "POST" && gateMatch) {
         const service = lifecycleServices.get(gateMatch[1]); const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "gate_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
-        const input = await body(request), intentRequired = ["beta", "publish"].includes(gateMatch[2]);
-        const allowed = intentRequired ? ["confirm", "intent", "reason"] : ["confirm", "expectedVersion", "reason"];
-        if (input.confirm !== true || (input.reason && typeof input.reason !== "string") || Object.keys(input).some((key) => !allowed.includes(key)) || (!intentRequired && !Number.isInteger(input.expectedVersion))) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and the server-issued current-material intent are required; lifecycle bindings and actor identity are resolved by the server." });
+        const input = await body(request);
+        const allowed = ["confirm", "intent", "reason"];
+        if (input.confirm !== true || (input.reason && typeof input.reason !== "string") || Object.keys(input).some((key) => !allowed.includes(key))) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and the server-issued current-material intent are required; lifecycle bindings and actor identity are resolved by the server." });
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
-        const authority = intentRequired ? sessions.consumeIntent(session, input.intent, { action: "lifecycle-gate", projectId: gateMatch[1], gate: gateMatch[2] }) : null;
-        if (intentRequired && !authority) return json(response, 409, { error: "stale_gate_intent", message: "This approval view is stale or was already used. Refresh and inspect the current exact material before approving it." }, rebootstrap);
-        const result = await service.approve({ gate: gateMatch[2], expectedVersion: authority?.lifecycleVersion ?? input.expectedVersion, expectedMaterialRevision: authority?.materialRevision, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
+        const authority = sessions.consumeIntent(session, input.intent, { action: "lifecycle-gate", projectId: gateMatch[1], gate: gateMatch[2] });
+        if (!authority) return json(response, 409, { error: "stale_gate_intent", message: "This approval view is stale or was already used. Refresh and inspect the current exact material before approving it." }, rebootstrap);
+        const result = await service.approve({ gate: gateMatch[2], expectedVersion: authority.lifecycleVersion, expectedMaterialRevision: authority.expectedMaterialRevision, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
         return json(response, result.state === "succeeded" ? 202 : ["conflict", "stale"].includes(result.state) ? 409 : 400, result, rebootstrap);
       }
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
