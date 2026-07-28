@@ -3,6 +3,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { assertSafeCompatibilityOutput } from "../scripts/pdf-output-path.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file) => readFileSync(resolve(root, file));
@@ -14,6 +17,26 @@ const manifest = json("tests/fixtures/publishing/pdf/evidence/artifacts/manifest
 const qdf = read("tests/fixtures/publishing/pdf/evidence/artifacts/semantic-book.qdf.pdf").toString("latin1");
 const outlines = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-outlines.json");
 const pages = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-pages.json");
+const visual = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-regression.json");
+
+const requireObject = (value, label) => assert.ok(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
+const requireValidationReport = (value, label) => {
+  requireObject(value, label);
+  assert.ok(Array.isArray(value.report?.jobs), `${label}.report.jobs must be an array`);
+  assert.ok(Array.isArray(value.report.jobs[0]?.validationResult), `${label}.report.jobs[0].validationResult must be an array`);
+};
+
+test("lock, manifest, qpdf, and veraPDF evidence have actionable required shapes", () => {
+  requireObject(lock, "toolchain lock");
+  assert.equal(lock.schemaVersion, 2, "toolchain lock schemaVersion must be 2");
+  requireObject(manifest.sourceSnapshot, "manifest.sourceSnapshot");
+  requireObject(manifest.tools, "manifest.tools");
+  requireObject(manifest.files, "manifest.files");
+  assert.ok(Array.isArray(outlines.outlines), "qpdf outlines must be an array");
+  assert.ok(Array.isArray(pages.pages), "qpdf pages must be an array");
+  requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
+  requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
+});
 
 test("locks actual executable, runtime, and font bytes", () => {
   const hex = /^[a-f0-9]{64}$/;
@@ -32,6 +55,9 @@ test("locks actual executable, runtime, and font bytes", () => {
 test("retained evidence is fresh, inspectable, and passes both veraPDF profiles", () => {
   for (const [file, expected] of Object.entries(manifest.files)) assert.equal(sha256(`tests/fixtures/publishing/pdf/evidence/artifacts/${file}`), expected, file);
   assert.equal(manifest.sourceSnapshot.markdownSha256, sha256("tests/fixtures/publishing/pdf/semantic-book.md"));
+  assert.equal(manifest.sourceSnapshot.figureSha256, sha256("tests/fixtures/publishing/pdf/semantic-figure.svg"));
+  assert.equal(manifest.sourceSnapshot.transformerSha256, sha256("scripts/pdf-compatibility.mjs"));
+  assert.equal(manifest.sourceSnapshot.toolchainLockSha256, sha256("publishing/pdf/toolchain.lock.json"));
   assert.match(read("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-check.txt").toString(), /No syntax or stream encoding errors found/);
   assert.equal(outlines.outlines[0].title, "Chapter one");
   assert.equal(outlines.outlines[0].kids[0].title, "Fixture values");
@@ -45,11 +71,15 @@ test("retained evidence is fresh, inspectable, and passes both veraPDF profiles"
 });
 
 test("retained parsed PDF proves metadata, language, tagged semantics, navigation, font, and alternative text", () => {
-  for (const token of ["/Lang (en-US)", "/Title (PDF Toolchain Compatibility Fixture)", "/StructTreeRoot", "/Marked true", "/S /Table", "/S /Figure", "/Alt (A navy rectangle used by the compatibility fixture.)", "https://example.com/", "/BaseFont /", "NotoSerif-Regular"]) assert.ok(qdf.includes(token), token);
+  for (const token of ["/Lang (en-US)", "/Title (PDF Toolchain Compatibility Fixture)", "/StructTreeRoot", "/Marked true", "/S /Table", "/S /THead", "/S /TH", "/S /TR", "/S /TD", "/S /Figure", "/Alt (A navy rectangle used by the compatibility fixture.)", "https://example.com/", "/Dest (chapter-one)", "/BaseFont /", "NotoSerif-Regular"]) assert.ok(qdf.includes(token), token);
   assert.match(read("tests/fixtures/publishing/pdf/evidence/artifacts/semantic-book.pdf").toString("latin1"), /^%PDF-1\.7/);
   assert.equal(matrix.fixture, "semantic-book.md");
   assert.equal(matrix.platforms[0].command[0], "node");
   assert.equal(matrix.platforms[0].command.at(-1), "scripts/pdf-compatibility.mjs");
+  assert.equal(visual.equal, true);
+  assert.deepEqual([visual.width, visual.height], [1191, 1684]);
+  assert.equal(visual.imageResolution, "semantic-figure.svg 40x20");
+  assert.match(visual.overflowOrClipping, /no raster dimension or baseline difference/);
 });
 
 test("canonical Markdown is transformed only into the derived Typst snapshot", () => {
@@ -60,4 +90,15 @@ test("canonical Markdown is transformed only into the derived Typst snapshot", (
   assert.match(markdown, /\| Name \| Value \|/);
   assert.match(derived, /#set text\(font: "Noto Serif", lang: "en", region: "US"/);
   assert.match(derived, /image\("semantic-figure\.svg", alt:/);
+});
+
+test("compatibility output deletion rejects roots, parents, traversal, and symlinks", () => {
+  const safe = mkdtempSync(resolve(tmpdir(), "rtb-pdf-safe-"));
+  const child = resolve(safe, "evidence");
+  mkdirSync(child);
+  assert.equal(assertSafeCompatibilityOutput({ output: child, safeRoots: [safe] }), child);
+  for (const output of ["/", root, safe, resolve(safe, ".."), resolve(safe, "../escape")]) assert.throws(() => assertSafeCompatibilityOutput({ output, safeRoots: [safe] }), /strict child/);
+  const linked = resolve(safe, "linked");
+  symlinkSync(tmpdir(), linked);
+  assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linked, "evidence"), safeRoots: [safe] }), /symbolic link/);
 });

@@ -91,7 +91,7 @@ The lock is nevertheless not a legal conclusion about the Noto Serif font or
 other content. The setup step downloads the exact architecture artifact,
 recalculates its SHA-256, installs it in a user-writable directory, and checks
 `typst --version`. It repeats that verification for veraPDF, the pinned Temurin
-JRE, qpdf, rasterizer, comparator, and font before use. Package-manager
+JRE, qpdf, renderer-native raster baseline, and font before use. Package-manager
 `latest` or an unpinned system copy is not an accepted release tool.
 
 ### Validation roles
@@ -103,6 +103,7 @@ JRE, qpdf, rasterizer, comparator, and font before use. Package-manager
 | structural validator | veraPDF Greenfield 1.28.2, `--flavour ua1` | any machine-verifiable PDF/UA-1 failure |
 | archival-profile validator | veraPDF Greenfield 1.28.2, `--flavour 2a` | any PDF/A-2a failure |
 | parser / integrity check | qpdf 12.3.2 | failed `--check`, encryption, bad signature, or unreadable page tree |
+| visual regression | Typst 0.15.0 native PNG at 144 PPI | changed raster hash, wrong one-page A4 geometry, missing 40x20 fixture image declaration, or retained baseline/diff mismatch |
 
 The sanitized compatibility PDF, qpdf outputs, veraPDF JSON reports, derived
 Typst input, and a hash manifest are retained at the evidence location. Tests
@@ -171,8 +172,9 @@ screen-reader review.
 
 - Typst and validator conformance checks do not replace the required human
   VoiceOver and visual review.
-- The current release platform is deliberately narrow. CI's ARM64 runner is
-  locked but remains unverified and cannot release PDF candidates.
+- The current release platform is deliberately narrow. The matching CI
+  `macos-15-intel` x86_64 command is implemented but remains unverified until
+  its first retained remote run.
 - Font coverage is deliberately narrow. Unsupported scripts, missing glyphs,
   unclassified figures, complex tables, and unreviewed layouts block rather
   than degrade.

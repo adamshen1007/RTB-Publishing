@@ -2,13 +2,16 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { assertSafeCompatibilityOutput } from "./pdf-output-path.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const lock = JSON.parse(readFileSync(resolve(root, "publishing/pdf/toolchain.lock.json"), "utf8"));
 const fixture = resolve(root, "tests/fixtures/publishing/pdf/semantic-book.md");
 const figure = resolve(root, "tests/fixtures/publishing/pdf/semantic-figure.svg");
 const defaultOut = resolve(root, "tests/fixtures/publishing/pdf/evidence/artifacts");
-const out = resolve(process.argv[2] === "--out" ? process.argv[3] : defaultOut);
+const outArgument = process.argv[2] === "--out" ? process.argv[3] : defaultOut;
+const safeRoots = [resolve(root, "tests/fixtures/publishing/pdf/evidence"), process.env.PDF_COMPATIBILITY_ROOT && resolve(process.env.PDF_COMPATIBILITY_ROOT)].filter(Boolean);
+const out = assertSafeCompatibilityOutput({ output: outArgument, safeRoots });
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
 const requireEnvFile = (name) => {
@@ -47,6 +50,7 @@ const staging = resolve(out, "staging");
 const snapshot = resolve(staging, "snapshot");
 const fonts = dirname(font);
 const rendered = resolve(out, "semantic-book.pdf");
+const rasterTemplate = resolve(out, "semantic-book-{p}.png");
 mkdirSync(snapshot, { recursive: true });
 cpSync(fixture, resolve(snapshot, "semantic-book.md"));
 cpSync(figure, resolve(snapshot, "semantic-figure.svg"));
@@ -63,6 +67,19 @@ const typstInput = resolve(snapshot, "semantic-book.typ");
 writeFileSync(typstInput, derivedTypst);
 
 run(typst, ["compile", "--root", snapshot, "--font-path", fonts, "--ignore-system-fonts", "--ignore-embedded-fonts", "--creation-timestamp", String(lock.profile.sourceDateEpoch), "--pdf-standard", "a-2a,ua-1", "--diagnostic-format", "short", typstInput, rendered], { cwd: staging });
+run(typst, ["compile", "--root", snapshot, "--font-path", fonts, "--ignore-system-fonts", "--ignore-embedded-fonts", "--creation-timestamp", String(lock.profile.sourceDateEpoch), "--format", "png", "--ppi", "144", "--diagnostic-format", "short", typstInput, rasterTemplate], { cwd: staging });
+const raster = resolve(out, "semantic-book-1.png");
+const png = readFileSync(raster);
+const width = png.readUInt32BE(16);
+const height = png.readUInt32BE(20);
+const baseline = resolve(process.env.PDF_VISUAL_BASELINE ?? "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png");
+if (!existsSync(baseline)) throw new Error(`visual baseline is missing: ${baseline}`);
+const baselineSha256 = sha256(baseline);
+const rasterSha256 = sha256(raster);
+if (baselineSha256 !== rasterSha256) throw new Error(`visual regression differs from baseline: ${rasterSha256}`);
+const figureSvg = readFileSync(figure, "utf8");
+if (!figureSvg.includes('width="40" height="20"')) throw new Error("fixture image resolution is not the locked 40x20 SVG");
+writeFileSync(resolve(out, "visual-regression.json"), `${JSON.stringify({ schemaVersion: 1, method: "Typst 0.15.0 native PNG raster at 144 PPI", baselineSha256, rasterSha256, equal: true, pageCount: 1, width, height, expectedGeometry: { width: 1191, height: 1684 }, overflowOrClipping: "no raster dimension or baseline difference", imageResolution: "semantic-figure.svg 40x20" }, null, 2)}\n`);
 writeFileSync(resolve(out, "qpdf-check.txt"), run(qpdf, ["--check", rendered]).replaceAll(rendered, "semantic-book.pdf"));
 writeFileSync(resolve(out, "qpdf-outlines.json"), run(qpdf, ["--json", "--json-key=outlines", rendered]));
 writeFileSync(resolve(out, "qpdf-pages.json"), run(qpdf, ["--json", "--json-key=pages", rendered]));
@@ -73,11 +90,11 @@ const sanitizeEvidence = (text) => text.replaceAll(rendered, "semantic-book.pdf"
 writeFileSync(resolve(out, "verapdf-2a.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "2a", rendered], { env: javaEnv })));
 writeFileSync(resolve(out, "verapdf-ua1.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "ua1", rendered], { env: javaEnv })));
 
-const files = ["semantic-book.pdf", "semantic-book.qdf.pdf", "qpdf-check.txt", "qpdf-outlines.json", "qpdf-pages.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ"];
+const files = ["semantic-book.pdf", "semantic-book.qdf.pdf", "semantic-book-1.png", "visual-regression.json", "qpdf-check.txt", "qpdf-outlines.json", "qpdf-pages.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ", "staging/snapshot/semantic-figure.svg"];
 const manifest = {
   schemaVersion: 1,
   generatedBy: "scripts/pdf-compatibility.mjs",
-  sourceSnapshot: { markdownSha256: sha256(fixture), figureSha256: sha256(figure), derivedTypstSha256: sha256(typstInput) },
+  sourceSnapshot: { markdownSha256: sha256(fixture), figureSha256: sha256(figure), derivedTypstSha256: sha256(typstInput), transformerSha256: sha256(resolve(root, "scripts/pdf-compatibility.mjs")), toolchainLockSha256: sha256(resolve(root, "publishing/pdf/toolchain.lock.json")) },
   tools: { typst: sha256(typst), java: sha256(java), verapdf: sha256(verapdf), verapdfJar: sha256(verapdfJar), qpdf: sha256(qpdf), font: sha256(font) },
   files: Object.fromEntries(files.map((file) => [file, sha256(resolve(out, file))]))
 };

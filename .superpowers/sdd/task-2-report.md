@@ -2,7 +2,8 @@
 
 ## Result
 
-Completed with a pending remote CI evidence sub-gate. RFC-008 selects Typst
+Blocked on the external first remote CI evidence run. The local/code remediation
+is complete: RFC-008 selects Typst
 0.15.0 under Apache-2.0 for the explicit combined `PDF/A-2a+PDF/UA-1`
 profile. Canonical Markdown and Git remain the source authority; Typst is a
 derived build intermediate in the immutable, disk-backed snapshot.
@@ -27,8 +28,15 @@ derived build intermediate in the immutable, disk-backed snapshot.
   verified macOS bottle plus installed executable hash.
 - GitHub Actions now uses the official `macos-15-intel` label and implements
   the identical `node scripts/pdf-compatibility.mjs` command after verified
-  tool setup. A remote workflow run remains to be recorded before remote CI
-  evidence is considered complete.
+  tool setup. It directly downloads the checksum-pinned qpdf Sonoma bottle
+  before extraction and uploads compatibility evidence with `always()` even
+  when a validator fails. A remote workflow run remains to be recorded before
+  remote CI evidence is considered complete.
+- Restored an executed visual-regression check using Typst's locked native PNG
+  raster at 144 PPI. The command retains its raster, baseline equality result,
+  1191x1684 A4 geometry, one-page sample, and 40x20 SVG image-resolution
+  evidence. The test suite checks overflow/clipping proxy fields and baseline
+  equality.
 
 ## Exact local evidence command and result
 
@@ -42,9 +50,13 @@ node scripts/pdf-compatibility.mjs
 The command regenerated the retained manifest and passed qpdf, veraPDF `2a`
 (153 rules, 7,201 checks), and veraPDF `ua1` (106 rules, 1,642 checks), with
 zero failed rules/checks. `node --test tests/pdf-toolchain.test.mjs` passes all
-four tests; `pnpm test` passes 69 tests. Markdown, spelling, style, citation,
+six tests; an earlier `pnpm test` passed 69 tests. Markdown, spelling, style, citation,
 and link checks pass, with only the repository's existing transient external
 network warnings from the link checker.
+
+The latest full-suite attempt ran 71 tests: 69 passed; two pre-existing local
+platform-server tests could not bind `127.0.0.1` in this sandbox (`EPERM`).
+The focused PDF suite passed all six tests.
 
 ## Remaining gates
 

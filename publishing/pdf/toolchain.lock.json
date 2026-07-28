@@ -86,6 +86,14 @@
       },
       "executableSha256": "fa469a69544255d2fd1be205a0927d5629b6a7ee94a0f36b47f5235acdba5db4",
       "installation": "Homebrew Sonoma bottle only; verify the bottle and installed executable hashes before use."
+    },
+    "visualRegression": {
+      "name": "Typst native PNG raster",
+      "rendererArtifactReference": "tools.renderer.artifacts#macos-x86_64",
+      "version": "0.15.0",
+      "arguments": ["compile", "--format", "png", "--ppi", "144"],
+      "baseline": "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png",
+      "method": "SHA-256 equality of the deterministic 144-PPI raster; check raster dimensions, one-page sample, 40x20 fixture image declaration, and a retained visual-regression report."
     }
   },
   "fonts": [

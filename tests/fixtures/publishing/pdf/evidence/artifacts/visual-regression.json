@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "method": "Typst 0.15.0 native PNG raster at 144 PPI",
+  "baselineSha256": "47277d243be33a2758f853bfc7b3e783927059ff1eb3b465bdfa4fe9dfa1c07f",
+  "rasterSha256": "47277d243be33a2758f853bfc7b3e783927059ff1eb3b465bdfa4fe9dfa1c07f",
+  "equal": true,
+  "pageCount": 1,
+  "width": 1191,
+  "height": 1684,
+  "expectedGeometry": {
+    "width": 1191,
+    "height": 1684
+  },
+  "overflowOrClipping": "no raster dimension or baseline difference",
+  "imageResolution": "semantic-figure.svg 40x20"
+}

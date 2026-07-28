@@ -51,10 +51,22 @@ jobs:
           unzip -q "$PDF_TOOLCHAIN/verapdf.zip" -d "$PDF_TOOLCHAIN"
           curl -fsSL -o "$PDF_TOOLCHAIN/NotoSerif.ttf" https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf
           echo "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713  $PDF_TOOLCHAIN/NotoSerif.ttf" | shasum -a 256 -c -
-          brew install qpdf
+          QPDF_TOKEN=$(curl -fsSL 'https://ghcr.io/token?service=ghcr.io&scope=repository:homebrew/core/qpdf:pull' | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk).on("end", () => process.stdout.write(JSON.parse(text).token))')
+          curl -fsSL -H "Authorization: Bearer $QPDF_TOKEN" -o "$PDF_TOOLCHAIN/qpdf.tar.gz" https://ghcr.io/v2/homebrew/core/qpdf/blobs/sha256:ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f
+          echo "ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f  $PDF_TOOLCHAIN/qpdf.tar.gz" | shasum -a 256 -c -
+          tar -xf "$PDF_TOOLCHAIN/qpdf.tar.gz" -C "$PDF_TOOLCHAIN"
           export JAVA_HOME="$PDF_TOOLCHAIN/jdk-21.0.11+10-jre/Contents/Home"
           printf '1\n%s\nO\n1\nY\nY\nY\nY\n1\nN\n' "$PDF_TOOLCHAIN/verapdf-home" | "$PDF_TOOLCHAIN/verapdf-greenfield-1.28.2/verapdf-install" -console
-          PDF_TYPST="$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" PDF_JAVA="$JAVA_HOME/bin/java" PDF_VERAPDF="$PDF_TOOLCHAIN/verapdf-home/verapdf" PDF_VERAPDF_JAR="$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" PDF_QPDF="$(brew --prefix qpdf)/bin/qpdf" PDF_FONT="$PDF_TOOLCHAIN/NotoSerif.ttf" node scripts/pdf-compatibility.mjs --out "$PDF_TOOLCHAIN/evidence"
+          PDF_TYPST="$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" PDF_JAVA="$JAVA_HOME/bin/java" PDF_VERAPDF="$PDF_TOOLCHAIN/verapdf-home/verapdf" PDF_VERAPDF_JAR="$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" PDF_QPDF="$PDF_TOOLCHAIN/qpdf/12.3.2/bin/qpdf" PDF_FONT="$PDF_TOOLCHAIN/NotoSerif.ttf" PDF_COMPATIBILITY_ROOT="$PDF_TOOLCHAIN" node scripts/pdf-compatibility.mjs --out "$PDF_TOOLCHAIN/evidence"
+
+      - name: Upload PDF compatibility evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-compatibility-${{ github.sha }}
+          path: ${{ runner.temp }}/rtb-pdf-toolchain/evidence/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Run quality gates
         run: pnpm check
