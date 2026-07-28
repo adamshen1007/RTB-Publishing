@@ -62,8 +62,10 @@ generation and two complete predecessors; retention runs only under the
 workspace and project locks. It rechecks the exact pointer before every move,
 writes a project-and-token-scoped durable transaction record, and quarantines
 complete recursively pinned generations. A pointer change restores every move.
-Quarantined generations are not irreversibly deleted in this synchronous path;
-their evidence remains isolated for a separately reviewed cleanup policy.
+Each move is journaled before rename and each bounded deletion is journaled
+before removal. Recovery distinguishes exact source-only and destination-only
+states, resumes deletion after a crash, and removes only the owned terminal
+transaction directory without touching another project.
 
 The generic `buildProject` API has no separate `buildRoot`: build intermediates
 are deliberately co-located with their rendered files so a pointer can never
@@ -81,7 +83,9 @@ canonical `build/publishing` workspace.
 - Staging drift, destination collision, or a generation path replacement fails
   before pointer publication. Publication exclusively reserves the UUID
   directory and materializes every child with no-replace creation; it never
-  removes an unverified destination or colliding successor.
+  removes an unverified destination or colliding successor. A failed owned
+  unpublished reservation is removed only after its inode and complete partial
+  inventory are revalidated.
 - Confirmed broken internal or external links fail; transient remote failures
   are reported separately.
 

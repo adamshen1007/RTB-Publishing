@@ -7,6 +7,43 @@ const migrationsDirectory = resolve(dirname(new URL(import.meta.url).pathname), 
 
 function timestamp(now) { return new Date(now()).toISOString(); }
 
+function reconcilePromotionTransactionSchema(database) {
+  const table = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'promotion_transactions'").get();
+  if (!table || table.sql.includes("binding_state") && table.sql.includes("ledger_completed")) return;
+  database.exec("BEGIN IMMEDIATE;");
+  try {
+    database.exec(`
+      ALTER TABLE promotion_transactions RENAME TO promotion_transactions_legacy009;
+      CREATE TABLE promotion_transactions (
+        token TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        release_id TEXT NOT NULL,
+        candidate_hash TEXT NOT NULL,
+        manifest_hash TEXT NOT NULL,
+        marker_hash TEXT,
+        evidence_hash TEXT,
+        phase TEXT,
+        binding_state TEXT NOT NULL CHECK (binding_state IN ('active', 'binding_pending')),
+        pending_marker_hash TEXT,
+        pending_evidence_hash TEXT,
+        pending_phase TEXT,
+        pending_temp_token TEXT,
+        pending_marker_json TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active', 'ledger_completed', 'committed', 'rolled-back')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(project_id, release_id, token)
+      );
+      INSERT INTO promotion_transactions (token, project_id, release_id, candidate_hash, manifest_hash, marker_hash, evidence_hash, phase, binding_state, status, created_at, updated_at)
+      SELECT token, project_id, release_id, candidate_hash, manifest_hash, marker_hash, evidence_hash, phase, 'active', status, created_at, updated_at
+      FROM promotion_transactions_legacy009;
+      DROP TABLE promotion_transactions_legacy009;
+      CREATE INDEX promotion_transactions_release ON promotion_transactions(project_id, release_id, status);
+    `);
+    database.exec("COMMIT; PRAGMA wal_checkpoint(FULL);");
+  } catch (error) { database.exec("ROLLBACK;"); throw error; }
+}
+
 export function migrationFiles(directory = migrationsDirectory) {
   return readdirSync(directory)
     .filter((fileName) => /^\d+-[a-z0-9-]+\.sql$/.test(fileName))
@@ -29,6 +66,7 @@ export function openStateDatabase(file, { now = () => Date.now(), migrationsDire
       database.exec("COMMIT;");
     } catch (error) { database.exec("ROLLBACK;"); database.close(); throw error; }
   }
+  reconcilePromotionTransactionSchema(database);
   return database;
 }
 

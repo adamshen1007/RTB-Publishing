@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 333/333 passed in the final local quality run.
+- Repository tests: 357/357 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -84,9 +84,12 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 - Release verification uses an exact recursive inventory with no hidden-file
   filtering. Tests reject root and nested hidden extras, ordinary nested extras,
   unexpected directories, missing files, and file/directory type swaps.
-- Catch recovery first requires an exact active SQLite promotion-transaction
-  binding for project, release, candidate, manifest, token, phase, marker hash,
-  and evidence hash. It then validates closed marker schema version 2 and its
+- Marker replacement first persists `binding_pending` with the expected phase,
+  marker/evidence hashes, canonical bytes, and owned temporary token. Recovery
+  retries an exact old-marker state or activates an exact new-marker state.
+  Active recovery then requires an exact SQLite promotion-transaction binding
+  for project, release, candidate, manifest, token, phase, marker hash, and
+  evidence hash before validating closed marker schema version 2 and its
   recorded recursive transaction evidence before reconstructing private coordinator
   state. It accepts only the marker-bound pre-state or an allowed exact
   intent-phase post-state and never adopts a wholesale live snapshot.
@@ -95,10 +98,13 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   exports, mutation-window replacement, or lock-parent loss are mutation-free
   and explicitly require recovery.
 - The promotion module exports only the high-level finalization operation.
-  Completed ledger pairs are verification-only and cannot enter any promotion
-  mutator. Six unbound, forged, stale, and mismatched binding boundaries fail
-  without recovery mutation; 46 phase-boundary real-ledger cases cover begin,
-  rollback, and commit with alternating prior/no-prior targets.
+  Finalization, identity, and `ledger_completed` promotion authority commit in
+  one SQLite transaction. Completed ledger pairs reconcile and complete
+  exact cleanup evidence before verification and cannot enter pre-verification
+  mutation. Migration 009 quarantines completed legacy evidence after exact
+  verification and invalidates pending or malformed legacy approval authority.
+  Six pending, forged, stale, and mismatched cases plus 60 real-ledger crash
+  boundaries cover begin, rollback, commit, and every atomic marker window.
 - Stale locks fail closed without automatic reclaim. Three simultaneous stale
   waiters preserve the lock and admit no writer; rapid live-lock release with
   three contenders admits at most one successor without reclaim artifacts.
@@ -114,8 +120,9 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   descriptor, path, and pointer under the workspace lock. Retention keeps
   current plus two predecessors and transactionally quarantines recursively
   pinned older generations under project/token durable evidence while
-  rechecking the pointer before every move. Synchronous retention performs no
-  irreversible quarantine deletion and never removes shared GC evidence.
+  rechecking the pointer before every move. Per-entry move and delete journals
+  restore rename gaps or resume bounded reclaim; terminal cleanup removes only
+  its owned transaction directory and never shared GC evidence.
   Crash, in-place edit, replacement, clean-exclusion, staging collision, pointer
   switch, and GC restoration tests preserve complete generations without
   trusting successor paths.

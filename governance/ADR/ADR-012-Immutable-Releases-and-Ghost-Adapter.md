@@ -87,9 +87,10 @@ unexpired exact Beta approval, and exact durable reviews, then persists the
 normalized manifest JSON and hash with a pending identity. The system writes
 staging, promotes and verifies the exact immutable target, and durably records
 the filesystem `material-verified` phase. Only a module-private, one-time
-capability bound to that exact live promotion may enter the second SQLite
-transaction that marks the finalization and identity completed together. The
-system then durably records `ledger-completed` before deleting the backup.
+capability bound to that exact live promotion may enter the SQLite transaction
+that marks the finalization, identity, and promotion transaction
+`ledger_completed` together. The backup is deleted only after that shared
+commit.
 Recovery at `material-verified` rechecks current authority before resuming; it
 rolls back when completion cannot still be authorized. A crash after SQLite
 completion but before the ledger marker preserves the target and reconciles
@@ -201,8 +202,10 @@ plus two complete predecessors under both build locks. Retention is a
 pointer-aware quarantine transaction: it writes project-and-token-scoped
 durable evidence, rechecks the exact pointer before each recursive generation
 move, restores all moves if the pointer changes, and never removes shared or
-other-project evidence. Synchronous retention does not irreversibly delete the
-quarantine; deletion requires a separate bounded cleanup design. These
+other-project evidence. Per-entry `move_pending` and `delete_pending` records
+close the rename and removal crash windows; recovery restores or resumes exact
+owned state. Bounded synchronous reclaim deletes quarantined generations and
+removes only a terminal owned transaction directory. These
 durability guarantees depend on the local filesystem
 honoring file and directory `fsync`; unsupported network or virtual filesystems
 are outside the release guarantee.
@@ -234,7 +237,10 @@ handles, canonical project
 identity, and exact durable candidate, manifest, identity, and finalization
 rows. Every durable marker phase is also transactionally bound in SQLite to its
 token, candidate, manifest, phase, marker hash, evidence hash, and active or
-terminal status. Recovery reads that trusted binding before marker bytes and
+terminal status. Before marker replacement, a `binding_pending` record binds
+the exact next marker bytes, evidence, phase, and owned temporary token.
+Recovery can retry only an exact old-marker-plus-temporary state or activate an
+exact new-marker state. Recovery reads that trusted binding before marker bytes and
 validates the closed schema and exact recursive transaction evidence before
 reconstructing coordinator state. Direct helper
 calls, copied objects, unsafe re-exports, and
@@ -256,6 +262,10 @@ without a finalization record may be adopted only when its deterministic
 release ID, candidate, real current approval and policy, current Beta, and
 existing manifest bytes exactly reproduce. Otherwise recovery requires a new
 exact Publish approval and never silently blesses the legacy row.
+Migration 009 moves unbound legacy promotion evidence into a durable migration
+quarantine under the held locks. Completed evidence requires exact ledger and
+target verification; pending or malformed evidence invalidates the old Publish
+approval and requires a fresh exact approval and rebuild.
 
 Completed verification is not a shortcut around authority reconstruction. It
 always proves exact finalization, identity, candidate registry JSON and row,

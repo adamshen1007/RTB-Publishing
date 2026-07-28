@@ -85,8 +85,10 @@ The successful build keeps the current generation and two complete
 predecessors. Older generations first move into a project-and-token-scoped
 private quarantine with a durable transaction record while the exact pointer is
 rechecked before every move. Any pointer change restores all moved generations.
-The synchronous build does not delete quarantined generations; retained
-evidence awaits a separately reviewed bounded cleanup policy.
+Each rename is preceded by `move_pending`; each bounded removal is preceded by
+`delete_pending`. A restart restores an interrupted move or resumes an exact
+owned deletion. Successful cleanup removes its terminal project-scoped
+transaction directory and never removes shared or other-project `.gc` data.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux
 filesystems that implement file and directory `fsync`. It cannot promise

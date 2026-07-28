@@ -13,7 +13,7 @@ test("a migration-006 database preserves a legacy reserved identity while adding
     const legacy = openStateDatabase(databaseFile, { migrationsDirectory: legacyMigrations });
     legacy.prepare("INSERT INTO release_identities (release_id, project_id, candidate_hash, approval_id, status, created_at) VALUES (?, ?, ?, ?, 'reserved', ?)").run("REL-LEGACY", "book", "candidate", "approval", "2026-01-01T00:00:00.000Z"); legacy.close();
     const upgraded = openStateDatabase(databaseFile);
-    try { assert.equal(upgraded.prepare("SELECT status FROM release_identities WHERE release_id = 'REL-LEGACY'").get().status, "reserved"); assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('release_finalizations') WHERE name = 'completed_while_current'").get().count, 1); assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('promotion_transactions') WHERE name = 'evidence_hash'").get().count, 1); }
+    try { assert.equal(upgraded.prepare("SELECT status FROM release_identities WHERE release_id = 'REL-LEGACY'").get().status, "reserved"); assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('release_finalizations') WHERE name = 'completed_while_current'").get().count, 1); for (const column of ["evidence_hash", "binding_state", "pending_marker_hash", "pending_evidence_hash", "pending_phase", "pending_temp_token", "pending_marker_json"]) assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM pragma_table_info('promotion_transactions') WHERE name = ?").get(column).count, 1); }
     finally { upgraded.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

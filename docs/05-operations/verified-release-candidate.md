@@ -57,8 +57,9 @@ lifecycle ledger; a browser-authored JSON file is not accepted. Finalization
 persists one exact pending manifest and identity. The build then promotes and
 verifies the derived immutable directory, durably records the filesystem
 `material-verified` phase, and only then uses process-private, one-time
-promotion authority to complete the finalization and identity together. It
-then records `ledger-completed` before deleting any prior-release backup. An
+promotion authority to complete the finalization, identity, and promotion
+transaction together in one SQLite commit. That commit records
+`ledger_completed` before deleting any prior-release backup. An
 identical retry safely resumes either pending ledger state or a
 material-verified promotion. Only an exact completed durable finalization verifies as a
 release. RTB Publishing does not claim hosted activation or subscriber
@@ -117,11 +118,13 @@ closed schema containing the phase, project/release IDs, random UUID token,
 prior-target flag, and exact recursive identity-and-byte evidence for every
 transaction path except the marker itself. Recovery derives only the recorded
 pre-state or the one exact post-state allowed by an interrupted intent phase;
-it never adopts a live filesystem snapshot. Before reading marker evidence,
-recovery requires the token, phase, marker hash, and evidence hash to match the
-active `promotion_transactions` row bound to the exact candidate, manifest,
-identity, and finalization. An unbound crash-window marker, forged token, stale
-phase, changed evidence, or database mismatch fails without cleanup mutation.
+it never adopts a live filesystem snapshot. Before marker replacement, SQLite
+records `binding_pending` with the next phase, marker/evidence hashes,
+canonical marker JSON, and owned temporary token. Recovery retries an exact
+old-marker-plus-temporary state or activates an exact new-marker state; every
+other combination fails closed with evidence preserved. Active recovery then
+requires the token, phase, marker hash, and evidence hash to match the durable
+row bound to the exact candidate, manifest, identity, and finalization.
 All paths are derived from trusted
 roots; malformed, mismatched, traversal, symbolic-link, or copied replacement
 state is rejected without filesystem mutation. Immutable verification also requires
@@ -147,8 +150,12 @@ validation-to-advance window makes the error recovery-required. Direct calls,
 public re-exports,
 copied objects, and marker, backup, or quarantine replacement are rejected
 without adopting the replacement.
-Completed identity/finalization pairs enter verification-only handling: they
-cannot begin, recover, roll back, commit, or otherwise mutate promotion state.
+Completed identity/finalization pairs reconcile exact `ledger_completed`
+cleanup evidence and verify the target; they cannot re-enter pre-verification
+promotion mutation. Migration 009 never blesses an unbound legacy marker.
+Completed legacy evidence is quarantined only after exact ledger and target
+verification. Pending or malformed legacy evidence is quarantined, invalidates
+the old Publish approval, and requires a fresh exact approval and rebuild.
 
 Dead-process lock files are not reclaimed automatically. Because pathname
 rename and removal cannot provide a safe three-actor ownership transfer, stale
