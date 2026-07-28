@@ -191,9 +191,11 @@ Satisfy RFC-007's blocking PDF prerequisite before PDF implementation begins.
 - RFC-008 is accepted and linked from RFC-007 and the governance index.
 - Tool and font versions are pinned with checksums or repository lock data.
 - Compatibility fixtures demonstrate the selected toolchain on every supported
-  release platform. As of 2026-07-28, `macos-x86_64` is the locally evidenced
-  platform; the identical GitHub Actions command is implemented on
-  `macos-15-intel` and awaits its first retained remote evidence run.
+  release platform. As of 2026-07-28, `macos-x86_64` has local and GitHub
+  Actions `macos-15-intel` remote evidence: run `30323970497` passed for
+  implementation SHA `67d60df66e9b45fe7a0ea326a86f5d96e14354fe`; the retained
+  artifact metadata is recorded in
+  `tests/fixtures/publishing/pdf/remote-run-evidence.json`.
 - No repository text makes an unversioned “accessible PDF” claim.
 
 ### Suggested Commit

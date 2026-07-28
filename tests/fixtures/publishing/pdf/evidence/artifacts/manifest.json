@@ -6,7 +6,7 @@
     "figureSha256": "38b542a395f3feebca628a59390bb5f554eac4084287462e487350a781c06eb6",
     "derivedTypstSha256": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d",
     "transformerSha256": "2285518d0d38052eb286450a37d44d4e66633055e2cb802877e03bc437610202",
-    "toolchainLockSha256": "4a8880daa389779675c80cb3376ee52a1fa08d0fa839dea935786ca9d23460cf",
+    "toolchainLockSha256": "f00df4244de798fcf6d5ac1ddf9265295a936bdd2ee990258427be3de371adc1",
     "visualBaseline": {
       "path": "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png",
       "sha256": "47277d243be33a2758f853bfc7b3e783927059ff1eb3b465bdfa4fe9dfa1c07f"
@@ -34,8 +34,8 @@
     "visual-lowres-1.png": "465c400281194fffcfc53e94184e0e59f515d268e7ceed3a0d8c3db64040648d",
     "visual-negative-measurements.json": "5c0df14497d2208e68b8f1e82c8b09ec370e74c947ab51500a26df971d237734",
     "pdfjs-report.json": "248e5406e6019a003123a35acd4bd9bc9bcfefe45fdf24abcaefde02c2745d71",
-    "verapdf-2a.json": "e1b9436fd9b5381e9c2e6e41fcaa097fe2df8c89d80b0e3b90df1ec623fcc097",
-    "verapdf-ua1.json": "7945757faaf3aa162747773b3001ed7966429ba7b1ae9aa5e078aa2ea098808a",
+    "verapdf-2a.json": "630c1fa90f78d2385154c46d80d35db17c23e1a3332cf7cbeca11a31acddb20a",
+    "verapdf-ua1.json": "3483a64415ea09580d50543ae3c12bde372248ded41ba2a281847f007b55d7e5",
     "staging/snapshot/semantic-book.md": "f692771eeb13f4746ad77dcf11c8a1c2e11c925dc86c97c78eb21041aa5577b6",
     "staging/snapshot/semantic-book.typ": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d",
     "staging/snapshot/semantic-figure.svg": "38b542a395f3feebca628a59390bb5f554eac4084287462e487350a781c06eb6"

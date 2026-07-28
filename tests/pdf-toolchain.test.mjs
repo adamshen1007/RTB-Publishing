@@ -67,6 +67,8 @@ test("locks actual executable, runtime, and font bytes", () => {
   assert.equal(lock.tools.structuralValidator.mainJarSha256, manifest.tools.verapdfJar);
   assert.equal(lock.tools.pdfParser.name, manifest.tools.parser.name);
   assert.equal(lock.tools.pdfParser.version, manifest.tools.parser.version);
+  assert.equal(lock.ciBoundary.remoteEvidence, "tests/fixtures/publishing/pdf/remote-run-evidence.json");
+  assert.match(lock.ciBoundary.releaseStatus, /run 30323970497/);
   assert.equal(manifest.tools.parser.packageLockSha256, sha256("pnpm-lock.yaml"));
   assert.equal(lock.fonts[0].sha256, manifest.tools.font);
   for (const [name, value] of Object.entries(manifest.tools)) if (name !== "parser") assert.match(value, hex);

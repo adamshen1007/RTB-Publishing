@@ -22,7 +22,8 @@
     "workflowLabel": "macos-15-intel",
     "architecture": "x86_64",
     "rendererArtifact": "tools.renderer.artifacts#macos-x86_64",
-    "releaseStatus": "workflow implemented; remote run evidence is pending"
+    "releaseStatus": "remote evidence passed in GitHub Actions run 30323970497 for implementation SHA 67d60df66e9b45fe7a0ea326a86f5d96e14354fe",
+    "remoteEvidence": "tests/fixtures/publishing/pdf/remote-run-evidence.json"
   },
   "tools": {
     "renderer": {
