@@ -26,7 +26,7 @@ the lock.
 
 Run `pnpm release:candidate`. Then check:
 
-1. `dist/releases/<book-id>/` contains one HTML, PDF, and EPUB file plus the
+1. `dist/candidates/<book-id>/<candidate-hash>/` contains one HTML, PDF, and EPUB file plus the
    retained `source-snapshot/` audit bundle.
 2. `verification.json` says `passed`, EPUBCheck has no messages, both veraPDF
    profiles are compliant, and semantic parity passed.
@@ -60,12 +60,26 @@ record. Only completed durable finalization verifies as a release. RTB
 Publishing does not claim hosted activation or subscriber delivery in
 Increment 1.
 
+An unapproved build is immutable candidate evidence only. It is stored at
+`dist/candidates/<book-id>/<candidate-hash>/` and can never write under
+`dist/releases/`. After exact Publish approval, the finalized bundle is stored
+at `dist/releases/immutable/<book-id>/<release-id>/`. An identical completed
+release may be verified and reused; a different bundle can never overwrite
+that release ID. The older `dist/releases/<book-id>/` layout is read-only
+legacy reconciliation input and is never destructively promoted in place.
+
 The build first holds the workspace output lock and then the nested project
 writer lock. It uses a unique staging directory and does not remove the
 existing promoted release. After registration and finalization, it verifies
-staging, records a durable promotion marker, and atomically renames staging.
+staging, records a durable promotion state machine, and atomically renames staging.
 The prior release backup remains until the promoted directory passes exact
-verification again. Failure or restart restores that backup before retrying.
+verification again. Every rename has durable intent and completion phases.
+Before the durable `verified` phase, failure or restart restores the prior
+verified directory; at or after it, recovery finishes the exact new immutable
+release. Markers contain only a fixed schema, phase, project/release IDs, a
+random UUID token, and whether a prior target existed. All paths are derived
+from trusted roots; malformed, mismatched, traversal, or symbolic-link state
+is rejected without filesystem mutation.
 `pnpm clean` and other build output writers take the same workspace lock, so a
 clean at repository root cannot race a build under a nested book directory.
 

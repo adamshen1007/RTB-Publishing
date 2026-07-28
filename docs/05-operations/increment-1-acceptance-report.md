@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 172/172 passed in the final local quality run.
+- Repository tests: 251/251 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -36,13 +36,21 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   its file hashes, and the exact Git revision and tree.
 - Failure controls: candidate/manifest drift, extra artifacts, stale approval,
   pre-approval manifest creation, release-ID reuse, forged or stale lock
-  authority, interrupted release promotion, ambiguous legacy approval facts,
-  and clean/finalization races fail closed in tests.
+  authority, interrupted release promotion, malformed or hostile recovery
+  markers, ambiguous legacy approval facts, and clean/finalization races fail
+  closed in tests.
 - Real orchestration evidence invokes `buildRelease` through deterministic
   renderer seams while retaining its production lock, registry, finalization,
-  verification, and promotion boundaries. It proves nested-project clean
-  exclusion, legacy adoption, staging-path neutrality, post-rename rollback,
-  durable marker recovery, and successful retry.
+  verification, and promotion boundaries. Review-only output is isolated under
+  `dist/candidates/<project>/<candidate-hash>`, while approved output is stored
+  under `dist/releases/immutable/<project>/<release-id>`. It proves
+  nested-project clean exclusion, read-only legacy adoption, staging-path
+  neutrality, every durable promotion and rollback crash boundary, strict
+  marker validation, successful recovery, and successful retry.
+- Historical reconciliation independently verifies all redundant project,
+  candidate, source, artifact, approval, Beta, lifecycle, release, policy,
+  reviewer, rights-role, expiry, and timestamp facts before migration-007
+  completion evidence can be trusted.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

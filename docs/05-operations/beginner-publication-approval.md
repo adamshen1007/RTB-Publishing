@@ -51,7 +51,7 @@ Do this:
    ```
 
 2. Open the generated HTML, PDF, and EPUB from
-   `dist/releases/<book-id>/`.
+   `dist/candidates/<book-id>/<candidate-hash>/`.
 3. Complete the three genuine reviews described below.
 
 Verify this:
@@ -210,7 +210,7 @@ Do this:
 
 Verify this:
 
-- `dist/releases/<book-id>/manifest.json` exists.
+- `dist/releases/immutable/<book-id>/<release-id>/manifest.json` exists.
 - The manifest identifies the exact candidate, lifecycle version, artifact
   hashes, release-policy hash, and Publish approval.
 - Release verification passes.

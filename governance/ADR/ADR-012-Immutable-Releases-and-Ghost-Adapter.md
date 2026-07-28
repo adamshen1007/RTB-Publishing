@@ -111,16 +111,32 @@ unlink a successor writer's lock. This hierarchy ensures a workspace clean
 cannot race a build or finalization whose project root is nested below it.
 
 The release build holds that lock while it renders in unique staging,
-registers and promotes the candidate, finalizes, and performs the last
-verification. The previously promoted directory remains intact until the new
-staging directory passes exact verification. Promotion uses a same-filesystem
-directory rename with a deterministic prior-directory backup and durable phase
-marker. The backup remains until the promoted directory passes exact
-post-rename verification. A verification failure removes the unverified tree
-and restores the prior release; restart recovery interprets the marker and
-does the same before retrying. Only a verified phase permits backup deletion.
-It
-passes explicit held-lock authority into finalization; the finalization
+registers the candidate, finalizes approved material, and performs the last
+verification. Candidate-only builds move to
+`dist/candidates/<project>/<candidate-hash>` and never enter the release
+namespace. Only exact approved finalization may enter
+`dist/releases/immutable/<project>/<release-id>`. Existing immutable targets
+are reused only after exact verification; no different material can overwrite
+a release ID. The old `dist/releases/<project>` location remains read-only
+legacy reconciliation evidence.
+
+Promotion uses a same-filesystem directory rename with an explicit durable
+state machine. Atomic, file-fsynced and directory-fsynced markers bracket every
+old-to-backup, staging-to-target, target-to-quarantine, backup-to-target, and
+cleanup operation with intent and completion phases. The backup remains until
+the promoted directory passes exact post-rename verification. Recovery before
+the durable `verified` phase restores the prior release; recovery at or after
+that phase completes the exact new release. Each rollback phase is idempotent,
+so a second crash cannot activate unverified bytes or delete a restored prior
+release.
+
+Markers have one closed schema and version, a fixed phase enum, exact project
+and release identities, a cryptographically random UUID token, and a prior
+target flag. Paths are derived internally from the trusted output root and
+those validated identities. Marker-owned paths, traversal, unsafe names,
+symbolic links, malformed JSON, unknown fields, and mismatched identities are
+rejected without filesystem mutation. The build passes explicit held-lock
+authority into finalization; the finalization
 operation never recursively acquires the lock. A legacy `reserved` identity
 without a finalization record may be adopted only when its deterministic
 release ID, candidate, real current approval and policy, current Beta, and
@@ -139,8 +155,10 @@ completion-time approval facts only when every redundant authority agrees:
 completed identity fields, registered candidate project/hash/source/artifacts
 and lifecycle, normalized manifest JSON and checksum, exact human approval and
 bindings, candidate-plus-one approval lifecycle, zero blocking findings,
-historical review-policy hash, required Beta binding, and approval/invalidation
-timestamps. Ambiguous, mismatched, or already-invalid evidence remains
+historical review-policy hash, exact Beta snapshot/policy material and Beta
+approval lifecycle, Publish expiry, and every creation/completion/invalidation
+timestamp. Manifest project, lifecycle, source, and artifacts must independently
+match the registered candidate. Ambiguous, mismatched, or already-invalid evidence remains
 preserved and fails with an explicit operator-reconciliation requirement;
 migration never trusts a manifest-owned assertion alone or guesses historical
 authority.

@@ -40,7 +40,8 @@ RFC amendment explicitly changes their priority or applicability.
 | --- | --- | --- |
 | Machine test reports | `build/acceptance/increment-1/<run-id>/` | Ignored generated output |
 | Release candidates | `build/releases/<candidate-id>/` | Ignored until approved |
-| Approved release bundle | `dist/releases/<release-id>/` | Generated, immutable by process, not committed |
+| Candidate-only bundle | `dist/candidates/<project-id>/<candidate-hash>/` | Generated review evidence; never a release |
+| Approved release bundle | `dist/releases/immutable/<project-id>/<release-id>/` | Generated, immutable by process, not committed |
 | Migration review | `books/volume-01-yc-playbook/migrations/` | Commit sanitized report and human decision |
 | Ghost spike | `spikes/ghost/` | Commit synthetic fixtures and sanitized evidence |
 | Final acceptance summary | `docs/05-operations/increment-1-acceptance-report.md` | Commit human-readable decision |

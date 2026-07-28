@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import test from "node:test";
@@ -20,7 +20,7 @@ function fixture() {
   const chapterPath = resolve(chapterDirectory, "one.md"), metadataPath = resolve(legacyRoot, "book.md");
   writeFileSync(chapterPath, "# One\n\nCanonical text.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Test | |\n"); writeFileSync(metadataPath, "# Fixture\n"); writeFileSync(resolve(legacyRoot, "blueprint.yaml"), "fixture: true\n");
   const project = { id: "nested-book", root: legacyRoot, legacyRoot, workspaceRoot, metadataPath, metadata: "---\ntitle: Fixture\nversion: 1.0.0\nstatus: beta\n---\n", manifest: { locale: "en", paths: {}, blueprint: { path: "blueprint.yaml" } }, blueprint: { source_policy: {}, budgets: {}, provider_egress_policy: {} }, chapters: [{ id: "one", order: 1, part_id: "part-one", reader_decision: "Decide", required_output: "Decision", sourcePath: chapterPath }], parts: [{ id: "part-one", order: 1, title: "Start" }], outputProfiles: ["html", "pdf", "epub"].map((format) => ({ format, path: `nested-book.${format}` })) };
-  return { workspaceRoot, legacyRoot, project, buildRoot: resolve(workspaceRoot, "build", "releases"), outputRoot: resolve(workspaceRoot, "dist", "releases"), dispose: () => rmSync(workspaceRoot, { recursive: true, force: true }) };
+  return { workspaceRoot, legacyRoot, project, buildRoot: resolve(workspaceRoot, "build", "publishing"), candidateRoot: resolve(workspaceRoot, "dist", "candidates"), releaseRoot: resolve(workspaceRoot, "dist", "releases"), dispose: () => rmSync(workspaceRoot, { recursive: true, force: true }) };
 }
 
 function deterministicOrchestration(content = "v1") {
@@ -46,22 +46,25 @@ async function approve(project, candidate) {
 test("real buildRelease adopts legacy finalization and promotes without staging identity leakage", async () => {
   const item = fixture();
   try {
-    const options = { lifecycleVersion: 2, buildRoot: item.buildRoot, outputRoot: item.outputRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration() }, first = await buildRelease(item.project, options), approval = await approve(item.project, first.candidate);
-    const finalized = await finalizeRelease({ root: item.legacyRoot, workspaceRoot: item.workspaceRoot, project: item.project, candidateHash: first.candidate.candidateHash, approvalId: approval.id, releaseDirectory: first.release });
+    const options = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration() }, first = await buildRelease(item.project, options), approval = await approve(item.project, first.candidate), legacyRelease = resolve(item.releaseRoot, item.project.id);
+    assert.equal(first.release, null); assert.equal(first.candidateDirectory, resolve(item.candidateRoot, item.project.id, first.candidate.candidateHash)); assert.equal(existsSync(legacyRelease), false, "candidate-only build cannot enter the release namespace");
+    cpSync(first.candidateDirectory, legacyRelease, { recursive: true });
+    const finalized = await finalizeRelease({ root: item.legacyRoot, workspaceRoot: item.workspaceRoot, project: item.project, candidateHash: first.candidate.candidateHash, approvalId: approval.id, releaseDirectory: legacyRelease });
     const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.prepare("DELETE FROM release_finalizations").run(); database.prepare("UPDATE release_identities SET status = 'reserved'").run(); } finally { database.close(); }
     const result = await buildRelease(item.project, { ...options, approvalId: approval.id });
-    assert.equal(result.release, resolve(item.outputRoot, item.project.id)); assert.equal(verifyReleaseDirectory(result.release, result.candidate, { manifest: result.manifest, root: item.legacyRoot }), true); assert.equal(result.manifest.manifestHash, finalized.manifest.manifestHash);
+    assert.equal(result.release, resolve(item.releaseRoot, "immutable", item.project.id, result.manifest.releaseId)); assert.equal(verifyReleaseDirectory(result.release, result.candidate, { manifest: result.manifest, root: item.legacyRoot }), true); assert.equal(result.manifest.manifestHash, finalized.manifest.manifestHash);
     assert.equal(JSON.stringify({ candidate: result.candidate, manifest: result.manifest }).includes(".staging"), false); for (const output of Object.values(result.outputs)) assert.equal(resolve(output).startsWith(`${result.release}/`), true);
   } finally { item.dispose(); }
 });
 
-test("real buildRelease excludes concurrent clean and restores prior release after post-rename failure", async () => {
+test("real buildRelease excludes concurrent clean, recovers interrupted activation, and candidates cannot overwrite a completed release", async () => {
   const item = fixture();
   try {
-    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, outputRoot: item.outputRoot, workspaceRoot: item.workspaceRoot }, first = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("old") }), oldHash = first.candidate.candidateHash;
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot }, first = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("old") }), approval = await approve(item.project, first.candidate);
     let cleaning;
-    await assert.rejects(() => buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("new"), hooks: { afterPromotionRename: async () => { cleaning = cleanOutputs({ root: item.workspaceRoot, buildDirectory: resolve(item.workspaceRoot, "build"), distributionDirectory: resolve(item.workspaceRoot, "dist") }); await new Promise((done) => setTimeout(done, 50)); assert.equal(existsSync(first.release), true); throw new Error("injected post-rename verification failure"); }, afterPromotionRollback: () => assert.equal(JSON.parse(readFileSync(resolve(first.release, "candidate.json"), "utf8")).candidateHash, oldHash, "the prior verified release is restored before releasing locks") } }), /injected post-rename/);
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, orchestration: deterministicOrchestration("old"), hooks: { afterPromotionRename: async ({ release }) => { cleaning = cleanOutputs({ root: item.workspaceRoot, buildDirectory: resolve(item.workspaceRoot, "build"), distributionDirectory: resolve(item.workspaceRoot, "dist") }); await new Promise((done) => setTimeout(done, 50)); assert.equal(existsSync(release), true); }, beforePromotionVerification: () => { throw new Error("injected post-rename verification failure"); }, afterPromotionRollback: ({ release }) => assert.equal(existsSync(release), false, "unverified release is removed before locks are released") } }), /injected post-rename/);
     await cleaning; assert.equal(existsSync(resolve(item.workspaceRoot, "dist")), false, "clean runs only after build releases the workspace lock");
-    const retried = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("new") }); assert.notEqual(retried.candidate.candidateHash, oldHash); assert.equal(existsSync(retried.release), true);
+    const retried = await buildRelease(item.project, { ...base, approvalId: approval.id, orchestration: deterministicOrchestration("old") }); assert.equal(existsSync(retried.release), true); const immutableHash = JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash;
+    const candidateOnly = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("new") }); assert.equal(candidateOnly.release, null); assert.notEqual(candidateOnly.candidate.candidateHash, immutableHash); assert.equal(JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash, immutableHash);
   } finally { item.dispose(); }
 });

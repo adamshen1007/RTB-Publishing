@@ -1,47 +1,36 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import test from "node:test";
-import { beginPromotion, completePromotion, recoverPromotion, rollbackPromotion } from "../scripts/publishing/project-build.mjs";
+import { beginPromotion, commitPromotion, markPromotionVerified, promotionContext, promotionMarkers, recoverPromotion, rollbackPromotion } from "../scripts/publishing/promotion-state.mjs";
 
-test("release promotion preserves the prior release until a verified staging directory is ready", () => {
-  const outputRoot = mkdtempSync(resolve(tmpdir(), "rtb-promotion-")), release = resolve(outputRoot, "book"), staging = resolve(outputRoot, ".staging", "book-new");
-  try {
-    mkdirSync(release); mkdirSync(staging, { recursive: true }); writeFileSync(resolve(release, "manifest.json"), "legacy"); writeFileSync(resolve(staging, "manifest.json"), "new");
-    assert.equal(readFileSync(resolve(release, "manifest.json"), "utf8"), "legacy");
-    const transaction = beginPromotion(staging, release, outputRoot, "test-success");
-    assert.equal(readFileSync(resolve(transaction.backup, "manifest.json"), "utf8"), "legacy", "backup remains until promoted verification succeeds");
-    completePromotion(transaction);
-    assert.equal(readFileSync(resolve(release, "manifest.json"), "utf8"), "new"); assert.equal(existsSync(staging), false);
-  } finally { rmSync(outputRoot, { recursive: true, force: true }); }
+const TOKEN = "11111111-1111-4111-8111-111111111111";
+function fixture(suffix = "", { fast = false } = {}) { const outputRoot = mkdtempSync(resolve(tmpdir(), `rtb-promotion-${suffix}`)), input = { outputRoot, projectId: "book", releaseId: "REL-EXACT", token: TOKEN, testOnlySkipDurability: fast }, context = promotionContext(input); mkdirSync(context.target, { recursive: true }); mkdirSync(context.staging, { recursive: true }); writeFileSync(resolve(context.target, "identity"), "prior"); writeFileSync(resolve(context.staging, "identity"), "new"); return { outputRoot, input, context, dispose: () => rmSync(outputRoot, { recursive: true, force: true }) }; }
+function identity(context) { return existsSync(resolve(context.target, "identity")) ? readFileSync(resolve(context.target, "identity"), "utf8") : null; }
+function recoverAll(input) { for (const context of promotionMarkers(input.outputRoot, input.projectId, input.releaseId, { testOnlySkipDurability: input.testOnlySkipDurability })) recoverPromotion(context); }
+
+test("verified promotion retains backup until durable verification then commits", () => { const item = fixture("success-"); try { let state = beginPromotion(item.input); assert.equal(identity(state), "new"); assert.equal(readFileSync(resolve(state.backup, "identity"), "utf8"), "prior"); state = markPromotionVerified(state); commitPromotion(state); assert.equal(identity(state), "new"); assert.equal(existsSync(state.backup), false); assert.equal(existsSync(state.marker), false); } finally { item.dispose(); } });
+test("unverified promotion rollback restores the prior release", () => { const item = fixture("rollback-"); try { const state = beginPromotion(item.input); rollbackPromotion(state); assert.equal(identity(state), "prior"); assert.equal(existsSync(state.marker), false); } finally { item.dispose(); } });
+
+const beginEvents = ["before-marker-prepared", "after-marker-prepared", "before-marker-backup-intent", "after-marker-backup-intent", "before-old-to-backup", "after-old-to-backup", "before-marker-backup-complete", "after-marker-backup-complete", "before-marker-activate-intent", "after-marker-activate-intent", "before-staging-to-target", "after-staging-to-target", "before-marker-activate-complete", "after-marker-activate-complete"];
+const rollbackEvents = ["before-marker-rollback-quarantine-intent", "after-marker-rollback-quarantine-intent", "before-target-quarantine", "after-target-quarantine", "before-marker-rollback-quarantine-complete", "after-marker-rollback-quarantine-complete", "before-marker-rollback-restore-intent", "after-marker-rollback-restore-intent", "before-backup-restore", "after-backup-restore", "before-marker-rollback-restore-complete", "after-marker-rollback-restore-complete", "before-marker-rollback-cleanup-intent", "after-marker-rollback-cleanup-intent", "before-quarantine-cleanup", "after-quarantine-cleanup", "before-marker-rollback-cleanup-complete", "after-marker-rollback-cleanup-complete", "before-marker-cleanup", "after-marker-cleanup"];
+const commitEvents = ["before-marker-verified", "after-marker-verified", "before-marker-commit-cleanup-intent", "after-marker-commit-cleanup-intent", "before-backup-cleanup", "after-backup-cleanup", "before-marker-commit-cleanup-complete", "after-marker-commit-cleanup-complete", "before-marker-cleanup", "after-marker-cleanup"];
+
+test("every promotion and rollback crash boundary recovers to the prior verified release", async (context) => {
+  for (const fault of [...beginEvents, "before-verification", "after-verification", ...rollbackEvents]) await context.test(fault, () => { const item = fixture(`${fault}-`, { fast: true }); try { const fail = (name) => { if (name === fault) throw new Error(`crash:${fault}`); }; let state; try { state = beginPromotion(item.input, fail); if (fault === "before-verification" || fault === "after-verification") throw new Error(`crash:${fault}`); rollbackPromotion(state, fail); } catch {} recoverAll(item.input); assert.equal(identity(item.context), "prior"); assert.equal(promotionMarkers(item.outputRoot, "book", "REL-EXACT").length, 0); } finally { item.dispose(); } });
 });
 
-test("release promotion recovers an interrupted prior-directory rename before retrying", () => {
-  const outputRoot = mkdtempSync(resolve(tmpdir(), "rtb-promotion-retry-")), release = resolve(outputRoot, "book"), backup = resolve(outputRoot, ".staging", "book.previous"), staging = resolve(outputRoot, ".staging", "book-new");
-  try {
-    mkdirSync(backup, { recursive: true }); mkdirSync(staging); writeFileSync(resolve(backup, "manifest.json"), "legacy"); writeFileSync(resolve(staging, "manifest.json"), "new");
-    recoverPromotion(release, outputRoot);
-    const transaction = beginPromotion(staging, release, outputRoot, "test-retry"); completePromotion(transaction);
-    assert.equal(readFileSync(resolve(release, "manifest.json"), "utf8"), "new"); assert.equal(existsSync(backup), false);
-  } finally { rmSync(outputRoot, { recursive: true, force: true }); }
+test("every verified-commit crash boundary recovers to prior or exactly completed new release", async (context) => {
+  for (const fault of commitEvents) await context.test(fault, () => { const item = fixture(`commit-${fault}-`, { fast: true }); try { const fail = (name) => { if (name === fault) throw new Error(`crash:${fault}`); }; let state = beginPromotion(item.input); try { state = markPromotionVerified(state, fail); commitPromotion(state, fail); } catch {} recoverAll(item.input); const value = identity(item.context); assert.equal(["prior", "new"].includes(value), true); if (value === "new") { assert.equal(existsSync(item.context.backup), false); assert.equal(existsSync(item.context.quarantine), false); } } finally { item.dispose(); } });
 });
 
-test("failed post-rename verification restores the prior release", () => {
-  const outputRoot = mkdtempSync(resolve(tmpdir(), "rtb-promotion-rollback-")), release = resolve(outputRoot, "book"), staging = resolve(outputRoot, ".staging", "book-new");
-  try {
-    mkdirSync(release); mkdirSync(staging, { recursive: true }); writeFileSync(resolve(release, "manifest.json"), "legacy"); writeFileSync(resolve(staging, "manifest.json"), "invalid-new");
-    const transaction = beginPromotion(staging, release, outputRoot, "test-failure"); rollbackPromotion(transaction);
-    assert.equal(readFileSync(resolve(release, "manifest.json"), "utf8"), "legacy"); assert.equal(existsSync(transaction.marker), false);
-  } finally { rmSync(outputRoot, { recursive: true, force: true }); }
-});
-
-test("durable promotion marker restores the prior release after a crash in the rename interval", () => {
-  const outputRoot = mkdtempSync(resolve(tmpdir(), "rtb-promotion-crash-")), release = resolve(outputRoot, "book"), staging = resolve(outputRoot, ".staging", "book-new");
-  try {
-    mkdirSync(release); mkdirSync(staging, { recursive: true }); writeFileSync(resolve(release, "manifest.json"), "legacy"); writeFileSync(resolve(staging, "manifest.json"), "unverified-new");
-    const transaction = beginPromotion(staging, release, outputRoot, "test-crash"); assert.equal(existsSync(transaction.marker), true);
-    recoverPromotion(release, outputRoot);
-    assert.equal(readFileSync(resolve(release, "manifest.json"), "utf8"), "legacy"); assert.equal(existsSync(transaction.marker), false);
-  } finally { rmSync(outputRoot, { recursive: true, force: true }); }
+test("malformed, mismatched, traversal, and symbolic-link markers fail without mutation", async (context) => {
+  const corruptions = {
+    "extra path": (marker) => ({ ...marker, target: "/tmp/attacker" }), "wrong schema": (marker) => ({ ...marker, schemaVersion: 2 }), "unknown phase": (marker) => ({ ...marker, phase: "trust-new" }), "wrong project": (marker) => ({ ...marker, projectId: "other" }), "wrong release": (marker) => ({ ...marker, releaseId: "REL-OTHER" }), "wrong token": (marker) => ({ ...marker, token: "22222222-2222-4222-8222-222222222222" }), "missing field": ({ phase: _phase, ...marker }) => marker,
+  };
+  for (const [name, corrupt] of Object.entries(corruptions)) await context.test(name, () => { const item = fixture(`malicious-${name}-`); try { mkdirSync(dirname(item.context.marker), { recursive: true }); const marker = { schemaVersion: 1, projectId: "book", releaseId: "REL-EXACT", token: TOKEN, phase: "prepared", hadPrior: true }; writeFileSync(item.context.marker, JSON.stringify(corrupt(marker))); assert.throws(() => recoverPromotion(item.context), /malformed or mismatched/); assert.equal(identity(item.context), "prior"); assert.equal(existsSync(item.context.staging), true); } finally { item.dispose(); } });
+  await context.test("invalid JSON", () => { const item = fixture("malicious-json-"); try { mkdirSync(dirname(item.context.marker), { recursive: true }); writeFileSync(item.context.marker, "{not-json"); assert.throws(() => recoverPromotion(item.context)); assert.equal(identity(item.context), "prior"); assert.equal(existsSync(item.context.staging), true); } finally { item.dispose(); } });
+  assert.throws(() => promotionContext({ outputRoot: "/tmp", projectId: "../escape", releaseId: "REL-X", token: TOKEN }), /safe project/);
+  await context.test("marker symlink", () => { const item = fixture("marker-link-"); try { mkdirSync(dirname(item.context.marker), { recursive: true }); const outside = resolve(item.outputRoot, "outside.json"); writeFileSync(outside, "{}"); symlinkSync(outside, item.context.marker); assert.throws(() => recoverPromotion(item.context), /symbolic links/); assert.equal(identity(item.context), "prior"); } finally { item.dispose(); } });
 });
