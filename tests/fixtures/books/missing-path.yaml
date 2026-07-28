@@ -1,0 +1,12 @@
+id: missing-path-guide
+schema_version: "1"
+created_at: "2026-01-01T00:00:00.000Z"
+updated_at: "2026-01-01T00:00:00.000Z"
+producer: fixture-author
+validation_rules: [book-project-v1]
+content_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+locale: en-US
+paths: { root: assets, metadata: absent-book.md, chapters: absent-chapters, assets: assets }
+output_profiles: [{ id: web-edition, format: html, path: later/index.html }]
+blueprint: { id: missing-path-blueprint, path: absent-blueprint.yaml, content_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }
+lifecycle: { id: missing-path-lifecycle, path: absent-lifecycle.yaml, content_hash: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc }

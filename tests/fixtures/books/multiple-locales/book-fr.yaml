@@ -9,4 +9,4 @@ locale: fr-FR
 paths: { root: assets, metadata: book.md, chapters: chapters, assets: assets }
 output_profiles: [{ id: epub-edition, format: epub, path: outputs/livre.epub }, { id: pdf-edition, format: pdf, path: outputs/livre.pdf }]
 blueprint: { id: guide-francais-blueprint, path: blueprint.yaml, content_hash: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee }
-lifecycle: { id: guide-francais-lifecycle, path: lifecycle.yaml }
+lifecycle: { id: guide-francais-lifecycle, path: lifecycle.yaml, content_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }

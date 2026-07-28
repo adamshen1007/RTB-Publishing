@@ -4,7 +4,7 @@ created_at: "2026-07-23T00:00:00.000Z"
 updated_at: "2026-07-28T00:00:00.000Z"
 producer: rtb-publishing
 validation_rules: [book-blueprint-v1, stable-chapter-ids-v1]
-content_hash: sha256:ed406e7abbcd9090d06cfd01b2f233a3149f62a34e4677170beb576c7a7b88a8
+content_hash: sha256:39d1966e9e0b645bc75594c3bdbb48fe91c11f8d9d46007b154558b8bb9f875b
 project_id: rtb-yc-playbook
 reader:
   description: First-time AI founders making evidence-backed startup decisions.

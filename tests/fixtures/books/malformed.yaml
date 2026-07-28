@@ -1,0 +1,3 @@
+id: malformed-guide
+schema_version: "1"
+paths: [this is not valid YAML

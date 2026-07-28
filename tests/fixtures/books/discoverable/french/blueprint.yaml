@@ -1,0 +1,20 @@
+id: guide-francais-blueprint
+schema_version: "1"
+created_at: "2026-01-02T00:00:00.000Z"
+updated_at: "2026-01-02T00:00:00.000Z"
+producer: fixture-author
+validation_rules: [book-blueprint-v1]
+content_hash: sha256:43e9b465e677f2708e3dc61a98bde63234114e80c5f9966870b92245083ac511
+project_id: guide-francais
+reader: { description: Lectrices et lecteurs qui souhaitent agir avec confiance., locale: fr-FR }
+promised_outcome: Choisir une prochaine action claire et mesurable.
+scope: { included: [décision, pratique], excluded: [conseil juridique] }
+thesis: Une bonne décision relie une preuve, une personne responsable et une date de revue.
+source_policy: { allowed_tiers: [primary, manual], rights_requirement: required, freshness_days: 90 }
+budgets: { research_items: 5, provider_cost_usd: 0 }
+provider_egress_policy: { classification: local-only, allowed_providers: [] }
+parts: [{ id: francais-part-un, title: Observer, order: 1 }, { id: francais-part-deux, title: Agir, order: 2 }]
+chapter_contracts:
+  - { id: francais-chapitre-un, schema_version: "1", created_at: "2026-01-02T00:00:00.000Z", updated_at: "2026-01-02T00:00:00.000Z", producer: fixture-author, validation_rules: [chapter-v1], content_hash: sha256:23339deb4e85ecb6a81f5c5bd2df585ac81be40d30bac0908673ca32f2636fee, title: Observer, order: 1, part_id: francais-part-un, source_path: chapitres/observer.md, reader_decision: Observer le problème, required_output: Notes }
+  - { id: francais-chapitre-deux, schema_version: "1", created_at: "2026-01-02T00:00:00.000Z", updated_at: "2026-01-02T00:00:00.000Z", producer: fixture-author, validation_rules: [chapter-v1], content_hash: sha256:3af60e541c620fc54635f91dd23198a59b342f1d49c393e7cea0f01cb89e560a, title: Agir, order: 2, part_id: francais-part-deux, source_path: chapitres/agir.md, reader_decision: Choisir une action, required_output: Plan }
+materiality_rules: { fields_requiring_reapproval: [reader, thesis] }

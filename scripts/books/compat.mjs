@@ -16,3 +16,8 @@ export function throwForInvalidLegacyBookProject(bookDirectory) {
   }
   return result;
 }
+
+/** Build entry-point preflight kept separate so callers can assert compatibility without rendering. */
+export function assertLegacyBookBuildCompatibility(bookDirectory) {
+  return throwForInvalidLegacyBookProject(bookDirectory);
+}

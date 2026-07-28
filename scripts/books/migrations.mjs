@@ -85,7 +85,7 @@ export function migrateRecord(recordType, source) {
   };
 }
 
-export function migrateFileDryRun(file, { root, recordType } = {}) {
+export function migrateFileDryRun(file, { root, recordType, interruptAt } = {}) {
   const absoluteRoot = root ?? dirname(file);
   const relativeFile = relative(absoluteRoot, file);
   const safeFile = resolveSafeRelativePath(absoluteRoot, relativeFile, { mustExist: true });
@@ -93,6 +93,12 @@ export function migrateFileDryRun(file, { root, recordType } = {}) {
   const loaded = readStructuredFile(safeFile, { root: absoluteRoot });
   const type = recordType ?? inferRecordType(loaded.record) ?? "book-project";
   const result = migrateRecord(type, loaded.record);
+  if (interruptAt === "before-apply") {
+    result.report.status = "blocked";
+    result.report.changes = [];
+    result.report.rollback_limit = "Recovery is explicit: no canonical write was attempted; rerun the dry-run after resolving the interruption.";
+    result.diagnostics.push(diagnostic({ field: "$", problem: "migration interrupted", cause: "interruption injected before any apply phase", repair: "Resolve the interruption and rerun the dry-run; canonical source remains unchanged." }));
+  }
   const after = readFileSync(safeFile, "utf8");
   const sourceUnchanged = sha256(before) === sha256(after);
   if (!sourceUnchanged) result.diagnostics.push(diagnostic({ problem: "canonical source changed", cause: "dry-run observed changed source bytes", repair: "Stop and investigate; dry-run must never write canonical source." }));

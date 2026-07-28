@@ -9,4 +9,4 @@ chapters_path: chapters
 assets_path: assets
 outputs: [{ id: web-edition, format: html, path: outputs/index.html }]
 blueprint: { id: legacy-guide-blueprint, path: blueprint.yaml, content_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }
-lifecycle: { id: legacy-guide-lifecycle, path: lifecycle.yaml }
+lifecycle: { id: legacy-guide-lifecycle, path: lifecycle.yaml, content_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }

@@ -8,5 +8,5 @@ content_hash: sha256:28c7b9e35fa3729633f9b79fad73f4e052b9814baf3003f3b85c66bccec
 locale: en-US
 paths: { root: assets, metadata: book.md, chapters: chapters, assets: assets }
 output_profiles: [{ id: web-edition, format: html, path: outputs/index.html }]
-blueprint: { id: concise-guide-blueprint, path: blueprint.yaml, content_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }
-lifecycle: { id: concise-guide-lifecycle, path: lifecycle.yaml }
+blueprint: { id: concise-guide-blueprint, path: blueprint.yaml, content_hash: sha256:5a093f6d8d6dd599d40a4bcf4e0489058c25900febc988f53aba862602709d27 }
+lifecycle: { id: concise-guide-lifecycle, path: lifecycle.yaml, content_hash: sha256:6363f128d9040857ab1d8df5d0cce6ecf2a9ba47930a5002bfae6e0867089fde }

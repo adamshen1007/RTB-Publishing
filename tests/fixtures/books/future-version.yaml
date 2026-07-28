@@ -9,4 +9,4 @@ locale: en-US
 paths: { root: assets, metadata: book.md, chapters: chapters, assets: assets }
 output_profiles: [{ id: web-edition, format: html, path: outputs/index.html }]
 blueprint: { id: future-guide-blueprint, path: blueprint.yaml, content_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }
-lifecycle: { id: future-guide-lifecycle, path: lifecycle.yaml }
+lifecycle: { id: future-guide-lifecycle, path: lifecycle.yaml, content_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
