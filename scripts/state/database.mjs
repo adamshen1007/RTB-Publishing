@@ -4,6 +4,18 @@ import { dirname, resolve } from "node:path";
 import { mkdirSync } from "node:fs";
 
 const migrationsDirectory = resolve(dirname(new URL(import.meta.url).pathname), "migrations");
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HASH = /^[0-9a-f]{64}$/i;
+const ACTIVE_PROMOTION_PHASES = new Set(["prepared", "backup-intent", "backup-complete", "activate-intent", "activate-complete", "material-verified", "rollback-quarantine-intent", "rollback-quarantine-complete", "rollback-restore-intent", "rollback-restore-complete", "rollback-cleanup-intent"]);
+
+function exactTimestamp(value) { return typeof value === "string" && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value; }
+function validateDraftV9PromotionRows(database) {
+  for (const row of database.prepare("SELECT * FROM promotion_transactions ORDER BY token").all()) {
+    const hashes = row.marker_hash === null && row.evidence_hash === null || HASH.test(row.marker_hash ?? "") && HASH.test(row.evidence_hash ?? ""), lifecycle = row.status === "active" && ACTIVE_PROMOTION_PHASES.has(row.phase) && HASH.test(row.marker_hash ?? "") && HASH.test(row.evidence_hash ?? "") || row.status === "committed" && row.phase === "commit-cleanup-complete" || row.status === "rolled-back" && row.phase === "rollback-cleanup-complete";
+    if (!UUID.test(row.token) || !SAFE_ID.test(row.project_id) || !SAFE_ID.test(row.release_id) || !HASH.test(row.candidate_hash) || !HASH.test(row.manifest_hash) || !hashes || !lifecycle || !exactTimestamp(row.created_at) || !exactTimestamp(row.updated_at) || Date.parse(row.updated_at) < Date.parse(row.created_at)) throw new Error(`Malformed draft-v9 promotion row: ${row.token ?? "<missing-token>"}.`);
+  }
+}
 
 function timestamp(now) { return new Date(now()).toISOString(); }
 
@@ -12,6 +24,7 @@ function reconcilePromotionTransactionSchema(database) {
   if (!table || table.sql.includes("binding_state") && table.sql.includes("ledger_completed")) return;
   database.exec("BEGIN IMMEDIATE;");
   try {
+    validateDraftV9PromotionRows(database);
     database.exec(`
       ALTER TABLE promotion_transactions RENAME TO promotion_transactions_legacy009;
       CREATE TABLE promotion_transactions (

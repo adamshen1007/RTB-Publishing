@@ -204,9 +204,12 @@ closed-schema version 3 evidence bound to the exact pointer bytes and hash,
 rechecks the pointer before every recursive move, before `delete_pending`, and
 immediately before every removal, restores still-owned quarantine if the
 pointer changes, and never removes shared or other-project evidence. Atomic
-journal-temp recovery and per-entry `move_pending`/`delete_pending` states
-close journal-write, rename, and removal crash windows. Bounded reclaim durably
-renames the completed transaction to a terminal tombstone before removal;
+journal-temp authority and per-entry `move_pending`/`delete_pending` states
+close journal-write, rename, and removal crash windows. Each destructive step
+first claims an exact owned inode and rereads the bound pointer immediately
+before removal. Bounded reclaim durably renames the completed transaction to a
+terminal tombstone, validates its exact recursive inventory, and claims that
+inode before removal. Replacements and unrecorded extras are preserved;
 recovery completes either side of that terminal boundary. These
 durability guarantees depend on the local filesystem
 honoring file and directory `fsync`; unsupported network or virtual filesystems
@@ -265,15 +268,23 @@ without a finalization record may be adopted only when its deterministic
 release ID, candidate, real current approval and policy, current Beta, and
 existing manifest bytes exactly reproduce. Otherwise recovery requires a new
 exact Publish approval and never silently blesses the legacy row.
-Migration 009 moves unbound legacy promotion evidence into a durable migration
-quarantine under the held locks. It flushes an exact-path journal before the
-first marker, backup, quarantine, or staging move, records a checkpoint for each
-move and receipt, and safely resumes that journal after interruption. Completed
+Migration 010 moves unbound legacy promotion evidence into a durable migration
+quarantine under the held locks. Before the first marker, marker-temp, backup,
+quarantine, or staging move, SQLite binds the journal's immutable authority hash
+to the exact project, release, token, candidate, manifest, disposition,
+invalidation, and action inventory. Each journal temp is anticipated by exact
+token, hash, and canonical JSON. Every resume revalidates both live locks,
+pinned state roots, the absence of canonical promotion-token authority, the
+candidate/identity/finalization/manifest status pair, completed target, and
+pending approval invalidation. It records a checkpoint for each move and
+receipt, and safely resumes that journal after interruption. Completed
 evidence requires exact ledger and target verification; pending or malformed
 evidence invalidates the old Publish approval before any evidence move and
 requires a fresh exact approval and rebuild. The draft-v9 table conversion
 preserves active, committed, and rolled-back rows exactly; malformed rows roll
-back the conversion rather than dropping evidence.
+back the conversion rather than dropping evidence. Strict orphan marker temps
+are included in the migration receipt. Malformed or unknown temp names are
+preserved and never auto-blessed.
 
 Completed verification is not a shortcut around authority reconstruction. It
 always proves exact finalization, identity, candidate registry JSON and row,

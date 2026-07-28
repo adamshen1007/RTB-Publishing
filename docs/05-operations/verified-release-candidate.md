@@ -155,15 +155,24 @@ without adopting the replacement.
 Completed identity/finalization pairs reconcile exact `ledger_completed`
 cleanup evidence and verify the target; they cannot re-enter pre-verification
 promotion mutation. Migration 009 never blesses an unbound legacy marker.
-Before any legacy marker, backup, quarantine, or staging move, migration 009
-writes and flushes an exact-path journal. It records a checkpoint for every
+Before any legacy marker, marker temp, backup, quarantine, or staging move,
+migration 010 binds an immutable authority hash in SQLite to the exact project,
+release, token, candidate, manifest, disposition, invalidation, and action
+inventory, then writes and flushes the exact-path journal. Each journal temp is
+anticipated in SQLite by exact token, hash, and canonical JSON. It records a checkpoint for every
 move and the final receipt, and retry safely resumes the journal before scanning
-new markers. Completed legacy evidence is quarantined only after exact ledger and
+new markers. Every resume revalidates the live locks, pinned state roots,
+candidate registry, identity/finalization status pair, manifest, absence of a
+canonical promotion binding, completed target, and pending approval invalidation.
+Completed legacy evidence is quarantined only after exact ledger and
 target verification. Pending or malformed legacy evidence first invalidates
 the old Publish approval, is then durably quarantined, and requires a fresh
 exact approval and rebuild. Draft-v9 promotion rows preserve their exact
 lifecycle status and evidence fields while binding columns are added;
-malformed rows roll back the conversion with an actionable error.
+malformed rows roll back the conversion with an actionable error. Strict
+pre-fix marker temps with no binding are quarantined with byte-hashed receipts.
+Malformed names are preserved and require explicit recovery; they are never
+silently ignored or blessed.
 
 Dead-process lock files are not reclaimed automatically. Because pathname
 rename and removal cannot provide a safe three-actor ownership transfer, stale

@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 437/437 passed in the final local quality run.
+- Repository tests: 469/469 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -105,8 +105,11 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   exact cleanup evidence before verification and cannot enter pre-verification
   mutation. Migration 009 quarantines completed legacy evidence after exact
   verification and invalidates pending or malformed legacy approval authority
-  before any evidence move. Exact-path migration journals checkpoint all four
-  legacy evidence classes, the receipt, and terminal archive. Draft-v9 active,
+  before any evidence move. Migration 010 binds the journal's immutable action
+  inventory and temp writes to exact SQLite authority, and revalidates locks,
+  state roots, candidate, manifest, identity/finalization, target, and
+  invalidation before every move. Exact-path journals cover markers, orphan
+  marker temps, backup, quarantine, staging, receipt, and terminal archive. Draft-v9 active,
   committed, and rolled-back rows are preserved exactly; malformed rows roll
   back actionably. Pending, forged, stale, and mismatched cases plus the
   real-ledger crash matrix cover begin, rollback, commit, and every database,
@@ -127,9 +130,11 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   current plus two predecessors and transactionally quarantines recursively
   pinned older generations under project/token version 3 durable evidence bound
   to the exact pointer bytes. Pointer checks occur before every move, before
-  `delete_pending`, and immediately before each removal. Atomic journal-temp
-  recovery restores rename gaps or resumes bounded reclaim; terminal cleanup
-  uses a durably renamed tombstone and never removes shared GC evidence.
+  `delete_pending`, and immediately before each ownership claim and removal.
+  Exact temp authority restores rename gaps while forged temps are preserved.
+  Terminal cleanup claims and revalidates a durably renamed tombstone; replaced
+  successors and unrecorded extras are preserved, and shared GC evidence is
+  never removed.
   Crash, in-place edit, replacement, clean-exclusion, staging collision, pointer
   switch, and GC restoration tests preserve complete generations without
   trusting successor paths.

@@ -64,9 +64,12 @@ version 3 transaction bound to the exact pointer bytes and hash, and rechecks
 that pointer before every move, before each `delete_pending` transition, and
 immediately before each removal. A pointer change restores still-owned
 quarantine, including a generation newly selected after quarantine. Atomic
-journal-temp recovery and per-entry `move_pending`/`delete_pending` states close
-journal-write, rename, and removal crash windows. After bounded deletion, the
-transaction is durably renamed to a terminal tombstone before removal; recovery
+journal-temp authority and per-entry `move_pending`/`delete_pending` states close
+journal-write, rename, and removal crash windows. Unbound temps are preserved.
+Deletion atomically claims the exact quarantined inode and rereads the pointer
+immediately before removal. After bounded deletion, the transaction is durably
+renamed to a terminal tombstone; its exact recursive inventory is revalidated
+and claimed before removal. Replacement or unrecorded evidence fails closed; recovery
 completes either side of that terminal boundary without touching another
 project.
 

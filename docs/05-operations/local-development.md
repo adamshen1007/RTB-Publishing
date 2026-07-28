@@ -89,12 +89,16 @@ move, before `delete_pending`, and again immediately before every removal. Any
 pointer change restores every still-owned quarantined generation, including a
 generation newly selected after quarantine.
 Each rename is preceded by `move_pending`; each bounded removal is preceded by
-`delete_pending`. Journal writes use a file-fsynced owned temporary file and an
-atomic rename; recovery either promotes that exact complete temp or removes an
-exact empty pre-write temp. A restart restores an interrupted move or resumes
-an exact owned deletion. Successful cleanup first renames the completed
+`delete_pending`. Journal writes use a file-fsynced temporary plus a durable
+authority record containing its exact name, hash, size, device, and inode;
+unlisted or mismatched temps are preserved and stop recovery. A restart restores
+an interrupted move or resumes an exact owned deletion. Each removal first
+claims the exact quarantined inode and rechecks the pointer immediately before
+removal. Successful cleanup first renames the completed
 transaction to a project-scoped terminal tombstone, flushes its parent, and
-only then removes it. Recovery finishes either side of that terminal boundary
+then claims and revalidates the exact terminal inventory before removal. A
+replacement or extra entry is preserved and fails closed. Recovery finishes
+either side of that terminal boundary
 and never removes shared or other-project `.gc` data.
 
 The flush-and-rename protocol is designed for local APFS and ordinary Linux

@@ -368,27 +368,27 @@ test("completed release retries are verification-only and cannot enter promotion
 });
 
 test("migration 009 quarantines legacy completed evidence and invalidates legacy in-flight approval", async (context) => {
-  for (const scenario of ["completed", "pending", "malformed-pending"]) await context.test(scenario, async () => {
+  for (const scenario of ["completed", "completed-orphan-temp", "pending", "malformed-pending"]) await context.test(scenario, async () => {
     const item = fixture();
     try {
       const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`legacy-${scenario}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate); let manifest, marker;
-      if (scenario === "completed") {
-        const completed = await buildRelease(item.project, { ...base, approvalId: approval.id }); manifest = completed.manifest; const token = randomUUID(), stateRoot = resolve(item.releaseRoot, "immutable", ".promotion-state"); mkdirSync(stateRoot, { recursive: true }); marker = resolve(stateRoot, `${item.project.id}-${manifest.releaseId}-${token}.json`); writeFileSync(marker, "legacy-completed-marker\n");
+      if (scenario.startsWith("completed")) {
+        const completed = await buildRelease(item.project, { ...base, approvalId: approval.id }); manifest = completed.manifest; const token = randomUUID(), stateRoot = resolve(item.releaseRoot, "immutable", ".promotion-state"); mkdirSync(stateRoot, { recursive: true }); marker = resolve(stateRoot, `${item.project.id}-${manifest.releaseId}-${token}.json${scenario === "completed-orphan-temp" ? `.${randomUUID()}.tmp` : ""}`); writeFileSync(marker, "legacy-completed-marker\n");
       } else {
         await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { promotionBoundary: (event, state) => { if (event === "after-marker-prepared") { marker = state.marker; const error = new Error("legacy-pending-crash"); error.recoveryRequired = true; throw error; } } } }), /legacy-pending-crash/);
         if (scenario === "malformed-pending") writeFileSync(marker, "{malformed\n");
       }
       let database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { manifest ??= JSON.parse(database.prepare("SELECT manifest_json FROM release_finalizations").get().manifest_json); database.exec("DROP TABLE promotion_transactions"); database.prepare("DELETE FROM schema_migrations WHERE version = 9").run(); } finally { database.close(); }
-      if (scenario === "completed") { const retried = await buildRelease(item.project, { ...base, approvalId: approval.id }); assert.equal(retried.manifest.manifestHash, manifest.manifestHash); }
+      if (scenario.startsWith("completed")) { const retried = await buildRelease(item.project, { ...base, approvalId: approval.id }); assert.equal(retried.manifest.manifestHash, manifest.manifestHash); }
       else await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /fresh exact Publish approval and rebuild/);
       const migrationRoot = resolve(item.releaseRoot, "immutable", ".promotion-state", "migration-quarantine"); assert.ok(existsSync(migrationRoot)); const receipts = readdirSync(migrationRoot); assert.equal(receipts.length, 1); assert.ok(existsSync(resolve(migrationRoot, receipts[0], "migration-receipt.json"))); assert.equal(existsSync(marker), false);
-      database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 9").get().count, 1); if (scenario !== "completed") assert.equal(database.prepare("SELECT COUNT(*) AS count FROM lifecycle_approval_invalidations WHERE approval_id = ?").get(approval.id).count, 1); } finally { database.close(); }
+      database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { assert.equal(database.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 9").get().count, 1); if (!scenario.startsWith("completed")) assert.equal(database.prepare("SELECT COUNT(*) AS count FROM lifecycle_approval_invalidations WHERE approval_id = ?").get(approval.id).count, 1); } finally { database.close(); }
     } finally { item.dispose(); }
   });
 });
 
 test("legacy promotion migration journal resumes every evidence-move and receipt boundary", async (context) => {
-  const events = ["after-legacy-migration-journal", ...Array.from({ length: 4 }, (_, index) => [`before-legacy-migration-move-${index}`, `after-legacy-migration-rename-${index}`, `after-legacy-migration-checkpoint-${index}`]).flat(), "before-legacy-migration-receipt", "after-legacy-migration-receipt", "after-legacy-migration-terminal"];
+  const events = ["after-legacy-journal-temp-binding", "after-legacy-journal-temp-create", "after-legacy-journal-temp-fsync", "before-legacy-journal-temp-rename", "after-legacy-journal-temp-rename", "after-legacy-migration-journal", ...Array.from({ length: 4 }, (_, index) => [`before-legacy-migration-move-${index}`, `after-legacy-migration-rename-${index}`, `after-legacy-migration-checkpoint-${index}`]).flat(), "before-legacy-migration-receipt", "after-legacy-migration-receipt", "after-legacy-migration-terminal"];
   for (const fault of events) await context.test(fault, async () => {
     const item = fixture();
     try {
@@ -401,6 +401,35 @@ test("legacy promotion migration journal resumes every evidence-move and receipt
       const journalRoot = resolve(stateRoot, "migration-journals", item.project.id, completed.manifest.releaseId); assert.equal(existsSync(journalRoot) ? readdirSync(journalRoot).length : 0, 0);
     } finally { item.dispose(); }
   });
+});
+
+test("legacy migration rejects forged or mismatched durable authority before moving evidence", async (context) => {
+  for (const scenario of ["active-binding", "migration-candidate", "finalization-manifest", "status-pair", "symlinked-journal-root", "unknown-journal-temp"]) await context.test(scenario, async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`legacy-authority-${scenario}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), completed = await buildRelease(item.project, { ...base, approvalId: approval.id }), token = randomUUID(), stateRoot = resolve(item.releaseRoot, "immutable", ".promotion-state"), marker = resolve(stateRoot, `${item.project.id}-${completed.manifest.releaseId}-${token}.json`); writeFileSync(marker, "legacy-authority-marker\n");
+      let database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite")); try { database.exec("DROP TABLE promotion_transactions"); database.prepare("DELETE FROM schema_migrations WHERE version = 9").run(); } finally { database.close(); }
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { legacyMigration: (event) => { if (event === "after-legacy-migration-journal") throw new Error("preserve-bound-legacy-journal"); } } }), /preserve-bound-legacy-journal/);
+      const journalRoot = resolve(stateRoot, "migration-journals", item.project.id, completed.manifest.releaseId), journalFile = resolve(journalRoot, readdirSync(journalRoot).find((name) => name.endsWith(".json"))), journal = JSON.parse(readFileSync(journalFile, "utf8")); database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try {
+        if (scenario === "active-binding") database.prepare("INSERT INTO promotion_transactions (token, project_id, release_id, candidate_hash, manifest_hash, marker_hash, evidence_hash, phase, binding_state, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'prepared', 'active', 'active', ?, ?)").run(token, item.project.id, completed.manifest.releaseId, completed.candidate.candidateHash, completed.manifest.manifestHash, "a".repeat(64), "b".repeat(64), "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z");
+        if (scenario === "migration-candidate") database.prepare("UPDATE legacy_promotion_migrations SET candidate_hash = ? WHERE id = ?").run("0".repeat(64), journal.id);
+        if (scenario === "finalization-manifest") database.prepare("UPDATE release_finalizations SET manifest_hash = ? WHERE release_id = ?").run("0".repeat(64), completed.manifest.releaseId);
+        if (scenario === "status-pair") database.prepare("UPDATE release_identities SET status = 'pending' WHERE release_id = ?").run(completed.manifest.releaseId);
+      } finally { database.close(); }
+      if (scenario === "symlinked-journal-root") { const displaced = `${journalRoot}.owned`; renameSync(journalRoot, displaced); symlinkSync(displaced, journalRoot); }
+      if (scenario === "unknown-journal-temp") writeFileSync(`${journalFile}.${randomUUID()}.tmp`, "forged-temp");
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /active or historical canonical promotion|exact durable database authority|exact candidate, identity, finalization|unsafe|symbolic link|unknown temporary/); assert.equal(readFileSync(marker, "utf8"), "legacy-authority-marker\n");
+    } finally { item.dispose(); }
+  });
+});
+
+test("malformed pre-fix promotion marker temps are preserved with actionable recovery guidance", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("legacy-malformed-temp") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate), completed = await buildRelease(item.project, { ...base, approvalId: approval.id }), malformed = resolve(item.releaseRoot, "immutable", ".promotion-state", `${item.project.id}-${completed.manifest.releaseId}-not-a-token.json.bad.tmp`); writeFileSync(malformed, "preserve-me");
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /unknown or malformed name/); assert.equal(readFileSync(malformed, "utf8"), "preserve-me");
+  } finally { item.dispose(); }
 });
 
 test("immutable release verification rejects external and internal symbolic links without mutating targets", async () => {
