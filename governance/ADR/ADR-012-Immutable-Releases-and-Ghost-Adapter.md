@@ -111,6 +111,15 @@ before commit. Direct external editor writes cannot be prevented by SQLite or
 the cooperative lock, so any mismatch observed by the stability recheck causes
 rollback.
 
+The promotion boundary accepts no caller-selected output root. Before reading
+or recovering any promotion marker it validates both unforgeable live lock
+handles, proves the discovered project path belongs to that exact workspace,
+and derives `dist/releases/immutable/<project-id>/<release-id>` from those
+trusted identities. The one-time completion capability binds that workspace,
+canonical immutable root, project root, target, manifest, and live promotion
+transaction. Released, forged, wrong-root, non-canonical, and replayed
+authority cannot complete a ledger row.
+
 Held-lock authority is a process-private live handle, not a caller-supplied
 path or owner string. It is accepted only for the exact project root that
 created it. Release is idempotent and removes the lock file only when its inode,

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
 import test from "node:test";
 import { buildRelease } from "../scripts/publishing/project-build.mjs";
 import { fileHash, materialHash, writeJson } from "../scripts/publishing/common.mjs";
-import { finalizeRelease } from "../scripts/publishing/finalize-release.mjs";
+import { finalizeRelease, promoteFinalizedRelease } from "../scripts/publishing/finalize-release.mjs";
 import { verifyReleaseDirectory } from "../scripts/publishing/verify-release.mjs";
 import { cleanOutputs } from "../scripts/clean.mjs";
 import { CanonicalLifecycleBindingProvider } from "../scripts/lifecycle/bindings.mjs";
@@ -14,12 +15,13 @@ import { LifecycleService } from "../scripts/lifecycle/service.mjs";
 import { ReleaseReviewService } from "../scripts/publishing/release-review-service.mjs";
 import { publicationExport } from "../scripts/notion-publication.mjs";
 import { openStateDatabase } from "../scripts/state/database.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock } from "../scripts/state/project-lock.mjs";
+import { resolveBookProject } from "../scripts/books/discovery.mjs";
 
 function fixture() {
-  const workspaceRoot = mkdtempSync(resolve(tmpdir(), "rtb-real-build-")), legacyRoot = resolve(workspaceRoot, "books", "nested"), chapterDirectory = resolve(legacyRoot, "chapters"); mkdirSync(chapterDirectory, { recursive: true });
-  const chapterPath = resolve(chapterDirectory, "one.md"), metadataPath = resolve(legacyRoot, "book.md");
-  writeFileSync(chapterPath, "# One\n\nCanonical text.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Test | |\n"); writeFileSync(metadataPath, "# Fixture\n"); writeFileSync(resolve(legacyRoot, "blueprint.yaml"), "fixture: true\n");
-  const project = { id: "nested-book", root: legacyRoot, legacyRoot, workspaceRoot, metadataPath, metadata: "---\ntitle: Fixture\nversion: 1.0.0\nstatus: beta\n---\n", manifest: { locale: "en", paths: {}, blueprint: { path: "blueprint.yaml" } }, blueprint: { source_policy: {}, budgets: {}, provider_egress_policy: {} }, chapters: [{ id: "one", order: 1, part_id: "part-one", reader_decision: "Decide", required_output: "Decision", sourcePath: chapterPath }], parts: [{ id: "part-one", order: 1, title: "Start" }], outputProfiles: ["html", "pdf", "epub"].map((format) => ({ format, path: `nested-book.${format}` })) };
+  const workspaceRoot = mkdtempSync(resolve(tmpdir(), "rtb-real-build-")), legacyRoot = resolve(workspaceRoot, "books", "nested");
+  cpSync(resolve("tests/fixtures/books/one-chapter"), legacyRoot, { recursive: true });
+  const discovered = resolveBookProject(legacyRoot, { workspaceRoot }), project = { ...discovered, outputProfiles: ["html", "pdf", "epub"].map((format) => ({ format, path: `${discovered.id}.${format}` })) };
   return { workspaceRoot, legacyRoot, project, buildRoot: resolve(workspaceRoot, "build", "publishing"), candidateRoot: resolve(workspaceRoot, "dist", "candidates"), releaseRoot: resolve(workspaceRoot, "dist", "releases"), dispose: () => rmSync(workspaceRoot, { recursive: true, force: true }) };
 }
 
@@ -56,6 +58,42 @@ test("real buildRelease adopts legacy finalization and promotes without staging 
     assert.equal(result.release, resolve(item.releaseRoot, "immutable", item.project.id, result.manifest.releaseId)); assert.equal(verifyReleaseDirectory(result.release, result.candidate, { manifest: result.manifest, root: item.legacyRoot }), true); assert.equal(result.manifest.manifestHash, finalized.manifest.manifestHash);
     assert.equal(JSON.stringify({ candidate: result.candidate, manifest: result.manifest }).includes(".staging"), false); for (const output of Object.values(result.outputs)) assert.equal(resolve(output).startsWith(`${result.release}/`), true);
   } finally { item.dispose(); }
+});
+
+test("public promotion boundary rejects missing, stale, wrong-root, and caller-selected authority before mutation", async () => {
+  const item = fixture(), outside = mkdtempSync(resolve(tmpdir(), "rtb-wrong-workspace-"));
+  const manifest = { projectId: item.project.id, releaseId: "REL-BOUNDARY-TEST", manifestHash: "f".repeat(64) }, candidate = { projectId: item.project.id };
+  const call = (extra = {}) => promoteFinalizedRelease({ root: item.legacyRoot, workspaceRoot: item.workspaceRoot, project: item.project, candidate, manifest, token: "00000000-0000-4000-8000-000000000001", ...extra });
+  const noMutation = () => assert.equal(existsSync(resolve(item.workspaceRoot, "dist", "releases", "immutable", ".promotion-state")), false);
+  try {
+    await assert.rejects(() => call(), /live workspace and project lock authority/); noMutation();
+    let workspaceLock = await acquireWorkspaceOutputLock(item.workspaceRoot, { ownerId: "released-workspace" }), projectLock = await acquireProjectLock(item.legacyRoot, { ownerId: "released-project" });
+    workspaceLock.release(); projectLock.release();
+    await assert.rejects(() => call({ heldWorkspaceLock: workspaceLock, heldLock: projectLock }), /live unforgeable/); noMutation();
+    workspaceLock = await acquireWorkspaceOutputLock(outside, { ownerId: "wrong-workspace" }); projectLock = await acquireProjectLock(item.legacyRoot, { ownerId: "right-project" });
+    await assert.rejects(() => call({ workspaceRoot: outside, heldWorkspaceLock: workspaceLock, heldLock: projectLock }), /not the exact discovered project/); noMutation();
+    workspaceLock.release(); projectLock.release();
+    workspaceLock = await acquireWorkspaceOutputLock(item.workspaceRoot, { ownerId: "right-workspace" }); projectLock = await acquireProjectLock(item.legacyRoot, { ownerId: "right-project" });
+    await assert.rejects(() => call({ heldWorkspaceLock: workspaceLock, heldLock: projectLock, outputRoot: outside }), /cannot select/); noMutation();
+    const forgedProject = { ...item.project, id: "forged-project" }, forgedManifest = { ...manifest, projectId: "forged-project" };
+    await assert.rejects(() => call({ project: forgedProject, manifest: forgedManifest, heldWorkspaceLock: workspaceLock, heldLock: projectLock }), /current workspace discovery/); noMutation();
+    workspaceLock.release(); projectLock.release();
+    const module = await import("../scripts/publishing/finalize-release.mjs");
+    assert.equal("completeFinalizedRelease" in module, false, "callers cannot obtain or replay the one-time completion capability");
+  } finally { item.dispose(); rmSync(outside, { recursive: true, force: true }); }
+});
+
+test("approved build prints a fully quoted exact verification command that executes", async () => {
+  const workspaceRoot = mkdtempSync(resolve(tmpdir(), "rtb-command-workspace-")), projectRoot = resolve(workspaceRoot, "books", "yc playbook;safe");
+  try {
+    cpSync(resolve("books/volume-01-yc-playbook"), projectRoot, { recursive: true });
+    const project = resolveBookProject(projectRoot, { workspaceRoot }), base = { lifecycleVersion: 2, workspaceRoot, buildRoot: resolve(workspaceRoot, "build", "publishing"), candidateRoot: resolve(workspaceRoot, "dist", "candidates"), releaseRoot: resolve(workspaceRoot, "dist", "releases"), orchestration: deterministicOrchestration("command") };
+    const candidateOnly = await buildRelease(project, base), approval = await approve(project, candidateOnly.candidate), completed = await buildRelease(project, { ...base, approvalId: approval.id });
+    assert.match(completed.verificationCommand, new RegExp(completed.manifest.releaseId));
+    assert.match(completed.verificationCommand, /'[^']*rtb-command-workspace-[^']*'/);
+    const verified = spawnSync(completed.verificationCommand, { cwd: process.cwd(), shell: true, encoding: "utf8" });
+    assert.equal(verified.status, 0, `${verified.stderr}\n${verified.stdout}`); assert.match(verified.stdout, /Verified immutable release/);
+  } finally { rmSync(workspaceRoot, { recursive: true, force: true }); }
 });
 
 test("real buildRelease excludes concurrent clean, recovers interrupted activation, and candidates cannot overwrite a completed release", async () => {
@@ -126,13 +164,13 @@ test("immutable release verification rejects external and internal symbolic link
     await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /symbolic link|escapes its trusted/);
     assert.equal(readFileSync(resolve(outsideDirectory, "proof"), "utf8"), "untouched"); unlinkSync(release);
     const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
-    const outsideArtifact = resolve(item.workspaceRoot, "outside-artifact"); writeFileSync(outsideArtifact, readFileSync(resolve(completed.release, "nested-book.pdf")));
-    unlinkSync(resolve(completed.release, "nested-book.pdf")); symlinkSync(outsideArtifact, resolve(completed.release, "nested-book.pdf"));
+    const pdfName = completed.candidate.artifacts.pdf.path, outsideArtifact = resolve(item.workspaceRoot, "outside-artifact"); writeFileSync(outsideArtifact, readFileSync(resolve(completed.release, pdfName)));
+    unlinkSync(resolve(completed.release, pdfName)); symlinkSync(outsideArtifact, resolve(completed.release, pdfName));
     assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /symbolic links/);
     assert.equal(readFileSync(outsideArtifact, "utf8"), "pdf-links");
-    unlinkSync(resolve(completed.release, "nested-book.pdf")); linkSync(outsideArtifact, resolve(completed.release, "nested-book.pdf"));
+    unlinkSync(resolve(completed.release, pdfName)); linkSync(outsideArtifact, resolve(completed.release, pdfName));
     assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /one link/);
-    unlinkSync(resolve(completed.release, "nested-book.pdf")); writeFileSync(resolve(completed.release, "nested-book.pdf"), "pdf-links");
+    unlinkSync(resolve(completed.release, pdfName)); writeFileSync(resolve(completed.release, pdfName), "pdf-links");
     const retained = resolve(completed.release, "source-snapshot", "book.md"), outsideSource = resolve(item.workspaceRoot, "outside-source"); writeFileSync(outsideSource, readFileSync(retained)); unlinkSync(retained); linkSync(outsideSource, retained);
     assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /one link/);
   } finally { item.dispose(); }

@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 284/284 passed in the final local quality run.
+- Repository tests: 287/287 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -61,6 +61,10 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   rows. Exact immutable path containment and recursively symbolic-link-free,
   single-link regular files are mandatory. Copied bundles are not accepted as
   the approved immutable location, and verification excludes concurrent clean.
+  Promotion rejects missing, released, wrong-root, caller-selected, or
+  workspace-mismatched authority before marker recovery or filesystem mutation.
+  The approved build prints a fully shell-quoted verification command with the
+  actual release identity; that exact command is executed in acceptance tests.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

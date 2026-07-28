@@ -207,15 +207,11 @@ Do this:
 
 4. Run the displayed command without changing its lifecycle version or approval
    ID.
-5. Copy the exact immutable directory printed by the build, including its
-   release ID, and run:
-
-   ```sh
-   pnpm release:verify -- \
-     . \
-     books/volume-01-yc-playbook \
-     <release-id>
-   ```
+5. The successful build prints **Verify this exact release with:** followed by
+   one complete, shell-quoted command containing the actual workspace path,
+   book path, and release ID. Copy that command exactly. You can also refresh
+   Creator Studio and copy its server-authored verification command. Never
+   substitute a release ID by hand.
 
 Verify this:
 

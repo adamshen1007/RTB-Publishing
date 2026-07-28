@@ -77,6 +77,10 @@ writer lock. It uses a unique staging directory and does not remove the
 existing promoted release. After registration and pending finalization, it
 verifies staging, records a durable promotion state machine, and atomically
 renames staging.
+The promotion boundary accepts no output directory from a caller. It validates
+both live locks and the discovered book/workspace relationship before marker
+recovery, then derives the only permitted immutable target from the workspace,
+project ID, and release ID.
 The prior release backup remains until the promoted directory passes exact
 verification again. Every rename has durable intent and completion phases.
 Before durable material verification, failure or restart restores the prior
@@ -112,11 +116,7 @@ differs, stop and preserve the directory and database. The explicit
 reconciliation error means a human must review the old evidence or create a
 new candidate and approval; do not delete the old release.
 
-For the YC book, verify the exact path printed by the approved build with:
-
-```sh
-pnpm release:verify -- \
-  . \
-  books/volume-01-yc-playbook \
-  <release-id>
-```
+For the YC book, copy the complete shell-quoted verification command printed
+by the successful approved build. It contains the actual workspace path, book
+path, and release ID. Creator Studio shows the same server-authored command
+after refresh. Do not type or substitute those values manually.
