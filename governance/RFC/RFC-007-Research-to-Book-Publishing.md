@@ -233,15 +233,27 @@ requires a new exact policy evaluation and, when its identity changes, a new
 Publish approval. This operational join breaks the self-reference cycle
 without weakening the Publish gate or making review evidence canonical input.
 
-Final manifest creation and release-identity reservation are one immediate
-SQLite transaction. That transaction reloads the latest registered candidate,
-the non-invalidated exact Publish approval, and current durable release-review
-evidence; derives the policy and manifest from those reads; and reserves the
-single-use release identity before commit. A preliminary policy evaluation or
-standalone manifest object has no reservation authority. A rejection,
-invalidation, or candidate replacement committed before finalization therefore
-fails without consuming an identity, while concurrent writers cannot slip
-between the authoritative recheck and reservation.
+Final manifest authority uses a recoverable two-phase local protocol under the
+project writer lock. An immediate SQLite transaction reloads the latest
+registered candidate, non-invalidated exact Publish approval, current Beta,
+and durable release reviews; derives the exact manifest; and records its
+normalized JSON and hash as `pending`. The system then atomically replaces the
+manifest file, verifies every exact release byte, and marks the same durable
+record and identity `completed` in a second immediate transaction. Only a
+completed record verifies as a release. An identical retry resumes the pending
+material after interruption; it cannot choose another manifest. A preliminary
+policy evaluation, standalone manifest object, or manifest-shaped approval has
+no authority.
+
+Publication operations acquire the project writer lock before any SQLite write
+transaction and release transactions before releasing the lock. Beta
+registration, Beta and Publish approval, and finalization use this order. They
+derive filesystem material under the lock and re-derive it immediately before
+commit; a mismatch rolls back. App-controlled receipt replacement must use a
+temporary file plus atomic rename under the same lock. The lock coordinates
+RTB Publishing operations, but it cannot prevent an external editor from
+writing directly; the pre-commit stability check detects such changes when
+they occur before the commit boundary.
 
 The final manifest required by ADR-012 derives from the approved envelope. It
 must preserve every material field exactly and may add only the Publish

@@ -194,7 +194,7 @@ export function createPlatformServer(options = {}) {
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
         const input = await body(request);
         if (input.confirm !== true || Object.keys(input).some((key) => key !== "confirm")) return json(response, 400, { error: "beta_preparation_authority", message: "Beta preparation accepts confirmation only; hashes and reviewer identity are resolved by the server." }, rebootstrap);
-        try { return json(response, 201, service.prepare(), rebootstrap); }
+        try { return json(response, 201, await service.prepare(), rebootstrap); }
         catch (error) { return json(response, 409, { error: "beta_preparation_blocked", message: error.message }, rebootstrap); }
       }
       const reviewMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/release-reviews\/(migration-visual-review|pdf-screen-reader-visual-review|rights-and-brand-review)$/);

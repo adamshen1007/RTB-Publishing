@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -10,10 +10,10 @@ import { publicationExport } from "../scripts/notion-publication.mjs";
 import { createCandidate } from "../scripts/publishing/candidate.mjs";
 import { fileHash, sha256 } from "../scripts/publishing/common.mjs";
 import { finalizeRelease } from "../scripts/publishing/finalize-release.mjs";
-import { verifyManifest } from "../scripts/publishing/manifest.mjs";
 import { evaluateReleasePolicies } from "../scripts/publishing/policies.mjs";
 import { registerReleaseCandidate } from "../scripts/publishing/release-registry.mjs";
 import { ReleaseReviewService } from "../scripts/publishing/release-review-service.mjs";
+import { verifyReleaseDirectory } from "../scripts/publishing/verify-release.mjs";
 
 const HUMAN = Object.freeze({ type: "human", id: "acceptance-reviewer" });
 const REVIEW_KINDS = Object.freeze([
@@ -167,6 +167,17 @@ function approveReviews(service, expectedCandidateHash) {
   }
 }
 
+function materializeRelease(root, candidate) {
+  const directory = resolve(root, "final-release"); mkdirSync(directory);
+  for (const artifact of Object.values(candidate.artifacts)) copyFileSync(resolve(root, artifact.path), resolve(directory, artifact.path));
+  const edition = candidate.artifacts.html.path.replace(/-book\.html$/, "");
+  mkdirSync(resolve(directory, "source-snapshot"));
+  copyFileSync(resolve(root, `${edition}-source-snapshot`, "book.md"), resolve(directory, "source-snapshot", "book.md"));
+  writeFileSync(resolve(directory, "candidate.json"), `${JSON.stringify(candidate, null, 2)}\n`);
+  writeFileSync(resolve(directory, "verification.json"), `${JSON.stringify({ sourceFingerprint: candidate.sourceFingerprint, ...candidate.validators, artifacts: candidate.artifacts }, null, 2)}\n`);
+  return directory;
+}
+
 test("acceptance workflow reaches one immutable manifest through real durable boundaries", async () => {
   const item = fixture();
   try {
@@ -192,10 +203,10 @@ test("acceptance workflow reaches one immutable manifest through real durable bo
       JSON.stringify(notionReceipt(item.book, { "chapter-two": "stale" })),
     );
     assert.equal(item.beta.inspect().code, "notion_receipt_stale");
-    assert.throws(() => item.beta.prepare(), /matches every canonical chapter/);
+    await assert.rejects(() => item.beta.prepare(), /matches every canonical chapter/);
 
     writeFileSync(item.stateFile, JSON.stringify(notionReceipt(item.book)));
-    const prepared = item.beta.prepare();
+    const prepared = await item.beta.prepare();
     assert.equal(prepared.state, "prepared");
     const betaView = item.lifecycle.status();
     const beta = await item.lifecycle.approve({
@@ -253,14 +264,10 @@ test("acceptance workflow reaches one immutable manifest through real durable bo
     assert.equal(publish.state, "succeeded");
     assert.equal(publish.lifecycle.version, 3);
 
-    const finalized = finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id });
-    const currentPolicies = evaluateReleasePolicies(item.book, finalCandidate);
-    assert.equal(verifyManifest(finalized.manifest, finalCandidate, finalized.approval, { releasePolicies: currentPolicies }), true);
-    assert.throws(
-      () => finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id }),
-      /already consumed/,
-      "the exact Publish approval and release identity are single-use",
-    );
+    const releaseDirectory = materializeRelease(item.root, finalCandidate);
+    const finalized = await finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id, releaseDirectory });
+    assert.equal(verifyReleaseDirectory(releaseDirectory, finalCandidate, { manifest: finalized.manifest, root: item.root }), true);
+    assert.deepEqual(await finalizeRelease({ root: item.root, project: item.book, candidateHash: finalCandidate.candidateHash, approvalId: publish.approval.id, releaseDirectory }), finalized, "an identical completed retry is idempotent");
   } finally {
     item.dispose();
   }
@@ -280,39 +287,36 @@ test("Beta registration and approval revalidate current canonical and Notion mat
     writeFileSync(item.stateFile, JSON.stringify(notionReceipt(item.book)));
     const inspected = item.beta.inspect();
 
-    writeFileSync(
-      item.book.chapters[0].sourcePath,
-      "# chapter-one\n\nAccepted editorial correction.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Decision | |\n",
-    );
-    assert.throws(
+    await assert.rejects(
       () => item.lifecycle.bindingProvider.registerBeta({
         betaSnapshotHash: inspected.betaSnapshotHash,
         policyResultsHash: inspected.policyResultsHash,
         reviewerId: HUMAN.id,
+        beforeCommit: () => writeFileSync(
+          item.book.chapters[0].sourcePath,
+          "# chapter-one\n\nAccepted editorial correction.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Decision | |\n",
+        ),
       }),
-      /changed during Beta preparation/,
-      "registration re-derives material after the earlier inspection",
+      /changed before Beta registration commit/,
+      "registration re-confirms material after a controlled interleaving",
     );
 
     writeFileSync(item.stateFile, JSON.stringify(notionReceipt(item.book)));
-    item.beta.prepare();
+    await item.beta.prepare();
     const staleRevision = item.lifecycle.status().gates.beta.materialRevision;
-    writeFileSync(
-      item.book.chapters[0].sourcePath,
-      "# chapter-one\n\nA later unsynced correction.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Decision | |\n",
-    );
-    const blockedView = item.lifecycle.status();
-    assert.equal(blockedView.gates.beta.ok, false);
-    assert.match(blockedView.gates.beta.message, /no longer current/);
-    const blocked = await item.lifecycle.approve({
+    const stale = await item.lifecycle.approve({
       gate: "beta",
       expectedVersion: 1,
       expectedMaterialRevision: staleRevision,
       actor: HUMAN,
       explicitConfirmation: true,
+      beforeCommit: () => writeFileSync(
+        item.book.chapters[0].sourcePath,
+        "# chapter-one\n\nA later unsynced correction.\n\n## Worksheet\n\n| Field | Value |\n| --- | --- |\n| Decision | |\n",
+      ),
     });
-    assert.equal(blocked.state, "blocked");
-    assert.match(blocked.message, /no longer current/);
+    assert.equal(stale.state, "stale");
+    assert.match(stale.message, /changed before approval commit/);
     assert.equal(item.lifecycle.status().lifecycle.version, 1);
   } finally {
     item.dispose();

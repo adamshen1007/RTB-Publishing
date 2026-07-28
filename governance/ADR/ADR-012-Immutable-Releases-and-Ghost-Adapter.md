@@ -80,14 +80,23 @@ approval. This separation prevents a review record from changing the source
 fingerprint or candidate it is intended to approve while retaining an exact
 auditable binding at Publish.
 
-Manifest derivation and release-identity reservation occur in one immediate
-SQLite transaction. Finalization reloads the latest registered candidate,
-current non-invalidated Publish approval, and exact durable release reviews,
-then derives the policy and manifest and reserves the single-use identity
-before commit. No separate reservation API accepts a caller-created manifest.
-Candidate replacement, approval invalidation, or review rejection committed
-before finalization fails without consuming an identity; a concurrent writer
-cannot interleave after the authoritative reads and before reservation.
+Manifest authority uses a recoverable pending-to-completed protocol under the
+project writer lock. The first immediate SQLite transaction reloads the latest
+candidate, current non-invalidated Publish approval, current Beta, and exact
+durable reviews, then persists the normalized manifest JSON and hash with a
+pending identity. The system atomically writes and verifies that exact
+manifest and release directory before a second transaction marks both records
+completed. Only completed records verify as releases. Identical retries resume
+pending material after write, verification, or process interruption; they
+cannot consume a different identity. No separate reservation API accepts a
+caller-created manifest.
+
+The lock order is project writer lock, then SQLite immediate transaction. No
+code waits for the project lock while holding a database transaction. Relevant
+filesystem material is derived and re-confirmed under that lock immediately
+before commit. Direct external editor writes cannot be prevented by SQLite or
+the cooperative lock, so any mismatch observed by the stability recheck causes
+rollback.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest

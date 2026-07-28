@@ -55,7 +55,7 @@ export class LifecycleService {
     } finally { database.close(); }
   }
 
-  async approve({ gate, expectedVersion, expectedMaterialRevision, actor, explicitConfirmation, reason = "Explicit human approval" } = {}) {
+  async approve({ gate, expectedVersion, expectedMaterialRevision, actor, explicitConfirmation, reason = "Explicit human approval", beforeCommit } = {}) {
     if (!GATES.includes(gate)) throw new Error("Unknown lifecycle gate.");
     ensureStateDirectories(this.root);
     const lock = await acquireProjectLock(this.root, { ownerId: `lifecycle-${randomUUID()}`, now: this.now });
@@ -83,6 +83,12 @@ export class LifecycleService {
         database.prepare("INSERT INTO lifecycle_approvals VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(approval.id, this.projectId, gate, "approved", "human", actor.id, 1, approval.lifecycleVersion, JSON.stringify(approval.bindings), null, approval.createdAt);
         database.prepare("UPDATE lifecycle_state SET version=?,status=?,guard=?,updated_at=? WHERE project_id=? AND version=?").run(prior.version + 1, status, guardName, at, this.projectId, prior.version);
         database.prepare("INSERT INTO lifecycle_transitions VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id("TRN"), this.projectId, prior.version, prior.state, status, prior.version + 1, "human", actor.id, reason, JSON.stringify(guard), at);
+        beforeCommit?.();
+        const confirmation = this.resolved(gate, database);
+        if (!confirmation.available || materialHash(confirmation.bindings) !== materialRevision) {
+          database.exec("ROLLBACK");
+          return { state: "stale", message: `The ${gate} material changed before approval commit. Review the current exact material and try again.` };
+        }
         database.exec("COMMIT");
         durableCheckpoint(database);
         return { state: "succeeded", approval, lifecycle: lifecycleRecord(lifecycle(database, this.projectId)) };

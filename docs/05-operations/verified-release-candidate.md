@@ -53,8 +53,9 @@ candidate hash through the lifecycle Publish gate.
 After the three exact, hash-bound review records make the candidate eligible,
 use the exact manifest command Creator Studio displays with
 `--approval-id <stored-approval-id>`. RTB reads that approval from its durable
-lifecycle ledger; a browser-authored JSON file is not accepted. One immediate
-transaction reloads the current candidate, approval, and review policy, derives
-the manifest, and reserves its identity. The resulting manifest consumes its
-release ID and approval permanently. RTB Publishing does not claim hosted
-activation or subscriber delivery in Increment 1.
+lifecycle ledger; a browser-authored JSON file is not accepted. Finalization
+persists one exact pending manifest, atomically writes and verifies it, then
+marks its identity completed. An identical retry safely resumes a pending
+record. Only completed durable finalization verifies as a release. RTB
+Publishing does not claim hosted activation or subscriber delivery in
+Increment 1.

@@ -22,21 +22,21 @@ function fixture() {
   return { root, book, stateFile, service, registration: () => registration, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-test("Beta preparation blocks clearly for missing and stale Notion receipts", () => {
+test("Beta preparation blocks clearly for missing and stale Notion receipts", async () => {
   const item = fixture();
   try {
     assert.equal(item.service.inspect().code, "notion_receipt_missing");
-    assert.throws(() => item.service.prepare(), /sync-state\.json is missing/);
+    await assert.rejects(() => item.service.prepare(), /sync-state\.json is missing/);
     const payload = publicationExport(item.book);
     writeFileSync(item.stateFile, JSON.stringify({ chapters: { [payload.chapters[0].id]: { sourceHash: payload.chapters[0].sourceHash }, [payload.chapters[1].id]: { sourceHash: "stale" } } }));
     const stale = item.service.inspect();
     assert.equal(stale.code, "notion_receipt_stale");
     assert.deepEqual(stale.failures, ["02: Notion copy is stale"]);
-    assert.throws(() => item.service.prepare(), /matches every canonical chapter/);
+    await assert.rejects(() => item.service.prepare(), /matches every canonical chapter/);
   } finally { item.dispose(); }
 });
 
-test("Beta preparation deterministically creates exact hashes and server-resolved reviewer identity", () => {
+test("Beta preparation deterministically creates exact hashes and server-resolved reviewer identity", async () => {
   const item = fixture();
   try {
     const payload = publicationExport(item.book);
@@ -47,7 +47,7 @@ test("Beta preparation deterministically creates exact hashes and server-resolve
     assert.equal(first.betaSnapshotHash, second.betaSnapshotHash); assert.equal(first.policyResultsHash, second.policyResultsHash);
     assert.equal(first.betaSnapshotHash, materialHash(first.snapshot)); assert.equal(first.policyResultsHash, materialHash(first.policies));
     assert.doesNotMatch(JSON.stringify(first.snapshot), /private-/);
-    const result = item.service.prepare();
+    const result = await item.service.prepare();
     assert.equal(result.state, "prepared");
     assert.deepEqual(item.registration(), { betaSnapshotHash: first.betaSnapshotHash, policyResultsHash: first.policyResultsHash, reviewerId: "server-human-session" });
   } finally { item.dispose(); }

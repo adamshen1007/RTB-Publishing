@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
 import { evaluateReleasePolicies } from "../publishing/policies.mjs";
 import { inspectBetaMaterial } from "./beta-material.mjs";
+import { acquireProjectLock } from "../state/project-lock.mjs";
 
 const hash = (value) => createHash("sha256").update(Buffer.isBuffer(value) || typeof value === "string" ? value : JSON.stringify(value, Object.keys(value).sort())).digest("hex");
 
@@ -37,8 +38,9 @@ export class CanonicalLifecycleBindingProvider {
 
 export class StaticLifecycleBindingProvider { constructor(values = {}) { this.values = values; } resolve(gate) { return this.values[gate] ? { available: true, bindings: this.values[gate] } : { available: false, message: "No verified binding is available." }; } }
 
-export function registerBetaBinding({ book, approvalProjectId = book.id, betaSnapshotHash, policyResultsHash, reviewerId, databaseFile = resolve(book.legacyRoot, ".rtb-state", "state.sqlite"), stateFile = resolve(book.legacyRoot, ".rtb-publishing", "notion", "sync-state.json") }) {
+export async function registerBetaBinding({ book, approvalProjectId = book.id, betaSnapshotHash, policyResultsHash, reviewerId, databaseFile = resolve(book.legacyRoot, ".rtb-state", "state.sqlite"), stateFile = resolve(book.legacyRoot, ".rtb-publishing", "notion", "sync-state.json"), beforeCommit }) {
   if (![betaSnapshotHash, policyResultsHash].every((value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value)) || typeof reviewerId !== "string" || reviewerId.length < 2) throw new Error("Verified Beta registration requires two exact SHA-256 hashes and a human reviewer.");
+  const lock = await acquireProjectLock(book.legacyRoot, { ownerId: `beta-registration-${process.pid}` });
   const database = openStateDatabase(databaseFile);
   try {
     database.exec("BEGIN IMMEDIATE");
@@ -48,11 +50,14 @@ export function registerBetaBinding({ book, approvalProjectId = book.id, betaSna
     if (!blueprint) throw new Error("A current Blueprint approval is required before registering Beta evidence.");
     const bindings = { betaSnapshotHash, policyResultsHash, blueprint: JSON.parse(blueprint.bindings_json), reviewerId }, id = `BETA-${hash(bindings).slice(0, 24)}`;
     database.prepare("INSERT OR IGNORE INTO lifecycle_material_bindings VALUES (?, ?, 'beta', ?, ?)").run(id, approvalProjectId, JSON.stringify(bindings), new Date().toISOString());
+    beforeCommit?.();
+    const confirmed = inspectBetaMaterial(book, stateFile);
+    if (confirmed.state !== "ready" || confirmed.betaSnapshotHash !== betaSnapshotHash || confirmed.policyResultsHash !== policyResultsHash) throw new Error("Canonical or Notion material changed before Beta registration commit.");
     database.exec("COMMIT");
     durableCheckpoint(database);
     return { id, bindings };
   } catch (error) {
     if (database.inTransaction) database.exec("ROLLBACK");
     throw error;
-  } finally { database.close(); }
+  } finally { database.close(); lock.release(); }
 }

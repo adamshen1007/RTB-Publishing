@@ -89,3 +89,12 @@ lifecycle approval transaction is held. A missing or stale receipt, or hashes
 that differ from the registered binding, makes the gate unavailable and cannot
 create an approval. A prepared Beta binding is therefore evidence for one exact
 canonical/Notion state, not a standing authorization.
+
+Beta registration and lifecycle approval share the project writer lock with
+canonical mutations and publication finalization. The required lock order is
+project lock before SQLite transaction. Registration rechecks the same
+canonical/receipt hashes immediately before commit and rolls back on mismatch.
+Any future app-controlled receipt writer must write a complete temporary file,
+flush it, and atomically rename it under this lock. Direct edits by an external
+editor are not prevented by SQLite; a change visible to the stability recheck
+is rejected rather than approved.

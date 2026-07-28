@@ -222,10 +222,14 @@ Check:
   reviews; do not alter the approval record.
 - A Publish approval and release identity are single-use. Reusing either is
   rejected.
-- The displayed command finalizes atomically: it reloads the current candidate,
-  Publish approval, and exact review policy before reserving the identity. A
-  rejection, invalidation, or newer candidate makes it fail without creating a
-  manifest identity.
+- The displayed command creates a durable pending record for one exact
+  manifest, atomically writes and verifies its files, then marks it completed.
+  Only completed records verify as releases. If writing or verification is
+  interrupted, run the identical command again; it resumes the same manifest
+  and identity rather than consuming a new one.
+- Finalization reloads the current candidate, Beta, Publish approval, and exact
+  review policy. A rejection, invalidation, newer candidate, or detected
+  canonical/receipt change makes it fail closed.
 - A `409` or “material changed” message means your page or command is stale.
   Refresh and inspect the current exact material before trying again.
 
