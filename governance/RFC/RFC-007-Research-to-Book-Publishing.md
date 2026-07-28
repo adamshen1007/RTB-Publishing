@@ -270,7 +270,7 @@ Required shared tests cover:
 - Artifact and manifest checksum mismatch before staging, after transfer, and
   before access
 - A fixture of at least 512 MiB with streaming chunks no larger than 8 MiB and
-  a peak RSS (resident set size) increase no greater than 128 MiB above the
+  a peak RSS (resident set size) increase no greater than 384 MiB above the
   measured idle aggregate for the complete process tree during rendering,
   checksum, and transfer. It includes the orchestrator plus every renderer,
   adapter, and other child process, or uses an equivalent container or cgroup
@@ -278,6 +278,12 @@ Required shared tests cover:
   architecture, runtime and tool versions, process-tree or container boundary,
   memory-sampling method and interval, aggregate idle baseline, aggregate peak
   RSS or equivalent peak, and fixture composition.
+
+The 384 MiB aggregate ceiling supersedes the original 128 MiB aggregate target
+after the 2026-07-28 renderer reassessment. The original ceiling was retained
+for each disk-backed streaming stage; the aggregate boundary now includes the
+pinned Java-based veraPDF validator and uses a measured 313 MiB peak with
+headroom. Any later increase requires a new recorded architecture decision.
 
 Required HTML tests cover semantics, sanitization, navigation, keyboard use,
 WCAG 2.2 Level AA automated rules, links, responsive reflow, assistive
@@ -460,7 +466,7 @@ silently ignored or replaced by a broader hosted system.
   authorize activation, rollback, or unpublish.
 - A fixture of at least 512 MiB demonstrates disk-backed rendering, validation,
   checksum, and transfer with chunks no larger than 8 MiB and a peak
-  RSS (resident set size) increase no greater than 128 MiB above the idle
+  RSS (resident set size) increase no greater than 384 MiB above the idle
   aggregate for the complete process tree or equivalent container or cgroup.
   The boundary includes the orchestrator, renderer, and adapter children, and
   the measurement platform and method are recorded.

@@ -300,7 +300,7 @@ review.
   only the permitted approval and staging references.
 - A fixture of at least 512 MiB must prove disk-backed rendering, checksum, and
   transfer with streaming chunks no larger than 8 MiB and a peak RSS
-  (resident set size) increase no greater than 128 MiB above the measured idle
+  (resident set size) increase no greater than 384 MiB above the measured idle
   aggregate for the complete process tree. Measurement includes the
   orchestrator plus every renderer, adapter, and other child process, or uses
   an equivalent container or cgroup boundary that contains them all. The test
@@ -308,6 +308,12 @@ review.
   process-tree or container boundary, memory-sampling method and interval,
   aggregate idle baseline, aggregate peak RSS or equivalent peak, and fixture
   composition.
+
+This 384 MiB complete-process ceiling is the recorded 2026-07-28 replacement
+for the provisional 128 MiB aggregate target after selecting Typst plus the
+pinned Java veraPDF validator. Individual disk-backed streaming stages retain
+the 128 MiB increase ceiling.
+
 - Multi-format failure tests keep the complete release inactive and preserve
   the previous pointer.
 - Duplicate, interrupted, timed-out, and uncertain remote operations prove

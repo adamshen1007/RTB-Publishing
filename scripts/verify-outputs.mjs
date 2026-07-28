@@ -32,7 +32,7 @@ export function verifyHtmlChapterAnchors(html, chapters) {
 
 export function verifyOutputs(project, { outputRoot = resolve(DIST_DIR, "books") } = {}) {
   const metadata = bookMetadata(project.metadata);
-  const expected = project.outputProfiles.filter((profile) => ["html", "epub"].includes(profile.format)).map((profile) => ({ file: projectOutputPath(project, outputRoot, profile.format), kind: profile.format === "html" ? "html" : "zip", minimum: profile.format === "html" ? 1_000 : 2_000 }));
+  const expected = project.outputProfiles.filter((profile) => ["html", "epub", "pdf"].includes(profile.format)).map((profile) => ({ file: projectOutputPath(project, outputRoot, profile.format), kind: profile.format === "html" ? "html" : profile.format === "epub" ? "zip" : "pdf", minimum: profile.format === "html" ? 1_000 : 2_000 }));
   const failures = [];
   for (const output of expected) {
     if (!existsSync(output.file)) { failures.push(`Missing output: ${output.file}`); continue; }
@@ -40,6 +40,7 @@ export function verifyOutputs(project, { outputRoot = resolve(DIST_DIR, "books")
     if (size < output.minimum) { failures.push(`${output.file} is unexpectedly small (${size} bytes).`); continue; }
     const content = readFileSync(output.file);
     if (output.kind === "zip" && content.subarray(0, 2).toString("ascii") !== "PK") failures.push(`${output.file} does not have a ZIP-compatible signature.`);
+    if (output.kind === "pdf" && content.subarray(0, 5).toString("ascii") !== "%PDF-") failures.push(`${output.file} does not have a PDF signature.`);
     if (output.kind === "html") {
       const html = content.toString("utf8");
       if (!new RegExp(`<title>[^<]*${escaped(metadata.title)}[^<]*<\\/title>`, "i").test(html)) failures.push(`${output.file} does not contain the canonical document title.`);

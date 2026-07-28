@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rtb-publishing.local/schemas/publishing/release-manifest.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "releaseId", "projectId", "candidateHash", "lifecycleVersion", "sourceFingerprint", "artifacts", "validators", "approval", "hostedState", "manifestHash"],
+  "properties": {
+    "schemaVersion": { "const": 1 }, "releaseId": { "type": "string", "pattern": "^REL-" }, "projectId": { "type": "string" }, "candidateHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "lifecycleVersion": { "type": "integer" }, "sourceFingerprint": { "type": "string" }, "artifacts": { "type": "object" }, "validators": { "type": "object" }, "approval": { "type": "object" }, "hostedState": { "type": "object" }, "manifestHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

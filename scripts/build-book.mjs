@@ -4,6 +4,8 @@ import { BUILD_DIR, DIST_DIR, ROOT, run } from "./lib.mjs";
 import { assembleBook, projectOutputPath } from "./books/assemble.mjs";
 import { resolveBookProject } from "./books/discovery.mjs";
 import { verifyOutputs } from "./verify-outputs.mjs";
+import { buildRelease } from "./publishing/project-build.mjs";
+export { buildRelease };
 
 export function outputDispatch(project) {
   return project.outputProfiles.map((profile) => {
@@ -30,7 +32,7 @@ export function buildProject(project, { buildRoot = BUILD_DIR, outputRoot = reso
   }
 }
 if (import.meta.url === new URL(process.argv[1], "file:").href) {
-  const project = resolveBookProject(process.argv[2]); const result = buildProject(project);
-  console.log(`✓ ${result.project.chapters.length} chapters and ${result.project.parts.length} parts discovered for ${result.project.id}.`);
-  for (const output of result.outputs) console.log(`✓ ${basename(output.file)} verified (${output.size} bytes)`);
+  const project = resolveBookProject(process.argv[2]);
+  if (project.outputProfiles.some((profile) => profile.format === "pdf")) { const result = await buildRelease(project); console.log(`✓ HTML, PDF, and EPUB candidate ${result.candidate.candidateHash}`); }
+  else { const result = buildProject(project); console.log(`✓ ${result.project.chapters.length} chapters and ${result.project.parts.length} parts discovered for ${result.project.id}.`); for (const output of result.outputs) console.log(`✓ ${basename(output.file)} verified (${output.size} bytes)`); }
 }

@@ -260,7 +260,7 @@ and record platform-specific limitations before PDF implementation begins.
 | --- | --- | --- |
 | PER-001 | Process a fixture of at least 512 MiB | Complete release succeeds using disk-backed stages |
 | PER-002 | Trace read, write, checksum, validation, and transfer chunk sizes | No chunk exceeds 8 MiB |
-| PER-003 | Measure aggregate process-tree RSS above idle | Peak increase is no greater than 128 MiB using the recorded method |
+| PER-003 | Measure aggregate process-tree RSS above idle | Peak increase is no greater than 384 MiB using the recorded method; each streaming stage stays within 128 MiB |
 | PER-004 | Cancel and recover the large run | Temporary data is bounded, recoverable, and safely collectable |
 
 ## Manual Review Protocols

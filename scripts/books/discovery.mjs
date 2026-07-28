@@ -5,7 +5,7 @@ import { ROOT } from "../lib.mjs";
 import { readSnapshot } from "../state/snapshots.mjs";
 import { discoverBookProjects as manifestFiles, resolveSafeRelativePath, validateFile } from "./model.mjs";
 
-const ignored = new Set([".git", ".rtb-content", ".rtb-state", "node_modules", "build", "dist", "tests", "examples"]);
+const ignored = new Set([".git", ".rtb-content", ".rtb-state", ".tmp", "node_modules", "build", "dist", "tests", "examples"]);
 
 function safeRelative(root, target) {
   const value = relative(root, target).split(sep).join("/");

@@ -4,7 +4,7 @@ created_at: "2026-07-23T00:00:00.000Z"
 updated_at: "2026-07-28T00:00:00.000Z"
 producer: rtb-publishing
 validation_rules: [book-project-v1, path-safety-v1]
-content_hash: sha256:37f81bb44e6e6ef3b6943322e690ee1bbd80b01e6bfa238f47778710cb8dcbb4
+content_hash: sha256:64bc67e6ee49414e70d12615ab68f875de1b075d731f554df228ad7bcb6681d5
 locale: en-US
 paths:
   root: assets
@@ -20,6 +20,9 @@ output_profiles:
   - id: epub-edition
     format: epub
     path: outputs/rtb-publishing-playbook.epub
+  - id: pdf-edition
+    format: pdf
+    path: outputs/rtb-publishing-playbook.pdf
 blueprint:
   id: rtb-yc-playbook-blueprint
   path: blueprint.yaml

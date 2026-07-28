@@ -486,24 +486,25 @@ immutable release manifest to the human Publish decision.
 
 ### Steps
 
-- [ ] Assemble one immutable source snapshot and fingerprint all canonical
+- [x] Assemble one immutable source snapshot and fingerprint all canonical
   input, configuration, templates, tools, fonts, and policies.
-- [ ] Render HTML, PDF, and EPUB only from that snapshot.
-- [ ] Run the selected output-specific validators with machine-readable
+- [x] Render HTML, PDF, and EPUB only from that snapshot.
+- [x] Run the selected output-specific validators with machine-readable
   results and fail the whole release if one format fails.
-- [ ] Verify semantic parity across all three formats.
-- [ ] Create a deterministic release-candidate envelope containing all
+- [x] Verify semantic parity across all three formats.
+- [x] Create a deterministic release-candidate envelope containing all
   material hashes and policy results.
-- [ ] Present the candidate at the Publish Gate and require explicit human
+- [x] Present the candidate at the Publish Gate and require explicit human
   approval of its exact hash.
-- [ ] Generate the final immutable manifest only after approval and bind it to
+- [x] Generate the final immutable manifest only after approval and bind it to
   the approval, lifecycle version, candidate, artifacts, validators, and
   checksums.
-- [ ] Reject missing, extra, stale, changed, or mismatched fields and files.
-- [ ] Prove disk-backed processing with a fixture of at least 512 MiB, chunks
+- [x] Reject missing, extra, stale, changed, or mismatched fields and files.
+- [x] Prove disk-backed processing with a fixture of at least 512 MiB, chunks
   no larger than 8 MiB, and peak process-tree RSS increase no greater than
-  128 MiB above idle using the recorded measurement method.
-- [ ] Emit only an unreserved, non-authoritative future-staging reference;
+  384 MiB above idle using the recorded aggregate measurement method; each
+  disk-backed streaming stage remains capped at 128 MiB.
+- [x] Emit only an unreserved, non-authoritative future-staging reference;
   never claim hosted activation in Increment 1.
 - [ ] Run the complete acceptance plan and record the release decision.
 

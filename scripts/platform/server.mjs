@@ -80,7 +80,7 @@ export function createRegisteredMutationServices({ workspaceFile, localFile, now
 
 export function createRegisteredLifecycleServices({ workspaceFile, localFile, now } = {}) {
   const workspace = loadEffectiveWorkspace(workspaceFile, localFile); const services = new Map();
-  for (const project of workspace.projects) if (project.id === "rtb-publishing-core" && project.source !== "local") { const book = resolveBookProject(); services.set(project.id, new LifecycleService({ root: book.legacyRoot, projectId: project.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book }), now })); }
+  for (const project of workspace.projects) if (project.id === "rtb-publishing-core" && project.source !== "local") { const book = resolveBookProject(); services.set(project.id, new LifecycleService({ root: book.legacyRoot, projectId: project.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book, approvalProjectId: project.id }), now })); services.set(book.id, new LifecycleService({ root: book.legacyRoot, projectId: book.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book }), now })); }
   return services;
 }
 
@@ -118,7 +118,16 @@ export function createPlatformServer(options = {}) {
         return json(response, 200, { operator: session.operatorId, csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability });
       }
       const index = indexService.refresh();
-      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries(index.projects.map((p) => [p.id, lifecycleServices.get(p.id)?.status() ?? { unavailable: "Lifecycle unavailable." }])) });
+      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries([...lifecycleServices].map(([id, service]) => [id, service.status()])) });
+      const betaEvidenceMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/beta-evidence$/);
+      if (request.method === "POST" && betaEvidenceMatch) {
+        const service = lifecycleServices.get(betaEvidenceMatch[1]), session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
+        if (!service?.bindingProvider?.registerBeta || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "beta_evidence_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
+        const input = await body(request); if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit confirmation is required." });
+        rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
+        const result = service.bindingProvider.registerBeta({ betaSnapshotHash: input.betaSnapshotHash, policyResultsHash: input.policyResultsHash, reviewerId: `local-operator:${session.operatorId}` });
+        return json(response, 201, result, rebootstrap);
+      }
       const gateMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/gates\/(blueprint|beta|publish)$/);
       if (request.method === "POST" && gateMatch) {
         const service = lifecycleServices.get(gateMatch[1]); const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);

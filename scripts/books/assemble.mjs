@@ -4,7 +4,7 @@ import { namespaceFootnotes } from "../book-contract.mjs";
 import { renderMermaidBlocks } from "../mermaid.mjs";
 
 /** Assemble any discovered Book Project in its declared chapter and part order. */
-export function assembleBook(project, { diagramsDirectory, renderDiagrams = true } = {}) {
+export function assembleBook(project, { diagramsDirectory, renderDiagrams = true, preRenderedDirectory = null } = {}) {
   const sections = [project.metadata.trim()];
   const parts = new Map(project.parts.map((part) => [part.id, part]));
   let lastPart = null;
@@ -18,7 +18,7 @@ export function assembleBook(project, { diagramsDirectory, renderDiagrams = true
     const source = readFileSync(chapter.sourcePath, "utf8");
     const namespaced = namespaceFootnotes(source, chapter.id);
     if (renderDiagrams) {
-      const rendered = renderMermaidBlocks(namespaced, chapter.id, diagramsDirectory, { replace: true, linkPrefix: "diagrams", format: "png" });
+      const rendered = renderMermaidBlocks(namespaced, chapter.id, diagramsDirectory, { replace: true, linkPrefix: "diagrams", format: "png", preRenderedDirectory });
       sections.push(rendered.markdown.trim());
       diagramCount += rendered.count;
     } else sections.push(namespaced.trim());

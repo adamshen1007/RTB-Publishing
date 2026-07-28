@@ -32,7 +32,7 @@ function lifecyclePanel(project, lifecycle) {
     const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
     row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
     const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
-    const action = node("button", "quiet-button", `Confirm ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version)); row.append(action); section.append(row);
+    const registerEvidence = gate === "beta" && !result?.ok, action = node("button", "quiet-button", registerEvidence ? "Register reviewed Beta evidence" : `Confirm ${label}`); action.type = "button"; action.disabled = registerEvidence ? !state.operator : !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => registerEvidence ? registerBetaEvidence(project) : confirmGate(project, gate, current.version)); row.append(action); section.append(row);
   });
   return section;
 }
@@ -62,7 +62,8 @@ function render(data) {
   state.data = data; $("#workspace-title").textContent = data.workspace.name; $("#project-count").textContent = `${data.projects.length} projects / local`;
   const indexStatus = $("#index-status"); indexStatus.textContent = data.index?.stale ? `Showing last valid index: ${data.index.error}` : `Live index generation ${data.index?.generation ?? 1}`; indexStatus.classList.toggle("warning", Boolean(data.index?.stale));
   $("#pilot-status").textContent = data.pilot ? `Pilot evidence ${data.pilot.sessions.observed}/${data.pilot.sessions.required} · ${data.pilot.decision}` : "Pilot evidence unavailable";
-  const projects = $("#projects"); projects.replaceChildren(...data.projects.map(projectCard)); renderJobs(data.jobs ?? []);
+  const known = new Set(data.projects.map((project) => project.id)); const publicationProjects = Object.keys(data.lifecycle ?? {}).filter((id) => !known.has(id)).map((id) => ({ id, name: id, stage: "publication", source: "canonical book", milestone: "Human gates", description: "Verified book candidate and human publication approvals.", signals: { researchTopics: 0, agentRuns: 0, documents: 1 }, nextAction: "Complete the named reviews, then confirm the exact lifecycle gate.", workflows: [] }));
+  const visibleProjects = [...data.projects, ...publicationProjects]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard)); renderJobs(data.jobs ?? []);
 }
 
 function showNotice(message) { const notice = $("#notice"); notice.textContent = message; notice.hidden = !message; }
@@ -96,6 +97,14 @@ async function confirmGate(project, gate, expectedVersion) {
   const result = await response.json();
   state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability;
   if (!response.ok) return showNotice(result.message); await refresh();
+}
+
+async function registerBetaEvidence(project) {
+  const betaSnapshotHash = window.prompt("Paste the 64-character SHA-256 for the reviewed Notion Beta snapshot."); if (!betaSnapshotHash) return;
+  const policyResultsHash = window.prompt("Paste the 64-character SHA-256 for its completed policy-results record."); if (!policyResultsHash || !window.confirm(`Register this exact Beta evidence as ${state.operator}?`)) return;
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-evidence`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, betaSnapshotHash, policyResultsHash }) });
+  const result = await response.json(); state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability;
+  if (!response.ok) return showNotice(result.message); showNotice("Beta evidence registered. Review the now-ready Beta gate before confirming it."); await refresh();
 }
 
 async function bootstrapOperator() {
