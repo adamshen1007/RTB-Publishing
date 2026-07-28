@@ -1,0 +1,59 @@
+id: rtb-yc-playbook-blueprint
+schema_version: "1"
+created_at: "2026-07-23T00:00:00.000Z"
+updated_at: "2026-07-28T00:00:00.000Z"
+producer: rtb-publishing
+validation_rules: [book-blueprint-v1, stable-chapter-ids-v1]
+content_hash: sha256:ed406e7abbcd9090d06cfd01b2f233a3149f62a34e4677170beb576c7a7b88a8
+project_id: rtb-yc-playbook
+reader:
+  description: First-time AI founders making evidence-backed startup decisions.
+  locale: en-US
+promised_outcome: A practical operating rhythm for moving from an uncertain problem to evidence-backed action.
+scope:
+  included: [startup decisions, research, product, traction, operations]
+  excluded: [guaranteed funding, legal advice]
+thesis: Founders make better choices when each decision is bound to evidence, an owner, and a review date.
+source_policy:
+  allowed_tiers: [primary, secondary, manual]
+  rights_requirement: required
+  freshness_days: 3650
+budgets:
+  research_items: 200
+  provider_cost_usd: 0
+provider_egress_policy:
+  classification: local-only
+  allowed_providers: []
+parts:
+  - { id: yc-part-01, title: Choose the Right Problem, order: 1 }
+  - { id: yc-part-02, title: Find Evidence Before Scale, order: 2 }
+  - { id: yc-part-03, title: Build the Smallest Useful Product, order: 3 }
+  - { id: yc-part-04, title: Earn Early Traction, order: 4 }
+  - { id: yc-part-05, title: Operate the Company, order: 5 }
+  - { id: yc-part-06, title: Put the System into Practice, order: 6 }
+chapter_contracts:
+  - { id: yc-chapter-01, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:3c04f17cd90a61fd6928e4c94cc98fa2d2ff4363b4c68fd6df2d70bfff7cc199, title: Why Startups Win, order: 1, part_id: yc-part-01, source_path: chapters/01-why-startups-win.md, reader_decision: Adopt an evidence-led startup loop, required_output: First learning loop }
+  - { id: yc-chapter-02, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:1d8d3c6afbb24a94a1dfc8847932aecde5ee8eae21ed777e13093905a209e62e, title: Should You Start This Company, order: 2, part_id: yc-part-01, source_path: chapters/02-should-you-start-this-company.md, reader_decision: Decide whether to start, required_output: Readiness note }
+  - { id: yc-chapter-03, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:1b4e3ac9396bee6a081afd1091bf6daefae744e24a8cac5701356645cd41c6a8, title: Choose a Real Problem, order: 3, part_id: yc-part-01, source_path: chapters/03-choose-a-real-problem.md, reader_decision: Select a problem, required_output: Problem statement }
+  - { id: yc-chapter-04, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:0982b4b8ea0f73c6cfe053bf83bdcef13a14f7ca75f11c21dba325b0c72f78d0, title: Define Riskiest Assumptions, order: 4, part_id: yc-part-01, source_path: chapters/04-define-riskiest-assumptions.md, reader_decision: Choose a risk, required_output: Assumption map }
+  - { id: yc-chapter-05, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:a38630628ef83325f11bcc27324b8a0cb009d66084d4a16112452d920412efc5, title: Talk to Users, order: 5, part_id: yc-part-02, source_path: chapters/05-talk-to-users.md, reader_decision: Interview users, required_output: Interview plan }
+  - { id: yc-chapter-06, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:844b353cfaf6b888fa71c400911f024a3e4a4378e7879abe6c8aad59ad125e86, title: Evaluate the Market, order: 6, part_id: yc-part-02, source_path: chapters/06-evaluate-the-market.md, reader_decision: Evaluate market, required_output: Market estimate }
+  - { id: yc-chapter-07, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:f6540bff856ee9c5f5d163fe3a96d53bf0d97411245eba268c47c5edf6883056, title: Find a Focused Wedge, order: 7, part_id: yc-part-02, source_path: chapters/07-find-a-focused-wedge.md, reader_decision: Select wedge, required_output: Customer profile }
+  - { id: yc-chapter-08, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:e03c152e92fcceca2ee2f40ac03f8d06487707128d4ca6cee72af28701a11002, title: Decide Go Change or Stop, order: 8, part_id: yc-part-02, source_path: chapters/08-go-change-or-stop.md, reader_decision: Choose direction, required_output: Decision record }
+  - { id: yc-chapter-09, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:ae7ed435a7408a4b16fa59c980f57f08678f33394923ff1cf56af10e7f341c03, title: Smallest Useful Product, order: 9, part_id: yc-part-03, source_path: chapters/09-smallest-useful-product.md, reader_decision: Define product, required_output: Product test }
+  - { id: yc-chapter-10, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:7b43b2a115e098a18523fc5054608d972dd6d05c10ee0f835091e232fb14c0db, title: Founder Learning Loop, order: 10, part_id: yc-part-03, source_path: chapters/10-founder-learning-loop.md, reader_decision: Set cycle, required_output: Learning plan }
+  - { id: yc-chapter-11, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:b6c0f422cead0fbdf6b45682e681126bd11dbbc3b8b83dc2f787b30b7ee2baf3, title: AI Without Losing Judgment, order: 11, part_id: yc-part-03, source_path: chapters/11-ai-without-losing-judgment.md, reader_decision: Assign roles, required_output: Responsibility map }
+  - { id: yc-chapter-12, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:692421aa9eafb9d68c45be0fc02baa849cc4b7efe05e410ec9d78c62bff8e772, title: AI Risk Cost and Reliability, order: 12, part_id: yc-part-03, source_path: chapters/12-ai-risk-cost-reliability.md, reader_decision: Set limits, required_output: Release scorecard }
+  - { id: yc-chapter-13, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:63fe631e1996355c57e6bf2bd1b636a06b4a152148a87880801d8f7759048960, title: Win First Users, order: 13, part_id: yc-part-04, source_path: chapters/13-win-first-users.md, reader_decision: Choose outreach, required_output: Outreach plan }
+  - { id: yc-chapter-14, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:f94e120c6147d8466c9d18e3d8fcdc86abd1ccb8ae01e2747aba201d181fc8e8, title: Measure Behavior, order: 14, part_id: yc-part-04, source_path: chapters/14-measure-behavior.md, reader_decision: Define behavior, required_output: Evidence plan }
+  - { id: yc-chapter-15, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:56e2616ce9bb2c869770c0aaadf69b4a81df0de55aa173dac2b79bd0cad2dbde, title: Learn from Retention, order: 15, part_id: yc-part-04, source_path: chapters/15-early-retention.md, reader_decision: Review retention, required_output: Cohort review }
+  - { id: yc-chapter-16, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:f06e4068807c2de0619ab90ce1c5106cc7126932a86e8b313f7fbb47e41e7760, title: What to Build Next, order: 16, part_id: yc-part-04, source_path: chapters/16-what-to-build-next.md, reader_decision: Prioritize, required_output: Decision queue }
+  - { id: yc-chapter-17, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:7ece4c21480a2dc4db0eaff563debb5d4a745d5223ed29dfb48de1b483021dc0, title: Weekly Founder Cadence, order: 17, part_id: yc-part-05, source_path: chapters/17-weekly-founder-cadence.md, reader_decision: Establish cadence, required_output: Operating page }
+  - { id: yc-chapter-18, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:1cb5a75f78c5a5f9b2d1896e8ab1c5bd7300f732f43ec9874736ac04bd78d302, title: Runway and Priorities, order: 18, part_id: yc-part-05, source_path: chapters/18-runway-and-priorities.md, reader_decision: Protect runway, required_output: Runway sheet }
+  - { id: yc-chapter-19, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:ef437f806e4e489de1f4a76e6347fd0a41fafc17a99bddc2a4d8f01f3bb83aed, title: Co-founders and Teams, order: 19, part_id: yc-part-05, source_path: chapters/19-co-founders-and-teams.md, reader_decision: Clarify ownership, required_output: Working agreement }
+  - { id: yc-chapter-20, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:3317e6cc29a45c7d2f4f657e98900a92c1edee3f8fc29e58aba53528bf171595, title: Fundraising Choice, order: 20, part_id: yc-part-05, source_path: chapters/20-fundraising-choice.md, reader_decision: Make funding choice, required_output: Funding memo }
+  - { id: yc-chapter-21, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:b427454875f6177989dd1d9838186c239dc7dfb2967c2c2071c4abbd94ef76c3, title: First 30 Days, order: 21, part_id: yc-part-06, source_path: chapters/21-first-30-days.md, reader_decision: Sequence a month, required_output: Action calendar }
+  - { id: yc-chapter-22, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:d46279895ec9c1e95f837efa32aff370fc444fe94311699eb6229ea4dd52dd07, title: First 90 Days, order: 22, part_id: yc-part-06, source_path: chapters/22-first-90-days.md, reader_decision: Set milestones, required_output: Milestone map }
+  - { id: yc-chapter-23, schema_version: "1", created_at: "2026-07-23T00:00:00.000Z", updated_at: "2026-07-28T00:00:00.000Z", producer: rtb-publishing, validation_rules: [chapter-v1], content_hash: sha256:da57d91088d07f74246003010aa3e9e6ba537195b3377a76743e321c28d796bc, title: Founder Operating System, order: 23, part_id: yc-part-06, source_path: chapters/23-founder-operating-system.md, reader_decision: Keep records, required_output: Founder OS }
+materiality_rules:
+  fields_requiring_reapproval: [reader, promised_outcome, scope, thesis, chapter_contracts]

@@ -1,0 +1,12 @@
+id: guide-francais
+schema_version: "1"
+created_at: "2026-01-01T00:00:00.000Z"
+updated_at: "2026-01-02T00:00:00.000Z"
+producer: fixture-author
+validation_rules: [book-project-v1]
+content_hash: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+locale: fr-FR
+paths: { root: assets, metadata: book.md, chapters: chapters, assets: assets }
+output_profiles: [{ id: epub-edition, format: epub, path: outputs/livre.epub }, { id: pdf-edition, format: pdf, path: outputs/livre.pdf }]
+blueprint: { id: guide-francais-blueprint, path: blueprint.yaml, content_hash: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee }
+lifecycle: { id: guide-francais-lifecycle, path: lifecycle.yaml }

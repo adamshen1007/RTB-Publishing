@@ -11,6 +11,8 @@ import { assertRepositoryPath } from "../scripts/generator/paths.mjs";
 import { runResearchCommand } from "../scripts/research/cli.mjs";
 import { runAgentCommand } from "../scripts/agents/cli.mjs";
 import { runPlatformCommand } from "../scripts/platform/cli.mjs";
+import { validateFile } from "../scripts/books/model.mjs";
+import { migrateFileDryRun } from "../scripts/books/migrations.mjs";
 
 const HELP = `RTB Publishing Engineering Kit Generator
 
@@ -22,6 +24,8 @@ Usage:
   rtb-publishing research <command> [options]
   rtb-publishing agent <list|doctor|run|status|review|apply|validate> [options]
   rtb-publishing platform <doctor|index|start|project|root|backup> [options]
+  rtb-publishing books validate <record> [--root <directory>]
+  rtb-publishing books migrate <record> --dry-run [--root <directory>]
 
 Create options:
   --name <text>          Project name
@@ -126,6 +130,28 @@ function doctorCommand() {
   if (failed) throw new Error("RTB Publishing doctor found setup problems.");
 }
 
+function printDiagnostics(diagnostics) {
+  for (const item of diagnostics) console.error(`✗ ${item.field}: problem: ${item.problem}; cause: ${item.cause}; repair: ${item.repair}`);
+}
+
+function booksCommand(args, options) {
+  const [subcommand, file] = args;
+  if (!file || !["validate", "migrate"].includes(subcommand)) throw new Error("books requires validate <record> or migrate <record> --dry-run");
+  const absoluteFile = resolve(file);
+  const root = resolve(options.root ?? dirname(absoluteFile));
+  if (subcommand === "validate") {
+    const result = validateFile(absoluteFile, { root });
+    if (!result.valid) { printDiagnostics(result.diagnostics); process.exitCode = 1; return; }
+    console.log(`✓ Valid ${result.recordType}: ${absoluteFile}`);
+    return;
+  }
+  if (!options["dry-run"]) throw new Error("books migrate only supports --dry-run; applying migrations requires the WP95 authorized mutation service");
+  const result = migrateFileDryRun(absoluteFile, { root });
+  if (options.json) console.log(JSON.stringify(result.report, null, 2));
+  else console.log(`${result.report.status === "blocked" ? "✗" : "✓"} Dry-run ${result.report.status}: ${result.report.input_hash} -> ${result.report.output_hash}`);
+  if (result.diagnostics.length) { printDiagnostics(result.diagnostics); process.exitCode = 1; }
+}
+
 async function main() {
   const { positionals, options } = parseArguments(process.argv.slice(2));
   const [command, subject] = positionals;
@@ -133,6 +159,7 @@ async function main() {
   if (command === "research") return runResearchCommand(positionals.slice(1), options);
   if (command === "agent") return runAgentCommand(positionals.slice(1), options);
   if (command === "platform") return runPlatformCommand(positionals.slice(1), options);
+  if (command === "books") return booksCommand(positionals.slice(1), options);
   if (command === "create") return createCommand(subject, options);
   if (command === "validate") return validateCommand(subject ?? DEFAULT_MANIFEST);
   if (command === "generate") {

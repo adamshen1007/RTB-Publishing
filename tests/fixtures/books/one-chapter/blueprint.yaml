@@ -1,0 +1,19 @@
+id: concise-guide-blueprint
+schema_version: "1"
+created_at: "2026-01-01T00:00:00.000Z"
+updated_at: "2026-01-01T00:00:00.000Z"
+producer: fixture-author
+validation_rules: [book-blueprint-v1]
+content_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+project_id: concise-guide
+reader: { description: A new reader, locale: en-US }
+promised_outcome: Make one useful decision.
+scope: { included: [decision], excluded: [] }
+thesis: Small books can still deliver a complete outcome.
+source_policy: { allowed_tiers: [primary], rights_requirement: required, freshness_days: 30 }
+budgets: { research_items: 5, provider_cost_usd: 0 }
+provider_egress_policy: { classification: local-only, allowed_providers: [] }
+parts: [{ id: concise-part-one, title: Start, order: 1 }]
+chapter_contracts:
+  - { id: concise-chapter-one, schema_version: "1", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", producer: fixture-author, validation_rules: [chapter-v1], content_hash: sha256:12442db336c4ffa46525044d6e8ad4addd85359bea060b780b62470d458375df, title: Start, order: 1, part_id: concise-part-one, source_path: chapters/start.md, reader_decision: Start now, required_output: Decision }
+materiality_rules: { fields_requiring_reapproval: [thesis] }

@@ -5,8 +5,10 @@ import { BOOK_DIR, BOOK_DIST_DIR, BOOK_OUTPUT_NAME, BUILD_DIR, ROOT, run } from 
 import { renderMermaidBlocks } from "./mermaid.mjs";
 import { verifyOutputs } from "./verify-outputs.mjs";
 import { namespaceFootnotes } from "./book-contract.mjs";
+import { throwForInvalidLegacyBookProject } from "./books/compat.mjs";
 
 const metadataFile = resolve(BOOK_DIR, "book.md");
+throwForInvalidLegacyBookProject(BOOK_DIR);
 const chaptersDirectory = resolve(BOOK_DIR, "chapters");
 const buildDirectory = resolve(BUILD_DIR, "books", "volume-01-yc-playbook");
 const diagramsDirectory = resolve(buildDirectory, "diagrams");
