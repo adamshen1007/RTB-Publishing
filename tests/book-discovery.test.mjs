@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
@@ -50,6 +50,19 @@ test("MIG-002: empty, duplicate, and cyclic/symlink workspaces fail safely", () 
     symlinkSync(root, resolve(root, "one", "cycle"));
     assert.equal(discoverBooks(root).length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MIG-002: inaccessible directories fail with confined repair guidance when permissions are enforceable", (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-discovery-eacces-")); const denied = resolve(root, "denied");
+  mkdirSync(denied);
+  try {
+    chmodSync(denied, 0o000);
+    let failure;
+    try { discoverBooks(root); } catch (error) { failure = error; }
+    if (!failure) return t.skip("platform or effective user can read chmod(000) directories; EACCES is not enforceable here");
+    assert.match(failure.message, /^problem: inaccessible directory; cause: EACCES; repair:/);
+    assert.doesNotMatch(failure.message, /\.\.(?:\/|$)/);
+  } finally { chmodSync(denied, 0o700); rmSync(root, { recursive: true, force: true }); }
 });
 
 test("MIG-002: discovery pins the current immutable root instead of mixing legacy files", () => {

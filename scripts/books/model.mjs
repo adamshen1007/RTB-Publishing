@@ -224,7 +224,10 @@ export function validateRecord(recordType, record, { root, checkPaths = false } 
 export function discoverBookProjects(root) {
   const discovered = [];
   function visit(directory) {
-    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    let entries;
+    try { entries = readdirSync(directory, { withFileTypes: true }); }
+    catch (error) { throw new Error(`problem: inaccessible directory; cause: ${error.code ?? error.message}; repair: restore read permission or remove the inaccessible path from the discovery workspace`); }
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const target = resolve(directory, entry.name);
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) visit(target);
