@@ -26,6 +26,11 @@ and EPUB; classify every finding; record resolutions and a decision here. This
 review neither claims accessibility conformance nor approves legal or rights
 status.
 
+WP96 now provides the pipeline HTML and EPUB inputs. The required PDF review
+artifacts remain a WP98 integration dependency because this project does not
+yet declare or render a PDF output profile. No PDF review is implied or
+approved until that integration produces hash-addressed artifacts.
+
 | Reviewer | Date | Pages / formats compared | Findings | Decision |
 | --- | --- | --- | --- | --- |
 | _Awaiting assigned human reviewer_ | _—_ | _—_ | _—_ | `awaiting-human-review` |

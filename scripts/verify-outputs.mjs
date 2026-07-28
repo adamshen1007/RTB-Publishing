@@ -7,6 +7,28 @@ import { resolveBookProject } from "./books/discovery.mjs";
 import { DIST_DIR } from "./lib.mjs";
 
 function escaped(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+const normalizeText = (value) => value.replace(/<[^>]+>/g, " ").replace(/&(?:mdash|#8212);/g, "—").replace(/\s+/g, " ").trim();
+
+/** Verify rendered chapter headings and their generated anchors without assuming Blueprint display titles. */
+export function verifyHtmlChapterAnchors(html, chapters) {
+  const headings = [...html.matchAll(/<h1\b([^>]*)>([\s\S]*?)<\/h1>/gi)].map((match) => ({ id: match[1].match(/\bid="([^"]+)"/i)?.[1], title: normalizeText(match[2]) }));
+  const expectedTitles = new Map(chapters.map((chapter) => [chapter.id, readFileSync(chapter.sourcePath, "utf8").match(/^#\s+(.+)$/m)?.[1]?.trim()]));
+  const chapterHeadings = headings.filter((heading) => [...expectedTitles.values()].includes(heading.title));
+  const ids = new Set(); const failures = [];
+  for (const heading of chapterHeadings) {
+    if (!heading.id) failures.push(`HTML H1 is missing an anchor: ${heading.title}`);
+    else if (ids.has(heading.id)) failures.push(`HTML chapter anchor is duplicated: ${heading.id}`);
+    else ids.add(heading.id);
+  }
+  for (const chapter of chapters) {
+    const title = expectedTitles.get(chapter.id);
+    if (!title) { failures.push(`${chapter.id}: canonical source has no H1 chapter heading`); continue; }
+    const heading = headings.find((item) => item.title === title);
+    if (!heading?.id) failures.push(`${chapter.id}: rendered HTML lacks anchored canonical heading: ${title}`);
+    else if (!new RegExp(`href="#${escaped(heading.id)}"`, "i").test(html)) failures.push(`${chapter.id}: chapter anchor is not navigable from HTML navigation`);
+  }
+  return failures;
+}
 
 export function verifyOutputs(project, { outputRoot = resolve(DIST_DIR, "books") } = {}) {
   const metadata = bookMetadata(project.metadata);
@@ -22,7 +44,7 @@ export function verifyOutputs(project, { outputRoot = resolve(DIST_DIR, "books")
       const html = content.toString("utf8");
       if (!new RegExp(`<title>[^<]*${escaped(metadata.title)}[^<]*<\\/title>`, "i").test(html)) failures.push(`${output.file} does not contain the canonical document title.`);
       if (!new RegExp(escaped(metadata.version), "i").test(html) || !new RegExp(escaped(metadata.status), "i").test(html)) failures.push(`${output.file} does not display canonical metadata.`);
-      for (const chapter of project.chapters) if (!html.includes(chapter.title)) failures.push(`${output.file} does not contain declared chapter ${chapter.id}.`);
+      failures.push(...verifyHtmlChapterAnchors(html, project.chapters).map((failure) => `${output.file}: ${failure}`));
     }
   }
   if (failures.length) throw new Error(failures.join("\n"));
