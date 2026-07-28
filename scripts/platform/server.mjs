@@ -3,13 +3,16 @@ import { readFileSync } from "node:fs";
 import { extname, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { PLATFORM_WEB_DIRECTORY, LOOPBACK_HOSTS } from "./constants.mjs";
+import { ROOT } from "../lib.mjs";
 import { agentRunDetail, WorkspaceIndex, researchDetail } from "./indexer.mjs";
 import { JobManager } from "./jobs.mjs";
 import { safePlatformPath } from "./security.mjs";
 import { pilotStatus } from "./operations.mjs";
+import { loadEffectiveWorkspace } from "./local-state.mjs";
+import { MutationService } from "../state/mutation-journal.mjs";
 
 const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
-const json = (response, status, body) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" }); response.end(JSON.stringify(body)); };
+const json = (response, status, body, headers = {}) => { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers }); response.end(JSON.stringify(body)); };
 const validOrigin = (origin) => !origin || /^http:\/\/(127\.0\.0\.1|\[::1\]|localhost)(:\d+)?$/.test(origin);
 
 async function body(request, maximumBytes = 10000) {
@@ -23,7 +26,16 @@ async function body(request, maximumBytes = 10000) {
 
 const exactJson = (contentType) => contentType === "application/json";
 const loopbackHost = (host) => /^(?:127\.0\.0\.1|localhost)(?::\d+)?$|^\[::1\](?::\d+)?$/.test(host ?? "");
-const mutationOrigin = (origin, host) => Boolean(origin) && loopbackHost(host) && origin === `http://${host}`;
+const loopbackAddress = (address) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+const cookies = (request) => Object.fromEntries((request.headers.cookie ?? "").split(";").map((part) => part.trim().split("=", 2)).filter(([key, value]) => key && value));
+
+export class LocalSessionManager {
+  constructor({ now = () => Date.now(), ttlMs = 5 * 60 * 1000 } = {}) { this.now = now; this.ttlMs = ttlMs; this.sessions = new Map(); }
+  issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
+  authorize(id, csrfToken, capability) { const session = this.sessions.get(id); if (!session || session.expiresAt <= this.now() || session.csrfToken !== csrfToken || session.capability !== capability) return null; return session; }
+  rotate(id) { const session = this.sessions.get(id); if (!session || session.expiresAt <= this.now()) return null; session.csrfToken = randomBytes(24).toString("hex"); session.capability = randomBytes(24).toString("hex"); session.expiresAt = this.now() + this.ttlMs; return session; }
+  cookie(session) { return `rtb_session=${session.id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.ttlMs / 1000)}`; }
+}
 
 function mutationServiceFor(options, projectId) {
   if (options.mutationService?.projectId === projectId) return options.mutationService;
@@ -31,11 +43,27 @@ function mutationServiceFor(options, projectId) {
   return options.mutationServices?.[projectId];
 }
 
+const registeredPolicies = {
+  "rtb-publishing-core": { registeredRoot: ROOT, root: resolve(ROOT, "books/volume-01-yc-playbook"), paths: ["chapters/*.md", "worksheets/*.md"] }
+};
+
+/** Only committed registered projects with a reviewed policy gain a writer. */
+export function createRegisteredMutationServices({ workspaceFile, localFile, now } = {}) {
+  const workspace = loadEffectiveWorkspace(workspaceFile, localFile);
+  const services = new Map();
+  for (const project of workspace.projects) {
+    const policy = registeredPolicies[project.id];
+    if (!policy || project.source === "local" || project.kind !== "repository" || resolve(ROOT, project.path) !== policy.registeredRoot) continue;
+    services.set(project.id, new MutationService({ root: policy.root, projectId: project.id, allowedPaths: policy.paths, now }));
+  }
+  return services;
+}
+
 export function createPlatformServer(options = {}) {
   const indexService = options.indexService ?? (options.index ? { refresh: () => options.index } : new WorkspaceIndex({ file: options.workspaceFile, localFile: options.localFile }));
   const jobs = options.jobs ?? new JobManager(options.jobOptions);
   const csrfToken = options.csrfToken ?? randomBytes(24).toString("hex");
-  const mutationCapability = options.mutationCapability ?? randomBytes(24).toString("hex");
+  const sessions = options.sessions ?? new LocalSessionManager({ now: options.now, ttlMs: options.sessionTtlMs });
   const requests = new Map();
   const server = createHttpServer(async (request, response) => {
     try {
@@ -46,7 +74,14 @@ export function createPlatformServer(options = {}) {
       requests.set(rateKey, count);
       if (count > 120) return json(response, 429, { error: "rate_limit", message: "Too many local requests; wait one minute." });
       const url = new URL(request.url, "http://localhost");
-      if (request.method === "GET" && url.pathname === "/api/session") return json(response, 200, { csrfToken });
+      const addressInfo = server.address();
+      const listenerHost = addressInfo && typeof addressInfo !== "string" ? `${addressInfo.family === "IPv6" ? `[${addressInfo.address}]` : addressInfo.address}:${addressInfo.port}` : null;
+      const sameListener = Boolean(listenerHost) && request.headers.host === listenerHost && loopbackAddress(request.socket.remoteAddress);
+      if (request.method === "GET" && url.pathname === "/api/session") {
+        if (!sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Local sessions require the direct listener origin." });
+        const session = sessions.issue();
+        return json(response, 200, { csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "set-cookie": sessions.cookie(session) });
+      }
       const index = indexService.refresh();
       if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot() });
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
@@ -60,20 +95,22 @@ export function createPlatformServer(options = {}) {
       if (request.method === "POST" && mutationMatch) {
         const service = mutationServiceFor(options, mutationMatch[1]);
         const host = request.headers.host;
-        const capability = request.headers["x-rtb-publishing-capability"];
+        const session = sessions.authorize(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service) return json(response, 403, { error: "mutation_denied", message: "This project has no approved local mutation service." });
-        if (url.search || !loopbackHost(host) || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Mutation requests must use the direct loopback origin." });
+        if (url.search || !sameListener || !loopbackHost(host) || request.headers["x-forwarded-host"] || request.headers.forwarded) return json(response, 400, { error: "local_boundary", message: "Mutation requests must use the direct loopback origin." });
         if (!exactJson(request.headers["content-type"])) return json(response, 415, { error: "content_type", message: "Mutation requests require exact application/json." });
-        if (!mutationOrigin(request.headers.origin, host) || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "origin", message: "Mutation requests require the configured same origin." });
-        if (request.headers["x-rtb-publishing-csrf"] !== csrfToken || capability !== mutationCapability) return json(response, 403, { error: "mutation_auth", message: "Refresh the local session before submitting a mutation." });
-        const sessionKey = `${capability}:${mutationMatch[1]}:${minute}`;
+        if (request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "origin", message: "Mutation requests require the configured same origin." });
+        if (!session) return json(response, 403, { error: "mutation_auth", message: "Refresh the local session before submitting a mutation." });
+        const sessionKey = `${session.id}:${mutationMatch[1]}:${minute}`;
         const sessionCount = (requests.get(sessionKey) ?? 0) + 1;
         requests.set(sessionKey, sessionCount);
         if (sessionCount > 20) return json(response, 429, { error: "rate_limit", message: "Too many mutation requests; wait one minute." });
         const input = await body(request, 256 * 1024);
         if (input.command !== "replace_files" || input.projectId !== mutationMatch[1]) return json(response, 403, { error: "mutation_denied", message: "Only the approved replace-files command is available for this project." });
+        if (!Array.isArray(input.files) || input.files.some((file) => !service.allowsPath(file?.path))) return json(response, 403, { error: "path_denied", message: "This action cannot change that file." });
         const result = await service.execute(input);
-        return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result);
+        const nextSession = sessions.rotate(session.id);
+        return json(response, result.state === "succeeded" ? 200 : result.state === "conflict" ? 409 : 400, result, nextSession ? { "x-rtb-publishing-next-csrf": nextSession.csrfToken, "x-rtb-publishing-next-capability": nextSession.capability } : {});
       }
       const workflowMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/workflows\/([a-z-]+)$/);
       if (request.method === "POST" && workflowMatch) {
@@ -103,16 +140,16 @@ export function createPlatformServer(options = {}) {
         return response.end(readFileSync(file.absolute));
       }
       return json(response, 404, { error: "not_found", message: "Route not found." });
-    } catch (error) {
-      return json(response, 400, { error: "request_failed", message: error.message });
+    } catch {
+      return json(response, 400, { error: "request_failed", message: "Request could not be processed safely." });
     }
   });
-  return { server, csrfToken, indexService, jobs };
+  return { server, csrfToken, indexService, jobs, sessions, mutationServices: options.mutationServices };
 }
 
-export async function startPlatform({ host = "127.0.0.1", port = 4310 } = {}) {
+export async function startPlatform({ host = "127.0.0.1", port = 4310, ...options } = {}) {
   if (!LOOPBACK_HOSTS.has(host)) throw new Error("M5A is local-only; host must be 127.0.0.1 or ::1.");
-  const platform = createPlatformServer();
+  const platform = createPlatformServer({ ...options, mutationServices: options.mutationServices ?? createRegisteredMutationServices({ workspaceFile: options.workspaceFile, localFile: options.localFile, now: options.now }) });
   await new Promise((resolvePromise, reject) => platform.server.once("error", reject).listen(port, host, resolvePromise));
   return platform;
 }

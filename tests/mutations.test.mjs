@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { MutationService, InjectedMutationCrash } from "../scripts/state/mutation-journal.mjs";
-import { sha256, snapshotRoot } from "../scripts/state/snapshots.mjs";
-import { createPlatformServer } from "../scripts/platform/server.mjs";
+import { sha256, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
+import { openStateDatabase } from "../scripts/state/database.mjs";
+import { LocalSessionManager, createPlatformServer, startPlatform } from "../scripts/platform/server.mjs";
 
 function fixture() {
   const root = mkdtempSync(resolve(tmpdir(), "rtb-mutations-"));
   writeFileSync(resolve(root, "chapter.md"), "before\n");
   writeFileSync(resolve(root, "worksheet.md"), "before worksheet\n");
-  const service = new MutationService({ root, projectId: "fixture-book" });
+  const service = new MutationService({ root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
   return { root, service, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 function command(service, changes, id = "MUT-TEST-001") {
@@ -51,6 +53,37 @@ test("MUT-002 readers resolve a complete old or new snapshot, never a mixed tree
   } finally { item.dispose(); }
 });
 
+test("a pinned multi-file reader keeps one root across a concurrent publication", async () => {
+  const item = fixture();
+  try {
+    const reader = item.service.openReader();
+    const writer = item.service.execute(command(item.service, [{ path: "chapter.md", content: "after\n" }, { path: "worksheet.md", content: "after worksheet\n" }], "MUT-READER-001"));
+    await writer;
+    const pinned = reader.readFiles(["chapter.md", "worksheet.md"]);
+    assert.equal(pinned[0].snapshotHash, pinned[1].snapshotHash);
+    assert.deepEqual(pinned.map((entry) => entry.content), ["before\n", "before worksheet\n"]);
+    assert.deepEqual(item.service.readFiles(["chapter.md", "worksheet.md"]).map((entry) => entry.content), ["after\n", "after worksheet\n"]);
+  } finally { item.dispose(); }
+});
+
+test("canonical snapshots exclude Git, state, generated, and secret material", () => {
+  const item = fixture();
+  try {
+    writeFileSync(resolve(item.root, ".git"), "gitdir: ignored\n");
+    writeFileSync(resolve(item.root, ".env"), "TOKEN=secret\n");
+    writeFileSync(resolve(item.root, "private.pem"), "secret-key\n");
+    mkdirSync(resolve(item.root, "dist")); writeFileSync(resolve(item.root, "dist", "output.html"), "generated\n");
+    writeFileSync(resolve(item.root, "README.md"), "canonical markdown\n");
+    const pointer = item.service.current();
+    const snapshot = snapshotRoot(item.root, pointer.snapshotHash);
+    assert.equal(existsSync(resolve(snapshot, ".git")), false);
+    assert.equal(existsSync(resolve(snapshot, ".env")), false);
+    assert.equal(existsSync(resolve(snapshot, "private.pem")), false);
+    assert.equal(existsSync(resolve(snapshot, "dist")), false);
+    assert.equal(readFileSync(resolve(snapshot, "README.md"), "utf8"), "canonical markdown\n");
+  } finally { item.dispose(); }
+});
+
 test("MUT-003/MUT-004 preserve a proposed immutable snapshot for stale hashes and lifecycle", async () => {
   const item = fixture();
   try {
@@ -79,20 +112,37 @@ test("MUT-005/MUT-006 concurrent writers serialize and command replay has no dup
   } finally { item.dispose(); }
 });
 
-for (const phase of ["before_intent", "intent_durable", "snapshot_prepared", "pointer_published", "state_committed"]) {
+for (const phase of ["before_intent", "intent_durable", "snapshot_prepared", "pointer_publish_pending", "after_pointer_write", "pointer_published", "state_committed"]) {
   test(`MUT crash recovery is deterministic after ${phase}`, async () => {
     const item = fixture();
     try {
-      const crashing = new MutationService({ root: item.root, projectId: "fixture-book", crashAt: phase });
+      const crashing = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"], crashAt: phase });
       const before = crashing.current();
       await assert.rejects(() => crashing.execute(command(crashing, [{ path: "chapter.md", content: `${phase}\n` }], `MUT-CRASH-${phase.replaceAll("_", "-").toUpperCase()}`)), InjectedMutationCrash);
-      const recovered = new MutationService({ root: item.root, projectId: "fixture-book" });
+      const recovered = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
       await recovered.recover();
       if (phase === "state_committed") assert.equal(recovered.read("chapter.md").content, `${phase}\n`);
       else assert.equal(recovered.current().snapshotHash, before.snapshotHash);
     } finally { item.dispose(); }
   });
 }
+
+test("P0 recovery restores a next pointer left beside a snapshot_prepared journal", async () => {
+  const item = fixture();
+  try {
+    const crashing = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"], crashAt: "snapshot_prepared" });
+    const prior = crashing.current();
+    await assert.rejects(() => crashing.execute(command(crashing, [{ path: "chapter.md", content: "prepared\n" }], "MUT-CRASH-PREPARED-POINTER")), InjectedMutationCrash);
+    const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+    const row = database.prepare("SELECT next_snapshot_hash FROM mutation_journal WHERE command_id = ?").get("MUT-CRASH-PREPARED-POINTER");
+    writePointer(item.root, { expected: prior, nextSnapshotHash: row.next_snapshot_hash, nextVersion: prior.version + 1 });
+    database.close();
+    const recovered = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
+    await recovered.recover();
+    assert.equal(recovered.current().snapshotHash, prior.snapshotHash);
+    assert.equal(recovered.read("chapter.md").content, "before\n");
+  } finally { item.dispose(); }
+});
 
 test("MUT-012 blocks unsafe links and stale guarded commits without publishing a new root", async () => {
   const item = fixture();
@@ -103,9 +153,10 @@ test("MUT-012 blocks unsafe links and stale guarded commits without publishing a
     await assert.rejects(() => item.service.execute(unsafe), /schema validation|path/i);
     const link = resolve(item.root, "link.md"); symlinkSync(resolve(item.root, "chapter.md"), link);
     const linked = { ...unsafe, id: "MUT-TEST-007", files: [{ path: "link.md", content: "x\n", expectedHash: sha256("before\n") }] };
-    await assert.rejects(() => item.service.execute(linked), /symbolic link|schema/i);
+    const linkService = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md", "link.md"] });
+    await assert.rejects(() => linkService.execute(linked), /symbolic link|schema/i);
     rmSync(link, { force: true });
-    const fenced = new MutationService({ root: item.root, projectId: "fixture-book", beforeStateCommit: (database) => database.prepare("UPDATE lifecycle_state SET version = 1 WHERE project_id = ?").run("fixture-book") });
+    const fenced = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"], beforeStateCommit: (database) => database.prepare("UPDATE lifecycle_state SET version = 1 WHERE project_id = ?").run("fixture-book") });
     const failed = await fenced.execute(command(fenced, [{ path: "chapter.md", content: "fenced\n" }], "MUT-TEST-008"));
     assert.equal(failed.state, "failed");
     assert.equal(fenced.current().snapshotHash, pointer.snapshotHash);
@@ -120,7 +171,7 @@ test("MUT-013 rebuilds derived SQLite state without changing canonical snapshots
     rmSync(resolve(item.root, ".rtb-state", "state.sqlite"), { force: true });
     rmSync(resolve(item.root, ".rtb-state", "state.sqlite-wal"), { force: true });
     rmSync(resolve(item.root, ".rtb-state", "state.sqlite-shm"), { force: true });
-    const rebuilt = new MutationService({ root: item.root, projectId: "fixture-book" });
+    const rebuilt = new MutationService({ root: item.root, projectId: "fixture-book", allowedPaths: ["chapter.md", "worksheet.md"] });
     assert.equal(rebuilt.current().snapshotHash, pointer.snapshotHash);
     assert.equal(rebuilt.read("chapter.md").content, "durable\n");
     await rebuilt.recover();
@@ -130,28 +181,68 @@ test("MUT-013 rebuilds derived SQLite state without changing canonical snapshots
 
 test("SEC-001/002/003/006 mutation HTTP boundary has one fixed command and rejects hostile input", async () => {
   const item = fixture();
-  const platform = createPlatformServer({ mutationService: item.service, csrfToken: "csrf-test", mutationCapability: "capability-test" });
+  let clock = Date.parse("2026-07-28T00:00:00Z");
+  const platform = createPlatformServer({ mutationService: item.service, sessions: new LocalSessionManager({ now: () => clock, ttlMs: 1000 }) });
   await new Promise((done) => platform.server.listen(0, "127.0.0.1", done));
   const { port } = platform.server.address(); const base = `http://127.0.0.1:${port}`;
-  const headers = { "content-type": "application/json", origin: base, "sec-fetch-site": "same-origin", "x-rtb-publishing-csrf": "csrf-test", "x-rtb-publishing-capability": "capability-test" };
+  const issueSession = async () => { const response = await fetch(`${base}/api/session`); return { body: await response.json(), cookie: response.headers.get("set-cookie")?.split(";")[0] }; };
+  const authHeaders = (session) => ({ "content-type": "application/json", origin: base, "sec-fetch-site": "same-origin", cookie: session.cookie, "x-rtb-publishing-csrf": session.body.csrfToken, "x-rtb-publishing-capability": session.body.mutationCapability });
   try {
+    const wrongListener = await new Promise((done, fail) => { const request = httpRequest(`${base}/api/session`, { headers: { host: "127.0.0.1:1" } }, (response) => { response.resume(); response.on("end", () => done(response.statusCode)); }); request.on("error", fail); request.end(); });
+    assert.equal(wrongListener, 400);
+    let session = await issueSession();
     const valid = command(item.service, [{ path: "chapter.md", content: "via service\n" }], "MUT-HTTP-001");
-    const accepted = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(valid) });
+    const accepted = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
     assert.equal(accepted.status, 200);
     assert.equal((await accepted.json()).state, "succeeded");
+    const oldHeaders = authHeaders(session);
+    session.body.csrfToken = accepted.headers.get("x-rtb-publishing-next-csrf");
+    session.body.mutationCapability = accepted.headers.get("x-rtb-publishing-next-capability");
+    const replay = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: oldHeaders, body: JSON.stringify(valid) });
+    assert.equal(replay.status, 403);
     const traversal = { ...valid, id: "MUT-HTTP-002", files: [{ ...valid.files[0], path: "../secret" }] };
-    const rejected = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(traversal) });
-    assert.equal(rejected.status, 400);
-    const wrongOrigin = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...headers, origin: "http://evil.test" }, body: JSON.stringify(valid) });
+    const rejected = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(traversal) });
+    assert.equal(rejected.status, 403);
+    const arbitraryFile = { ...valid, id: "MUT-HTTP-ARBITRARY", files: [{ ...valid.files[0], path: "README.md" }] };
+    const unauthorized = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(arbitraryFile) });
+    assert.equal(unauthorized.status, 403);
+    const wrongOrigin = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...authHeaders(session), origin: "http://evil.test" }, body: JSON.stringify(valid) });
     assert.equal(wrongOrigin.status, 403);
-    const missingCapability = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...headers, "x-rtb-publishing-capability": "wrong" }, body: JSON.stringify(valid) });
+    const second = await issueSession();
+    const crossSession = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...authHeaders(second), "x-rtb-publishing-capability": session.body.mutationCapability }, body: JSON.stringify(valid) });
+    assert.equal(crossSession.status, 403);
+    const missingCapability = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: { ...authHeaders(session), "x-rtb-publishing-capability": "wrong" }, body: JSON.stringify(valid) });
     assert.equal(missingCapability.status, 403);
-    const arbitrary = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files?token=no`, { method: "POST", headers, body: JSON.stringify(valid) });
+    const arbitrary = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files?token=no`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
     assert.equal(arbitrary.status, 400);
-    const unsupported = await fetch(`${base}/api/projects/fixture-book/mutations/other`, { method: "POST", headers, body: JSON.stringify(valid) });
+    const unsupported = await fetch(`${base}/api/projects/fixture-book/mutations/other`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
     assert.equal(unsupported.status, 404);
     const oversized = { ...valid, id: "MUT-HTTP-003", files: [{ ...valid.files[0], content: "x".repeat(300 * 1024) }] };
-    const tooLarge = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers, body: JSON.stringify(oversized) });
+    const tooLarge = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(oversized) });
     assert.equal(tooLarge.status, 400);
+    clock += 1001;
+    const expired = await fetch(`${base}/api/projects/fixture-book/mutations/replace-files`, { method: "POST", headers: authHeaders(session), body: JSON.stringify(valid) });
+    assert.equal(expired.status, 403);
   } finally { await new Promise((done) => platform.server.close(done)); item.dispose(); }
+});
+
+test("normal platform startup wires only registered reviewed mutation services", async () => {
+  const platform = await startPlatform({ host: "127.0.0.1", port: 0 });
+  try { assert.equal(platform.mutationServices.has("rtb-publishing-core"), true); assert.equal(platform.mutationServices.has("ai-launch-copilot"), false); }
+  finally { await new Promise((done) => platform.server.close(done)); }
+});
+
+test("SQLite migrations apply in numeric order and never reapply", () => {
+  const directory = mkdtempSync(resolve(tmpdir(), "rtb-migrations-"));
+  try {
+    writeFileSync(resolve(directory, "010-later.sql"), "CREATE TABLE later_marker (value TEXT);\n");
+    writeFileSync(resolve(directory, "002-earlier.sql"), "CREATE TABLE earlier_marker (value TEXT);\n");
+    const databaseFile = resolve(directory, "state.sqlite");
+    let database = openStateDatabase(databaseFile, { migrationsDirectory: directory, now: () => 0 });
+    assert.deepEqual(database.prepare("SELECT version FROM schema_migrations ORDER BY applied_at, version").all().map((row) => row.version), [2, 10]);
+    database.close();
+    database = openStateDatabase(databaseFile, { migrationsDirectory: directory, now: () => 1 });
+    assert.equal(database.prepare("SELECT COUNT(*) AS total FROM schema_migrations").get().total, 2);
+    database.close();
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

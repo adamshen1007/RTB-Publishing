@@ -7,18 +7,24 @@ const migrationsDirectory = resolve(dirname(new URL(import.meta.url).pathname), 
 
 function timestamp(now) { return new Date(now()).toISOString(); }
 
-export function openStateDatabase(file, { now = () => Date.now() } = {}) {
+export function migrationFiles(directory = migrationsDirectory) {
+  return readdirSync(directory)
+    .filter((fileName) => /^\d+-[a-z0-9-]+\.sql$/.test(fileName))
+    .sort((left, right) => Number(left.slice(0, left.indexOf("-"))) - Number(right.slice(0, right.indexOf("-"))) || left.localeCompare(right));
+}
+
+export function openStateDatabase(file, { now = () => Date.now(), migrationsDirectory: migrationDirectory = migrationsDirectory } = {}) {
   mkdirSync(dirname(file), { recursive: true });
   const database = new DatabaseSync(file);
   database.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   database.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);");
   const applied = new Set(database.prepare("SELECT version FROM schema_migrations").all().map((row) => row.version));
-  for (const name of readdirSync(migrationsDirectory).filter((fileName) => /^\d+-[a-z0-9-]+\.sql$/.test(fileName)).sort()) {
+  for (const name of migrationFiles(migrationDirectory)) {
     const version = Number(name.slice(0, name.indexOf("-")));
     if (applied.has(version)) continue;
     database.exec("BEGIN IMMEDIATE;");
     try {
-      database.exec(readFileSync(resolve(migrationsDirectory, name), "utf8"));
+      database.exec(readFileSync(resolve(migrationDirectory, name), "utf8"));
       database.prepare("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)").run(version, name, timestamp(now));
       database.exec("COMMIT;");
     } catch (error) { database.exec("ROLLBACK;"); database.close(); throw error; }

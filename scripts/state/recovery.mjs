@@ -50,9 +50,15 @@ export function recoverProject({ root, projectId, database, now = () => Date.now
         const result = resultFor(row, "cancelled", "Recovered before snapshot publication; the proposal remains available for review.", pointer);
         update(database, row, "complete", "cancelled", result, null, now); recovered.push(result); continue;
       }
-      if (row.phase === "snapshot_prepared") {
+      if (row.phase === "snapshot_prepared" || row.phase === "pointer_publish_pending") {
         verifyPreimages(root, detail.preimages ?? []); verifySnapshot(root, row.prior_snapshot_hash); verifySnapshot(root, row.next_snapshot_hash);
-        const result = resultFor(row, "needs_review", "Recovered a prepared proposal without publishing it.", pointer);
+        if (pointer.snapshotHash !== row.prior_snapshot_hash && pointer.snapshotHash !== row.next_snapshot_hash) throw new Error("Prepared journal has an unrecognized visible pointer.");
+        const restored = pointer.snapshotHash === row.next_snapshot_hash
+          ? writePointer(root, { expected: pointer, nextSnapshotHash: row.prior_snapshot_hash, nextVersion: pointer.version + 1, trace })
+          : pointer;
+        const result = resultFor(row, "needs_review", pointer.snapshotHash === row.next_snapshot_hash
+          ? "Recovered an unjournaled file publication and restored the verified prior snapshot."
+          : "Recovered a prepared proposal without publishing it.", restored);
         update(database, row, "complete", "needs_review", result, null, now); recovered.push(result); continue;
       }
       if (row.phase === "pointer_published") {

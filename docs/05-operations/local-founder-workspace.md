@@ -94,6 +94,22 @@ Available actions are deliberately narrow:
 The workspace cannot approve an agent proposal, commit, push, publish, or run
 an arbitrary command.
 
+## Canonical Local Mutations
+
+The dashboard never receives repository paths or writes files directly. The
+only registered mutation policy currently applies to the RTB Publishing book's
+declared chapter and worksheet Markdown paths. It creates immutable filesystem
+snapshots beneath the book source root and changes visibility through one
+durable current-root pointer. SQLite stores only leases, lifecycle guards,
+journal phases, and audit locators; deleting it does not delete manuscript
+content.
+
+Snapshots exclude Git metadata, local state, dependency and generated output
+directories, and secret-shaped files. A local request must reach the exact
+loopback listener origin with a short-lived session-bound CSRF/capability pair.
+Every accepted mutation rotates that pair. Unregistered and local-overlay
+projects remain read-only.
+
 Running or queued jobs can be cancelled. Terminal jobs can be run again as a
 new record with a parent-job reference; history is never rewritten.
 

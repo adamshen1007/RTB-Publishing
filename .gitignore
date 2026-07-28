@@ -14,6 +14,8 @@ node_modules/
 .rtb-publishing/platform/local-workspace.yaml
 .rtb-publishing/platform/backups/
 .rtb-publishing/notion/
+.rtb-state/
+**/.rtb-state/
 
 # Environment and local configuration
 .env

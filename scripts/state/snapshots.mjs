@@ -3,7 +3,9 @@ import { basename, dirname, relative, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
 export const STATE_DIRECTORY = ".rtb-state";
-const deniedSegments = new Set([".git", ".rtb-state", ".env", ".ssh", "node_modules"]);
+const deniedSegments = new Set([".git", ".rtb-state", ".env", ".ssh", "node_modules", "build", "dist", "coverage", "credentials", "secrets", "keys"]);
+const excludedDirectories = new Set([".git", STATE_DIRECTORY, "node_modules", "build", "dist", "coverage", ".next", ".cache", ".ssh", ".aws", ".gnupg", ".credentials", ".secrets", "credentials", "secrets", "keys"]);
+const sensitiveFile = (name) => name.startsWith(".env") || [".npmrc", ".netrc", "id_rsa", "id_ed25519", "credentials", "secrets"].includes(name) || /(?:credential|secret|token)/i.test(name) || /\.(?:key|pem|p12|pfx)$/i.test(name);
 
 export function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 export function stateDirectory(root) { return resolve(root, STATE_DIRECTORY); }
@@ -27,10 +29,11 @@ export function ensureStateDirectories(root) {
 }
 
 function children(directory) { return readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name)); }
+function excluded(entry) { return excludedDirectories.has(entry.name) || (entry.isDirectory() ? entry.name.startsWith(".env") : sensitiveFile(entry.name)); }
 
 function assertNoSymlinkTree(root, directory = root) {
   for (const entry of children(directory)) {
-    if (entry.name === STATE_DIRECTORY && directory === root) continue;
+    if (excluded(entry)) continue;
     const full = resolve(directory, entry.name);
     const status = lstatSync(full);
     if (status.isSymbolicLink()) throw new Error(`Canonical tree contains a symbolic link: ${relative(root, full)}`);
@@ -41,7 +44,7 @@ function assertNoSymlinkTree(root, directory = root) {
 
 function treeEntries(root, directory = root, entries = []) {
   for (const entry of children(directory)) {
-    if (entry.name === STATE_DIRECTORY && directory === root) continue;
+    if (excluded(entry)) continue;
     const full = resolve(directory, entry.name);
     if (entry.isDirectory()) treeEntries(root, full, entries);
     else entries.push(relative(root, full).split(sep).join("/"));
@@ -63,7 +66,7 @@ function copyTree(source, destination) {
   assertNoSymlinkTree(source);
   mkdirSync(destination, { recursive: true, mode: 0o700 });
   for (const entry of children(source)) {
-    if (entry.name === STATE_DIRECTORY) continue;
+    if (excluded(entry)) continue;
     const from = resolve(source, entry.name); const to = resolve(destination, entry.name);
     if (entry.isDirectory()) copyTree(from, to);
     else copyFileSync(from, to);
@@ -164,9 +167,17 @@ export function readSnapshot(root) {
 }
 
 export function readSnapshotFile(root, path) {
-  const snapshot = readSnapshot(root); // Resolve exactly once; readers never mix roots.
+  return openSnapshotReader(root).read(path);
+}
+
+/** Pins one immutable root for the whole caller operation. */
+export function openSnapshotReader(root) {
+  const snapshot = readSnapshot(root);
+  const read = (path) => {
   const safe = assertSafeRelativePath(path);
   const file = resolve(snapshot.root, safe);
   if (!file.startsWith(`${snapshot.root}${sep}`) || lstatSync(file).isSymbolicLink()) throw new Error("Snapshot read path is unsafe.");
   return { snapshotHash: snapshot.snapshotHash, pointerVersion: snapshot.version, content: readFileSync(file, "utf8") };
+  };
+  return { snapshotHash: snapshot.snapshotHash, pointerVersion: snapshot.version, read, readFiles: (paths) => paths.map((path) => ({ path, ...read(path) })) };
 }

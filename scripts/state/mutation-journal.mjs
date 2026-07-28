@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
 import { acquireLease, durableCheckpoint, initializeLifecycle, lifecycle, openStateDatabase, releaseLease } from "./database.mjs";
 import { acquireProjectLock } from "./project-lock.mjs";
-import { assertSafeRelativePath, initializeSnapshots, materializeSnapshot, preservePreimages, readPointer, readSnapshotFile, sha256, snapshotRoot, verifySnapshot, writePointer } from "./snapshots.mjs";
+import { assertSafeRelativePath, initializeSnapshots, materializeSnapshot, openSnapshotReader, preservePreimages, readPointer, readSnapshotFile, sha256, snapshotRoot, verifySnapshot, writePointer } from "./snapshots.mjs";
 import { recoverProject } from "./recovery.mjs";
 
 const commandSchema = JSON.parse(readFileSync(new URL("../../schemas/operations/mutation-command.schema.json", import.meta.url), "utf8"));
@@ -15,6 +15,11 @@ const validateResultSchema = validator.compile(resultSchema);
 const states = new Set(["queued", "running", "blocked", "conflict", "failed", "cancelled", "succeeded", "needs_review"]);
 const jsonHash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const time = (now) => new Date(now()).toISOString();
+
+function pathPattern(pattern) {
+  assertSafeRelativePath(pattern.replaceAll("*", "placeholder"));
+  return new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
+}
 
 export class InjectedMutationCrash extends Error { constructor(phase) { super(`Injected crash at ${phase}.`); this.name = "InjectedMutationCrash"; this.phase = phase; } }
 
@@ -70,10 +75,12 @@ function proposedSnapshot(root, pointer, command, trace) {
 }
 
 export class MutationService {
-  constructor({ root, projectId, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit } = {}) {
+  constructor({ root, projectId, allowedPaths = [], databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now(), trace, crashAt, beforeStateCommit } = {}) {
     if (!root || !projectId) throw new Error("MutationService requires a project root and project ID.");
-    this.root = resolve(root); this.projectId = projectId; this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit;
+    this.root = resolve(root); this.projectId = projectId; this.allowedPaths = allowedPaths.map(pathPattern); this.databaseFile = databaseFile; this.now = now; this.trace = trace; this.crashAt = crashAt; this.beforeStateCommit = beforeStateCommit;
   }
+
+  allowsPath(path) { return this.allowedPaths.some((pattern) => pattern.test(path)); }
 
   async recover() {
     initializeSnapshots(this.root, { trace: this.trace });
@@ -85,10 +92,13 @@ export class MutationService {
 
   current() { initializeSnapshots(this.root, { trace: this.trace }); return readPointer(this.root); }
   read(path) { return readSnapshotFile(this.root, path); }
+  openReader() { initializeSnapshots(this.root, { trace: this.trace }); return openSnapshotReader(this.root); }
+  readFiles(paths) { return this.openReader().readFiles(paths); }
 
   async execute(command) {
     assertCommand(command);
     if (command.projectId !== this.projectId) throw new Error("Mutation command project does not match this service.");
+    if (command.files.some((file) => !this.allowsPath(file.path))) throw new Error("Mutation path is not approved for this action.");
     initializeSnapshots(this.root, { trace: this.trace });
     const lock = await acquireProjectLock(this.root, { ownerId: `mutation-${randomUUID()}`, now: this.now });
     const database = openStateDatabase(this.databaseFile, { now: this.now });
@@ -122,11 +132,15 @@ export class MutationService {
       const next = materializeSnapshot(this.root, { sourceRoot: snapshotRoot(this.root, pointer.snapshotHash), changes: command.files, trace: this.trace });
       database.prepare("UPDATE mutation_journal SET next_snapshot_hash = ?, phase = 'snapshot_prepared', updated_at = ? WHERE command_id = ?").run(next.hash, time(this.now), command.id); durableCheckpoint(database);
       if (this.crashAt === "snapshot_prepared") throw new InjectedMutationCrash("snapshot_prepared");
+      // This durable bridge represents every pointer-write instruction window.
+      database.prepare("UPDATE mutation_journal SET phase = 'pointer_publish_pending', updated_at = ? WHERE command_id = ?").run(time(this.now), command.id); durableCheckpoint(database);
+      if (this.crashAt === "pointer_publish_pending") throw new InjectedMutationCrash("pointer_publish_pending");
       // Check again directly before visibility; the shared lock serializes lifecycle transitions too.
       const latestLifecycle = lifecycle(database, this.projectId);
       if (latestLifecycle.version !== command.expectedLifecycleVersion || latestLifecycle.guard !== command.expectedLifecycleGuard) throw new Error("Lifecycle changed before pointer publication.");
       const priorPointer = pointer;
       pointer = writePointer(this.root, { expected: pointer, nextSnapshotHash: next.hash, nextVersion: pointer.version + 1, trace: this.trace });
+      if (this.crashAt === "after_pointer_write") throw new InjectedMutationCrash("after_pointer_write");
       database.prepare("UPDATE mutation_journal SET phase = 'pointer_published', updated_at = ? WHERE command_id = ?").run(time(this.now), command.id); durableCheckpoint(database);
       if (this.crashAt === "pointer_published") throw new InjectedMutationCrash("pointer_published");
       this.beforeStateCommit?.(database, command);
