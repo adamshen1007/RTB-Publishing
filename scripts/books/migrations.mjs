@@ -12,6 +12,13 @@ export function canonicalJson(value) {
   return `${JSON.stringify(canonicalize(value), null, 2)}\n`;
 }
 
+/** Keeps hostile/unknown version input out of strict reports and diagnostics. */
+function reportVersion(value) {
+  const raw = value === undefined || value === null ? "0" : typeof value === "string" || typeof value === "number" ? String(value) : "";
+  if (/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(raw)) return raw;
+  return `unsupported-${sha256(canonicalJson({ schema_version: value })).slice("sha256:".length, "sha256:".length + 32)}`;
+}
+
 function reportBase(recordType, source, inputHash, outputHash, status, changes, rollbackLimit) {
   const timestamp = source.updated_at ?? source.created_at ?? "1970-01-01T00:00:00.000Z";
   return {
@@ -22,7 +29,7 @@ function reportBase(recordType, source, inputHash, outputHash, status, changes, 
     producer: "rtb-publishing",
     validation_rules: ["schema-migration-v1", "dry-run-no-canonical-writes"],
     record_type: recordType,
-    from_version: String(source.schema_version ?? "0"),
+    from_version: reportVersion(source.schema_version),
     to_version: CURRENT_SCHEMA_VERSION,
     input_hash: inputHash,
     output_hash: outputHash,
@@ -55,7 +62,7 @@ function migrateProjectV0(source) {
 
 export function migrateRecord(recordType, source) {
   const inputHash = sha256(canonicalJson(source));
-  const version = String(source?.schema_version ?? "0");
+  const version = reportVersion(source?.schema_version);
   let output;
   let status;
   let changes;
@@ -71,7 +78,7 @@ export function migrateRecord(recordType, source) {
     return {
       output: undefined,
       report: reportBase(recordType, source, inputHash, inputHash, "blocked", [], "No automatic rollback exists because no canonical write was attempted."),
-      diagnostics: [diagnostic({ field: ".schema_version", problem: "unsupported schema version", cause: `no forward migration from version ${version} for ${recordType}`, repair: "Install a compatible migrator or restore a supported source version; dry-run never changes canonical files." })],
+      diagnostics: [diagnostic({ field: ".schema_version", problem: "unsupported schema version", cause: `no forward migration from reported version ${version} for ${recordType}`, repair: "Install a compatible migrator or restore a supported source version; dry-run never changes canonical files." })],
     };
   }
   const outputHash = sha256(canonicalJson(output));

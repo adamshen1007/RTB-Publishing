@@ -89,8 +89,15 @@ test("SCH-006: forward migration is deterministic and idempotent", () => {
   assert.equal(first.report.output_hash, second.report.input_hash);
   assert.equal(validateRecord("schema-migration", first.report).valid, true);
   assert.equal(validateRecord("schema-migration", second.report).valid, true);
-  const blocked = migrateRecord("book-project", { ...legacy, schema_version: "99" });
-  assert.equal(validateRecord("schema-migration", blocked.report).valid, true);
+  for (const version of ["99", "1000", "next", "next version!", "x".repeat(500)]) {
+    const blocked = migrateRecord("book-project", { ...legacy, schema_version: version });
+    const repeated = migrateRecord("book-project", { ...legacy, schema_version: version });
+    assert.equal(blocked.report.status, "blocked");
+    assert.equal(validateRecord("schema-migration", blocked.report).valid, true, version);
+    assert.ok(blocked.report.from_version.length <= 64, version);
+    assert.deepEqual(blocked.diagnostics, repeated.diagnostics, version);
+    if (["1000", "next"].includes(version)) assert.equal(blocked.report.from_version, version);
+  }
 });
 
 test("SCH-007: failed and interrupted dry-run migration preserves canonical bytes with recovery", () => {
