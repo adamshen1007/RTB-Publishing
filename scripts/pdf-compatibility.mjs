@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -17,6 +18,14 @@ const safeRoots = [repositoryEvidenceRoot, envRoot && assertTrustedCompatibility
 const out = assertSafeCompatibilityOutput({ output: outArgument, safeRoots });
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
+const pngRgba = (file) => {
+  const png = readFileSync(file); let offset = 8; let width; let height; const data = [];
+  while (offset < png.length) { const size = png.readUInt32BE(offset); const type = png.subarray(offset + 4, offset + 8).toString("ascii"); const chunk = png.subarray(offset + 8, offset + 8 + size); if (type === "IHDR") { width = chunk.readUInt32BE(0); height = chunk.readUInt32BE(4); } if (type === "IDAT") data.push(chunk); offset += size + 12; }
+  const raw = inflateSync(Buffer.concat(data)); const rows = []; let pos = 0; let previous = Buffer.alloc(width * 4);
+  for (let y = 0; y < height; y += 1) { const filter = raw[pos++]; const row = Buffer.from(raw.subarray(pos, pos + width * 4)); pos += width * 4; for (let x = 0; x < row.length; x += 1) { const left = x >= 4 ? row[x - 4] : 0; const up = previous[x]; const upperLeft = x >= 4 ? previous[x - 4] : 0; if (filter === 1) row[x] = (row[x] + left) & 255; else if (filter === 2) row[x] = (row[x] + up) & 255; else if (filter === 3) row[x] = (row[x] + Math.floor((left + up) / 2)) & 255; else if (filter === 4) { const p = left + up - upperLeft; const pa = Math.abs(p - left); const pb = Math.abs(p - up); const pc = Math.abs(p - upperLeft); row[x] = (row[x] + (pa <= pb && pa <= pc ? left : pb <= pc ? up : upperLeft)) & 255; } } rows.push(row); previous = row; }
+  return { width, height, rows };
+};
+const colorBounds = (image, predicate) => { let minX = image.width; let minY = image.height; let maxX = -1; let maxY = -1; image.rows.forEach((row, y) => { for (let x = 0; x < image.width; x += 1) { const i = x * 4; if (predicate(row[i], row[i + 1], row[i + 2], row[i + 3])) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); } } }); return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 }; };
 const requireEnvFile = (name) => {
   const file = process.env[name];
   if (!file || !existsSync(file)) throw new Error(`${name} must name an existing pinned tool file`);
@@ -90,6 +99,19 @@ const negativePng = readFileSync(resolve(out, "visual-negative-1.png"));
 const negativeWidth = negativePng.readUInt32BE(16);
 const negativeHeight = negativePng.readUInt32BE(20);
 writeFileSync(resolve(out, "visual-negative.json"), `${JSON.stringify({ schemaVersion: 1, fixture: "a5-page-geometry", raster: "visual-negative-1.png", width: negativeWidth, height: negativeHeight, expectedProductionGeometry: { width: 1191, height: 1684 }, geometryRegressionDetected: negativeWidth !== 1191 || negativeHeight !== 1684, imageResolutionRegressionDetected: true, evidence: "The renderer produced a non-production A5 raster; the compatibility check treats mismatched rendered geometry as a blocking overflow/clipping regression." }, null, 2)}\n`);
+const clippingTypst = resolve(snapshot, "visual-clipping.typ");
+writeFileSync(clippingTypst, `#set page(width: 100pt, height: 100pt, margin: 0pt)\n#rect(width: 200pt, height: 20pt, fill: red)\n`);
+run(typst, ["compile", "--root", snapshot, "--format", "png", "--ppi", "144", clippingTypst, resolve(out, "visual-clipping-{p}.png")], { cwd: staging });
+const clipping = pngRgba(resolve(out, "visual-clipping-1.png"));
+const redBounds = colorBounds(clipping, (r, g, b, a) => r > 180 && g < 80 && b < 80 && a > 0);
+const lowResSvg = resolve(snapshot, "semantic-figure-lowres.svg");
+writeFileSync(lowResSvg, `<svg xmlns="http://www.w3.org/2000/svg" width="4" height="2"><rect width="4" height="2" fill="red"/></svg>`);
+const lowResTypst = resolve(snapshot, "visual-lowres.typ");
+writeFileSync(lowResTypst, `#set page(width: 100pt, height: 100pt, margin: 0pt)\n#image("semantic-figure-lowres.svg")\n`);
+run(typst, ["compile", "--root", snapshot, "--format", "png", "--ppi", "144", lowResTypst, resolve(out, "visual-lowres-{p}.png")], { cwd: staging });
+const lowRes = pngRgba(resolve(out, "visual-lowres-1.png"));
+const lowResBounds = colorBounds(lowRes, (r, g, b, a) => r > 180 && g < 80 && b < 80 && a > 0);
+writeFileSync(resolve(out, "visual-negative-measurements.json"), `${JSON.stringify({ schemaVersion: 1, clipping: { raster: "visual-clipping-1.png", renderedBounds: redBounds, clippingDetected: redBounds.maxX === clipping.width - 1 }, imageResolution: { raster: "visual-lowres-1.png", renderedBounds: lowResBounds, alteredDimensionsDetected: lowResBounds.width < 20 && lowResBounds.height < 10 } }, null, 2)}\n`);
 writeFileSync(resolve(out, "qpdf-check.txt"), run(qpdf, ["--check", rendered]).replaceAll(rendered, "semantic-book.pdf"));
 writeFileSync(resolve(out, "qpdf-outlines.json"), run(qpdf, ["--json", "--json-key=outlines", rendered]));
 writeFileSync(resolve(out, "qpdf-pages.json"), run(qpdf, ["--json", "--json-key=pages", rendered]));
@@ -100,7 +122,7 @@ const sanitizeEvidence = (text) => text.replaceAll(rendered, "semantic-book.pdf"
 writeFileSync(resolve(out, "verapdf-2a.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "2a", rendered], { env: javaEnv })));
 writeFileSync(resolve(out, "verapdf-ua1.json"), sanitizeEvidence(run(verapdf, ["--format", "json", "--flavour", "ua1", rendered], { env: javaEnv })));
 
-const files = ["semantic-book.pdf", "semantic-book.qdf.pdf", "semantic-book-1.png", "visual-regression.json", "visual-negative-1.png", "visual-negative.json", "qpdf-check.txt", "qpdf-outlines.json", "qpdf-pages.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ", "staging/snapshot/semantic-figure.svg"];
+const files = ["semantic-book.pdf", "semantic-book.qdf.pdf", "semantic-book-1.png", "visual-regression.json", "visual-negative-1.png", "visual-negative.json", "visual-clipping-1.png", "visual-lowres-1.png", "visual-negative-measurements.json", "qpdf-check.txt", "qpdf-outlines.json", "qpdf-pages.json", "verapdf-2a.json", "verapdf-ua1.json", "staging/snapshot/semantic-book.md", "staging/snapshot/semantic-book.typ", "staging/snapshot/semantic-figure.svg"];
 const manifest = {
   schemaVersion: 1,
   generatedBy: "scripts/pdf-compatibility.mjs",

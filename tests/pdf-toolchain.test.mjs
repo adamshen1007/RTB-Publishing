@@ -20,6 +20,7 @@ const outlines = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-out
 const pages = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-pages.json");
 const visual = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-regression.json");
 const visualNegative = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-negative.json");
+const visualMeasurements = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-negative-measurements.json");
 const validate = (schema, value, label) => {
   const check = new Ajv({ strict: false }).compile(json(`tests/fixtures/publishing/pdf/schemas/${schema}.schema.json`));
   assert.ok(check(value), `${label} schema invalid: ${JSON.stringify(check.errors)}`);
@@ -105,6 +106,10 @@ test("retained parsed PDF proves metadata, language, tagged semantics, navigatio
   assert.equal(visualNegative.geometryRegressionDetected, true);
   assert.notDeepEqual([visualNegative.width, visualNegative.height], [1191, 1684]);
   assert.equal(visualNegative.imageResolutionRegressionDetected, true);
+  assert.equal(visualMeasurements.clipping.clippingDetected, true);
+  assert.equal(visualMeasurements.clipping.renderedBounds.maxX, 199);
+  assert.equal(visualMeasurements.imageResolution.alteredDimensionsDetected, true);
+  assert.ok(visualMeasurements.imageResolution.renderedBounds.width < 20);
 });
 
 test("canonical Markdown is transformed only into the derived Typst snapshot", () => {

@@ -79,3 +79,13 @@ The focused PDF suite passed all six tests.
 - Added a renderer-derived A5 negative raster fixture. Its retained dimensions
   differ from the production A4 baseline and the test asserts that the visual
   gate detects the geometry/overflow-clipping regression.
+
+## Fourth re-review visual remediation — 2026-07-28
+
+- Added a renderer-produced clipping fixture: a 200pt red rectangle is rendered
+  onto a 100pt page and the retained PNG pixel scan proves its red bounds touch
+  the rendered right edge (`maxX: 199`), which is the clipping detection.
+- Added a renderer-produced altered-image fixture: a 4x2 red SVG is rendered
+  and the retained PNG pixel scan measures a 6x3 rendered bound. The test
+  rejects the production-size threshold, proving altered image dimensions are
+  detected from rendered pixels rather than from a preset boolean.
