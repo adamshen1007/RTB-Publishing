@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "recordId": "GHOST-SPIKE-SYNTHETIC-20260728",
+  "recordedAt": "2026-07-28",
+  "dataClassification": {
+    "fixtures": "synthetic-only",
+    "providerCalls": "none",
+    "credentials": "none",
+    "subscriberData": "none"
+  },
+  "execution": {
+    "timebox": { "maximumWorkingDays": 2, "maximumHumanHours": 16, "closed": true },
+    "liveProvider": "not-executed-no-disposable-credentials-in-scope",
+    "method": "deterministic-local-synthetic-fallback-harness",
+    "stopCondition": "Stopped before any provider request because no disposable Ghost credentials were in scope; the local harness classified every row without extending the time box."
+  },
+  "decision": {
+    "status": "conditional-go",
+    "scope": "Increment 3 adapter and fallback implementation planning only",
+    "productionGhostCompatibility": false,
+    "reason": "Every required capability has a locally exercised fallback boundary, but no live Ghost behavior has been verified; production use remains blocked pending isolated live validation."
+  },
+  "capabilities": [
+    {
+      "id": "invitations-allowlist",
+      "capability": "Invitations and allowlist",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-MEMBER-SETUP", "kind": "official-documentation", "url": "https://ghost.org/help/setup-members/", "accessedAt": "2026-07-28", "summary": "Invite-only membership is documented, but invitation completion and enumeration-safe denial were not live tested." },
+        { "id": "SYN-ALLOWLIST", "kind": "local-synthetic-exercise", "summary": "The local sidecar admits only synthetic allowlisted addresses and returns the same generic response for denied and unknown addresses." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No disposable Ghost credentials were in scope, so live invitation behavior is unverified." }
+      ],
+      "fallback": "Sidecar-owned allowlist and opaque invitation flow; Ghost receives no subscriber record until the sidecar permits it.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "password-free-access",
+      "capability": "Password-free access",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-MEMBERS", "kind": "official-documentation", "url": "https://docs.ghost.org/members", "accessedAt": "2026-07-28", "summary": "Passwordless email-link login is documented, without a proof here of expiry, replay denial, rotation, revocation, or outage behavior." },
+        { "id": "SYN-AUTH", "kind": "local-synthetic-exercise", "summary": "Synthetic opaque links expire, reject replay, rotate sessions, revoke on demand, and fail closed during an identity-provider outage." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live Ghost session or authentication response was observed." }
+      ],
+      "fallback": "Sidecar controls opaque session state and fail-closed authorization; Ghost login is optional and never evidence of a grant.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "protected-html",
+      "capability": "Protected HTML",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-MEMBERS", "kind": "official-documentation", "url": "https://docs.ghost.org/members", "accessedAt": "2026-07-28", "summary": "Member and tier-gated post protection is documented at server level, but cache isolation was not live tested." },
+        { "id": "SYN-HTML", "kind": "local-synthetic-exercise", "summary": "The authorization gateway denies unauthenticated and revoked synthetic sessions and varies cache identity by release and member." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No hosted page or cache response was tested." }
+      ],
+      "fallback": "Sidecar authorization gateway protects the release route and emits no shared authenticated cache entry.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "binary-downloads",
+      "capability": "Binary downloads",
+      "classification": "fallback-required",
+      "providerStatus": "not-documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Documented Admin API integration endpoints do not establish the required release-bound binary grant contract." },
+        { "id": "SYN-DOWNLOAD", "kind": "local-synthetic-exercise", "summary": "Private-object grants are short-lived, audience-bound, release-bound, single-use, and deny revoked, expired, replayed, and copied use." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No Ghost-hosted attachment or binary access behavior was tested." }
+      ],
+      "fallback": "Private object storage plus sidecar-issued short-lived single-use binary grants; Ghost never serves release binaries.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "search",
+      "capability": "Search",
+      "classification": "fallback-required",
+      "providerStatus": "not-documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-CONTENT-API", "kind": "official-documentation", "url": "https://ghost.org/docs/content-api/", "accessedAt": "2026-07-28", "summary": "The documented Content API is read-only and public-facing; it does not prove subscriber-isolated release search." },
+        { "id": "SYN-SEARCH", "kind": "local-synthetic-exercise", "summary": "Synthetic search filters by the current authorized member before returning only release metadata allowed by the manifest." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No hosted search result or private metadata boundary was tested." }
+      ],
+      "fallback": "Sidecar-owned release metadata index applies authorization before search and omits private metadata by construction.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "staging",
+      "capability": "Staging",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Post and page mutation is documented, but immutable release staging with checksum reconciliation is not proved by this spike." },
+        { "id": "SYN-STAGING", "kind": "local-synthetic-exercise", "summary": "The synthetic store stages an immutable release ID, verifies all manifest artifacts, and refuses duplicate IDs with different checksums without activation." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live upload, attachment, partial-upload, or checksum readback was observed." }
+      ],
+      "fallback": "Private immutable object-storage prefix keyed by release ID and manifest checksum, with sidecar verification before visibility.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "activation",
+      "capability": "Activation",
+      "classification": "fallback-required",
+      "providerStatus": "not-documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Documented content mutation does not prove a release-ID plus monotonic-revision compare-and-set primitive." },
+        { "id": "SYN-POINTER", "kind": "local-synthetic-exercise", "summary": "The synthetic release-state store permits one exact compare-and-set, increments revision, and returns conflict without mutation for a stale pair." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live Ghost activation or authoritative pointer read was tested." }
+      ],
+      "fallback": "Sidecar release-state store is the sole authoritative active-pointer pair and compare-and-set authority.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "rollback-unpublish",
+      "capability": "Rollback and unpublish",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Content mutation is documented, but retained-release rollback, release-scoped revocation, and compare-and-set unpublish are not proved." },
+        { "id": "SYN-ROLLBACK", "kind": "local-synthetic-exercise", "summary": "The synthetic pointer supports retained rollback and unpublish; stale A-to-B-to-A commands conflict and revoke nothing." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No provider deletion, restoration, or access-revocation outcome was observed." }
+      ],
+      "fallback": "Sidecar pointer and grant store performs guarded rollback/unpublish; private objects remain immutable until retention permits deletion.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "api-limits-failures",
+      "capability": "API limits and failures",
+      "classification": "fallback-required",
+      "providerStatus": "not-documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "The Admin API documents request structure and authentication but this record has no provider-specific observed limits or failure outcomes." },
+        { "id": "SYN-FAILURES", "kind": "local-synthetic-exercise", "summary": "The harness enforces a 1 MiB upload ceiling and two-request window, deduplicates stable keys, blocks partial uploads, and freezes uncertain timeouts for reconciliation." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "Actual Ghost rate, payload, attachment, timeout, and retry behavior remains unverified." }
+      ],
+      "fallback": "Sidecar enforces bounded client behavior, an outbox, stable idempotency keys, and manual blocking after an uncertain provider side effect.",
+      "liveValidationRequired": true
+    },
+    {
+      "id": "webhooks-reconciliation",
+      "capability": "Webhooks and reconciliation",
+      "classification": "fallback-required",
+      "providerStatus": "documented-not-live-verified",
+      "evidence": [
+        { "id": "DOC-WEBHOOKS", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api/webhooks/overview", "accessedAt": "2026-07-28", "summary": "Webhook mutation is documented, including the absence of independent retrieval; authenticated delivery and deduplication were not proved." },
+        { "id": "SYN-RECONCILIATION", "kind": "local-synthetic-exercise", "summary": "Synthetic signed advisory events are deduplicated while a separate authoritative pointer read detects drift before retry." },
+        { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live webhook signature, ordering, retry, or provider state reconciliation was observed." }
+      ],
+      "fallback": "Sidecar treats Ghost webhooks as advisory only and reconciles its own authoritative release-state store before every mutation.",
+      "liveValidationRequired": true
+    }
+  ],
+  "fallbackBoundary": {
+    "selected": "minimal-sidecar-and-private-object-storage",
+    "components": [
+      "Sidecar-owned allowlist, opaque session, authorization, search, and active-pointer store.",
+      "Private object storage for immutable HTML, PDF, EPUB, checksum verification, retention, deletion tombstones, and short-lived binary grants.",
+      "Local append-only SQLite staging-attempt ledger and outbox remain operational evidence authority under ADR-009."
+    ],
+    "prohibited": [
+      "No production credentials, real subscribers, or private manuscripts in the spike, fixtures, reports, or Git.",
+      "No permanent public artifact URLs, public bucket listing, or complete signed URLs in logs.",
+      "No Ghost content, member record, webhook body, or local observation is treated as release, pointer, or audit authority.",
+      "No silent runtime downgrade from a selected fallback to Ghost behavior."
+    ],
+    "liveValidationRequiredBeforeProduction": true
+  }
+}

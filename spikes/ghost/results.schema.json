@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rtb-publishing.local/schemas/ghost-capability-spike-results.schema.json",
+  "title": "RTB Publishing Ghost capability spike result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "recordId",
+    "recordedAt",
+    "dataClassification",
+    "execution",
+    "decision",
+    "capabilities",
+    "fallbackBoundary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordId": { "type": "string", "pattern": "^GHOST-SPIKE-[A-Z0-9-]+$" },
+    "recordedAt": { "type": "string", "format": "date" },
+    "dataClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixtures", "providerCalls", "credentials", "subscriberData"],
+      "properties": {
+        "fixtures": { "const": "synthetic-only" },
+        "providerCalls": { "enum": ["none", "synthetic-only"] },
+        "credentials": { "const": "none" },
+        "subscriberData": { "const": "none" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["timebox", "liveProvider", "method", "stopCondition"],
+      "properties": {
+        "timebox": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maximumWorkingDays", "maximumHumanHours", "closed"],
+          "properties": {
+            "maximumWorkingDays": { "const": 2 },
+            "maximumHumanHours": { "const": 16 },
+            "closed": { "const": true }
+          }
+        },
+        "liveProvider": { "const": "not-executed-no-disposable-credentials-in-scope" },
+        "method": { "const": "deterministic-local-synthetic-fallback-harness" },
+        "stopCondition": { "type": "string", "minLength": 20 }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scope", "productionGhostCompatibility", "reason"],
+      "properties": {
+        "status": { "enum": ["go", "conditional-go", "blocked"] },
+        "scope": { "type": "string", "minLength": 10 },
+        "productionGhostCompatibility": { "const": false },
+        "reason": { "type": "string", "minLength": 20 }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "fallbackBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selected", "components", "prohibited", "liveValidationRequiredBeforeProduction"],
+      "properties": {
+        "selected": { "const": "minimal-sidecar-and-private-object-storage" },
+        "components": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 5 } },
+        "prohibited": { "type": "array", "minItems": 3, "items": { "type": "string", "minLength": 5 } },
+        "liveValidationRequiredBeforeProduction": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "capability", "classification", "providerStatus", "evidence", "fallback", "liveValidationRequired"],
+      "properties": {
+        "id": {
+          "enum": [
+            "invitations-allowlist",
+            "password-free-access",
+            "protected-html",
+            "binary-downloads",
+            "search",
+            "staging",
+            "activation",
+            "rollback-unpublish",
+            "api-limits-failures",
+            "webhooks-reconciliation"
+          ]
+        },
+        "capability": { "type": "string", "minLength": 5 },
+        "classification": { "enum": ["direct", "fallback-required", "infeasible"] },
+        "providerStatus": { "enum": ["documented-not-live-verified", "not-documented-not-live-verified"] },
+        "evidence": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/evidence" } },
+        "fallback": { "type": "string", "minLength": 15 },
+        "liveValidationRequired": { "const": true }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "summary"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(DOC|SYN|LIM)-[A-Z0-9-]+$" },
+        "kind": { "enum": ["official-documentation", "local-synthetic-exercise", "limitation"] },
+        "summary": { "type": "string", "minLength": 15 },
+        "url": { "type": "string", "format": "uri" },
+        "accessedAt": { "type": "string", "format": "date" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "official-documentation" } } },
+          "then": { "required": ["url", "accessedAt"] }
+        }
+      ]
+    }
+  }
+}

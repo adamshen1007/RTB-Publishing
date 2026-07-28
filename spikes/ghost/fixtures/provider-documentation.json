@@ -1,0 +1,38 @@
+{
+  "fixtureVersion": 1,
+  "accessedAt": "2026-07-28",
+  "classification": "official-documentation-not-live-verification",
+  "sources": [
+    {
+      "id": "DOC-ADMIN-API",
+      "url": "https://docs.ghost.org/admin-api",
+      "claim": "Admin API integrations use server-side secret keys and fixed integration permissions; documented integration endpoints include posts, pages, members, images, themes, and webhooks."
+    },
+    {
+      "id": "DOC-MEMBERS",
+      "url": "https://docs.ghost.org/members",
+      "claim": "Ghost documents passwordless email-link member login and server-level protection for member/tier-gated post content."
+    },
+    {
+      "id": "DOC-MEMBER-SETUP",
+      "url": "https://ghost.org/help/setup-members/",
+      "claim": "Ghost documents an invite-only membership setting that prevents visitor sign-up while imported members can sign in."
+    },
+    {
+      "id": "DOC-WEBHOOKS",
+      "url": "https://docs.ghost.org/admin-api/webhooks/overview",
+      "claim": "Ghost documents webhook create, update, and delete, and states there is no independent webhook retrieval API."
+    },
+    {
+      "id": "DOC-CONTENT-API",
+      "url": "https://ghost.org/docs/content-api/",
+      "claim": "Ghost documents a read-only public Content API, 15-item default pagination, and public-facing Content API keys."
+    }
+  ],
+  "unverifiedLiveProviderBehavior": [
+    "Actual plan, version, enabled features, rate limits, payload ceilings, attachment behavior, and error responses.",
+    "Invitation enumeration behavior, magic-link expiry and replay behavior, session rotation and revocation propagation, and cache isolation.",
+    "Binary-download grant expiry, audience binding, replay denial, copied-link denial, and physical provider deletion.",
+    "Release-ID idempotency, authoritative staging reconciliation, active-pointer compare-and-set, rollback semantics, webhook authenticity, delivery ordering, and deduplication."
+  ]
+}
