@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "scripts/pdf-compatibility.mjs",
+  "sourceSnapshot": {
+    "markdownSha256": "f692771eeb13f4746ad77dcf11c8a1c2e11c925dc86c97c78eb21041aa5577b6",
+    "figureSha256": "38b542a395f3feebca628a59390bb5f554eac4084287462e487350a781c06eb6",
+    "derivedTypstSha256": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d"
+  },
+  "tools": {
+    "typst": "472955622cf3cd10dd89dcf7c3cd9a6c0d2c100ab2f6ea9804a0f1256ad08705",
+    "java": "3e67ca9ecc78e5b4694008c330beecd9588df5ef3da320d674a77fe2b6c3eada",
+    "verapdf": "820b9acccdd46c9cffad65150668a3c4d3446770e4d3b055ff681eedfcf6abb6",
+    "verapdfJar": "442bf0d7f53f9ce30caa7b4d350ca9b0d86084b8cafe60ed4e6d67778a597c22",
+    "qpdf": "fa469a69544255d2fd1be205a0927d5629b6a7ee94a0f36b47f5235acdba5db4",
+    "font": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713"
+  },
+  "files": {
+    "semantic-book.pdf": "16eff0c84eaa0f789d3d2cf1b3bb3c32c3b4c79197173cb1035d75aeb4282c30",
+    "semantic-book.qdf.pdf": "0a3681f851099f0382c5f4a3753d8f4bebc386d3e1a0efbe4a16f6e8f628a7a0",
+    "qpdf-check.txt": "205a9e6b569ffd21fee2126cedc0593058f51f7911b174f057c60bbb5b5e3bb6",
+    "qpdf-outlines.json": "125d5c0649f19ce6a9493628bdfb318c789869cc392fa6e8e048f331df7bf857",
+    "qpdf-pages.json": "09ca7087df1d9d9831788c4feb45bb6c402ece9325bbd844640557fde67b67c6",
+    "verapdf-2a.json": "80ca1a7dbcb0f4831dd4c05850d5515ee4b64a174f9bd72afef408d333b5b226",
+    "verapdf-ua1.json": "5b36851e94a0cdeeca88edba4140d9e9f78c87980acbd8ab971acb384c06775d",
+    "staging/snapshot/semantic-book.md": "f692771eeb13f4746ad77dcf11c8a1c2e11c925dc86c97c78eb21041aa5577b6",
+    "staging/snapshot/semantic-book.typ": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d"
+  }
+}

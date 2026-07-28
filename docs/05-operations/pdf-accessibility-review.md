@@ -1,6 +1,6 @@
 # PDF Accessibility Review Procedure
 
-<!-- cspell:words PDF UA VoiceOver verapdf -->
+<!-- cspell:words PDF UA VoiceOver verapdf Typst -->
 
 ## Purpose and Boundary
 
@@ -19,8 +19,8 @@ prerequisite, not the conclusion of this review.
 1. Record the exact release candidate hash, Git revision, source snapshot hash,
    PDF SHA-256, and [toolchain lock](../../publishing/pdf/toolchain.lock.json)
    SHA-256.
-2. Confirm successful qpdf, veraPDF `2a`, veraPDF `ua1`, font, metadata, link,
-   bookmark, and visual-regression reports with their report hashes.
+2. Confirm successful retained qpdf, veraPDF `2a`, veraPDF `ua1`, font,
+   metadata, link, and bookmark reports with their report hashes.
 3. Verify that every meaningful figure has reviewable alternative text and that
    every decorative figure is intentionally marked as an artifact.
 4. Use a clean copy of the candidate, not a PDF that has been saved or altered
@@ -96,7 +96,7 @@ machineReports:
   qpdf: { result: pass, sha256: <report hash> }
   verapdf2a: { result: pass, sha256: <report hash> }
   verapdfUa1: { result: pass, sha256: <report hash> }
-  visualRegression: { result: pass, sha256: <report hash> }
+  retainedEvidenceManifest: { result: pass, sha256: <manifest hash> }
 samples:
   - locator: chapter-01#objective
     type: heading-and-reading-order

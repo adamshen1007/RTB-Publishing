@@ -1,6 +1,6 @@
 # RFC-008 — PDF Publication Profile
 
-<!-- cspell:words Typst verapdf qpdf Ghostscript ImageMagick Noto -->
+<!-- cspell:words Typst verapdf qpdf Noto Temurin WeasyPrint -->
 
 ## Status
 
@@ -23,8 +23,7 @@ official documentation states that compatible PDF/A and PDF/UA standards can
 be combined, and that PDF/UA export enables additional checks.
 
 The machine gate uses veraPDF Greenfield 1.28.2 separately for `2a` and
-`ua1`, qpdf 12.3.2 to reject malformed or encrypted PDFs, and the locked
-Ghostscript/ImageMagick visual comparison path. The exact artifacts, runtimes,
+`ua1` and qpdf 12.3.2 to reject malformed or encrypted PDFs. The exact artifacts, runtimes,
 fonts, command arguments, checksums, and repository locks are in
 [toolchain.lock.json](../../publishing/pdf/toolchain.lock.json).
 
@@ -45,10 +44,11 @@ local prototype rather than treating vendor capability claims as sufficient.
 
 ### Renderer, inputs, and reproducibility
 
-Typst 0.15.0 is the selected local executable renderer. It compiles local,
-semantic Typst source in a disk-backed staging directory; rendering does not
-fetch network resources. The production wrapper must invoke an argument array
-equivalent to:
+Markdown and Git remain the canonical inputs. The snapshot contains ordered
+Markdown, metadata, accessibility text, and assets; the versioned
+Markdown-to-Typst transformation derives Typst only inside a clean, disk-backed
+staging directory. Typst 0.15.0 then compiles that derived input without
+network access. The production wrapper must invoke an argument array equivalent to:
 
 ```text
 typst compile input.typ output.pdf --root staging --font-path locked-fonts \
@@ -57,18 +57,19 @@ typst compile input.typ output.pdf --root staging --font-path locked-fonts \
   --diagnostic-format=short
 ```
 
-The wrapper may not substitute an executable, profile, font, package cache,
-stylesheet/template, or command argument without an RFC and lock update. It
-must use a clean disk-backed staging directory, an empty package cache, and an
-allocated output directory; it must retain the complete secret-free command
-and diagnostic output. A non-zero compiler result, an unresolved resource, or
-any diagnostic is blocking. The build must run offline after explicit setup.
+The wrapper may not substitute an executable, profile, font, transformation,
+package cache, stylesheet/template, or command argument without an RFC and
+lock update. It must use a clean disk-backed staging directory, an empty
+package cache, and an allocated output directory; it must retain the complete
+secret-free command and diagnostic output. A non-zero compiler result, an
+unresolved resource, or any diagnostic is blocking. The build must run offline
+after explicit setup.
 
 The fixed creation timestamp makes compatibility-fixture metadata
 reproducible. Release candidates use the project-approved source-date epoch;
 changing it is a release-input change, not a post-processing step. PDF bytes
 are not required to be identical across architectures, but the locked source,
-semantic checks, validator results, and reviewed visual baseline must agree.
+semantic checks and validator results must agree.
 
 ### Supported platform boundary
 
@@ -76,12 +77,12 @@ The only current release-producing platform is `macos-x86_64`, verified by the
 recorded local compatibility run on Darwin 24.6.0. Windows, Linux, and macOS
 ARM64 are not currently release-producing platforms.
 
-The repository's existing GitHub Actions label is `macos-14`, which GitHub
-documents as ARM64. Its exact Typst and Temurin artifacts are checksum-pinned
-in the lock so CI can exercise the same setup, but no ARM64 compatibility
-evidence has been recorded. It is therefore a CI boundary, **not** a supported
-release platform. A passing recorded fixture run is required before promoting
-it. Ubuntu 24.04 is not retained as an aspirational platform.
+The shared local/CI compatibility command runs on GitHub Actions
+`macos-15-intel`, GitHub's current hosted Intel macOS label, matching the
+release-enabled x86_64 platform. The workflow installs the lock-owned tools,
+verifies their artifact and executable hashes, and invokes that exact command.
+The remote compatibility evidence remains pending until that workflow run is
+recorded. Ubuntu 24.04 is not retained as an aspirational platform.
 
 ### Licensing and installation boundary
 
@@ -102,18 +103,19 @@ JRE, qpdf, rasterizer, comparator, and font before use. Package-manager
 | structural validator | veraPDF Greenfield 1.28.2, `--flavour ua1` | any machine-verifiable PDF/UA-1 failure |
 | archival-profile validator | veraPDF Greenfield 1.28.2, `--flavour 2a` | any PDF/A-2a failure |
 | parser / integrity check | qpdf 12.3.2 | failed `--check`, encryption, bad signature, or unreadable page tree |
-| visual regression | Ghostscript 10.07.1 plus ImageMagick 7.1.2-24 | changed selected-page PNG outside an approved baseline |
 
-Reports stay in the ignored candidate-evidence directory; their SHA-256 values
-enter the candidate envelope. A passing report does not by itself establish
-accessibility conformance.
+The sanitized compatibility PDF, qpdf outputs, veraPDF JSON reports, derived
+Typst input, and a hash manifest are retained at the evidence location. Tests
+recalculate each manifest hash and inspect those retained parser/profile
+artifacts. A passing report does not by itself establish accessibility
+conformance.
 
 ### Content contract
 
-Increment 1 source is semantic Typst, with document language `en-US` and
-document metadata set in `#set document`. An upstream Markdown-to-Typst
-transformation is outside this RFC and must be separately versioned and tested
-before it becomes a release input.
+Increment 1 source is canonical Markdown with document language `en-US` and
+metadata in its snapshot. The checked-in Markdown-to-Typst transformer is a
+versioned, tested derived-input step. It sets Typst document metadata and
+language from the canonical snapshot; Typst output is never canonical content.
 
 - Document title, author, keywords, language, and fixed date must agree with
   project metadata. Headings, lists, paragraphs, figures, tables, captions,
@@ -155,14 +157,15 @@ class waiver is invalid.
 
 ## Prototype Evidence
 
-On 2026-07-28, the locked Typst x86_64 macOS artifact compiled the semantic
-fixture with only the locked Noto Serif font and the required profile flags.
+On 2026-07-28, the locked Typst x86_64 macOS artifact compiled the canonical
+Markdown fixture through the versioned derived-Typst transformation with only
+the locked Noto Serif font and the required profile flags.
 qpdf 12.3.2 reported no syntax or stream-encoding errors and no encryption.
-veraPDF 1.28.2 passed `2a` with 153 rules / 7,174 checks and `ua1` with 106
-rules / 1,642 checks, with zero failed rules and checks. Poppler rendered the
-one-page result for visual inspection; no layout or glyph defect was found.
-The recorded hashes and full commands are in the evidence fixture. This is
-machine prototype evidence, not a completed screen-reader review.
+veraPDF 1.28.2 passed `2a` with 153 rules / 7,201 checks and `ua1` with 106
+rules / 1,642 checks, with zero failed rules and checks. The retained evidence
+includes the parseable PDF, QDF parser view, qpdf reports, veraPDF reports,
+and freshness manifest. This is machine prototype evidence, not a completed
+screen-reader review.
 
 ## Risks
 
@@ -178,12 +181,12 @@ machine prototype evidence, not a completed screen-reader review.
 ## Acceptance Criteria
 
 - [x] The combined profile, open-source renderer, validators, parser, fonts,
-  visual method, platform boundary, and manual procedure are named/versioned.
+  platform boundary, and manual procedure are named/versioned.
 - [x] Tool and font artifacts have SHA-256 values or an exact repository lock.
 - [x] The `macos-x86_64` semantic fixture passed Typst, qpdf, veraPDF `2a`,
   and veraPDF `ua1`; recorded evidence includes artifact/report hashes.
-- [ ] GitHub Actions `macos-14` ARM64 compatibility evidence is required before
-  that CI runner can produce release candidates.
+- [ ] GitHub Actions `macos-15-intel` compatibility evidence is required before
+  the remote CI result can be recorded as a platform run.
 - [x] The manual procedure and waiver fields are versioned.
 - [ ] A named reviewer records a passing screen-reader and visual review for a
   specific candidate. This remains a human evidence gate.
@@ -196,8 +199,8 @@ machine prototype evidence, not a completed screen-reader review.
    verifier defined by this lock.
 2. Setup verifies artifact bytes before installation; each promoted platform
    must record the exact fixture result before release use.
-3. Each candidate captures compiler diagnostics, parser, validator, font,
-   link, bookmark, metadata, and visual reports.
+3. Each candidate captures compiler diagnostics, retained parser and validator
+   reports, font, link, bookmark, and metadata evidence.
 4. A named person completes [the PDF review procedure](../../docs/05-operations/pdf-accessibility-review.md)
    and attaches the completed record to candidate evidence.
 
@@ -209,4 +212,4 @@ machine prototype evidence, not a completed screen-reader review.
 - [WeasyPrint API reference](https://doc.courtbouillon.org/weasyprint/stable/api_reference.html) and [LibreOffice PDF/UA help](https://help.libreoffice.org/latest/gu/text/shared/01/ref_pdf_export_universal_accessibility.html) — alternatives examined.
 - [veraPDF validation](https://docs.verapdf.org/validation/) and [CLI validation profiles](https://docs.verapdf.org/cli/validation/) — PDF/A-2a and PDF/UA-1 validation flavours and machine-only PDF/UA scope.
 - [veraPDF 1.28.2 archive](https://software.verapdf.org/releases/1.28), [Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10), and [qpdf 12.3.2 release](https://github.com/qpdf/qpdf/releases/tag/v12.3.2) — locked validation/runtime/parser artifacts.
-- [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) — `macos-14` ARM64 boundary.
+- [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) — `macos-15-intel` Intel runner label.

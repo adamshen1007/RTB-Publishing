@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "fixture": "semantic-book.typ",
-  "purpose": "Run this exact semantic Typst input with the RFC-008 lock on each release-producing platform before release use.",
+  "fixture": "semantic-book.md",
+  "purpose": "Run this exact canonical Markdown snapshot through the locked derived-Typst command on each release-producing platform before release use.",
   "expected": {
     "profiles": ["PDF/A-2a+PDF/UA-1", "2a", "ua1"],
     "language": "en-US",
@@ -14,15 +14,15 @@
     {
       "id": "macos-x86_64",
       "status": "passed-2026-07-28",
-      "rendererArtifact": "Typst 0.15.0 macOS x86_64",
-      "command": ["typst", "compile", "--root", "<repository>", "--font-path", "<locked-font-directory>", "--ignore-system-fonts", "--ignore-embedded-fonts", "--creation-timestamp", "1785196800", "--pdf-standard", "a-2a,ua-1", "semantic-book.typ", "semantic-book.pdf"],
-      "evidence": "tests/fixtures/publishing/pdf/evidence/macos-x86_64-2026-07-28.json"
+      "rendererArtifact": "Typst 0.15.0 macOS x86_64 with pinned qpdf, Temurin, veraPDF, and Noto Serif",
+      "command": ["node", "scripts/pdf-compatibility.mjs"],
+      "evidence": "tests/fixtures/publishing/pdf/evidence/artifacts/manifest.json"
     }
   ],
   "ciBoundary": {
-    "workflowLabel": "macos-14",
-    "architecture": "arm64",
-    "status": "locked-but-not-yet-a-release-platform",
-    "requiredBeforePromotion": "Run this fixture with the lock's macos-14-arm64 Typst and Temurin artifacts, then record qpdf and both veraPDF results."
+    "workflowLabel": "macos-15-intel",
+    "architecture": "x86_64",
+    "status": "implemented-pending-remote-run-evidence",
+    "requiredBeforePromotion": "Run the identical node scripts/pdf-compatibility.mjs command in GitHub Actions and retain its verified manifest and reports."
   }
 }

@@ -19,10 +19,10 @@
     }
   ],
   "ciBoundary": {
-    "workflowLabel": "macos-14",
-    "architecture": "arm64",
-    "rendererArtifact": "tools.renderer.artifacts#macos-14-arm64",
-    "releaseStatus": "not-yet-a-supported-release-platform: it has no recorded compatibility run"
+    "workflowLabel": "macos-15-intel",
+    "architecture": "x86_64",
+    "rendererArtifact": "tools.renderer.artifacts#macos-x86_64",
+    "releaseStatus": "workflow implemented; remote run evidence is pending"
   },
   "tools": {
     "renderer": {
@@ -38,13 +38,8 @@
           "platform": "macos-x86_64",
           "architecture": "x86_64",
           "url": "https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-apple-darwin.tar.xz",
-          "sha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be"
-        },
-        {
-          "platform": "macos-14-arm64",
-          "architecture": "arm64",
-          "url": "https://github.com/typst/typst/releases/download/v0.15.0/typst-aarch64-apple-darwin.tar.xz",
-          "sha256": "fe53838737abf93a774495952a1a797b4686e9c4a21c2d99b9fdf77f46cc3572"
+          "sha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be",
+          "executableSha256": "472955622cf3cd10dd89dcf7c3cd9a6c0d2c100ab2f6ea9804a0f1256ad08705"
         }
       ],
       "licenceHandling": "Apache-2.0 upstream licence; no paid renderer licence or secret licence file is used"
@@ -55,7 +50,9 @@
       "flavour": "ua1",
       "url": "https://software.verapdf.org/releases/1.28/verapdf-greenfield-1.28.2-installer.zip",
       "sha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
-      "gpgFingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7"
+      "gpgFingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7",
+      "executableSha256": "820b9acccdd46c9cffad65150668a3c4d3446770e4d3b055ff681eedfcf6abb6",
+      "mainJarSha256": "442bf0d7f53f9ce30caa7b4d350ca9b0d86084b8cafe60ed4e6d67778a597c22"
     },
     "profileValidator": {
       "name": "veraPDF Greenfield",
@@ -74,34 +71,21 @@
           "platform": "macos-x86_64",
           "architecture": "x86_64",
           "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_mac_hotspot_21.0.11_10.tar.gz",
-          "sha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923"
-        },
-        {
-          "platform": "macos-14-arm64",
-          "architecture": "arm64",
-          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.11_10.tar.gz",
-          "sha256": "4b7a8cd23102c251c8b8be42a9a5f1263fb337cf1037f6f64b25f3070efe4b76"
+          "sha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+          "executableSha256": "3e67ca9ecc78e5b4694008c330beecd9588df5ef3da320d674a77fe2b6c3eada"
         }
       ]
     },
     "pdfParser": {
       "name": "qpdf",
       "version": "12.3.2",
-      "url": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.tar.gz",
-      "sha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
-      "checksumManifest": "https://github.com/qpdf/qpdf/releases/download/v12.3.2/qpdf-12.3.2.sha256"
-    },
-    "visualRasterizer": {
-      "name": "Ghostscript",
-      "version": "10.07.1",
-      "url": "https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10071/ghostscript-10.07.1.tar.gz",
-      "sha256": "2fc74362f9be6fae1b0a65d38fdcfd4f0b518cc3b07c5581fb661eb4d2e15251"
-    },
-    "visualComparator": {
-      "name": "ImageMagick",
-      "version": "7.1.2-24",
-      "repositoryLock": "https://github.com/ImageMagick/ImageMagick/releases/tag/7.1.2-24",
-      "method": "magick compare -metric AE -fuzz 1%"
+      "bottle": {
+        "platform": "macos-x86_64",
+        "url": "https://ghcr.io/v2/homebrew/core/qpdf/blobs/sha256:ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f",
+        "sha256": "ae97ea43f6d048aeb39bb4ef894305a6c5181bfc1436e415073add0c0ac93b3f"
+      },
+      "executableSha256": "fa469a69544255d2fd1be205a0927d5629b6a7ee94a0f36b47f5235acdba5db4",
+      "installation": "Homebrew Sonoma bottle only; verify the bottle and installed executable hashes before use."
     }
   },
   "fonts": [

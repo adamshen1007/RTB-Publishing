@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "parameters": {
+    "decodelevel": "generalized"
+  },
+  "pages": [
+    {
+      "contents": [
+        "66 0 R"
+      ],
+      "images": [],
+      "label": null,
+      "object": "59 0 R",
+      "outlines": [
+        {
+          "dest": [
+            "59 0 R",
+            "/XYZ",
+            70.86614,
+            724.7476,
+            0
+          ],
+          "object": "3 0 R",
+          "title": "Chapter one"
+        },
+        {
+          "dest": [
+            "59 0 R",
+            "/XYZ",
+            70.86614,
+            612.2916,
+            0
+          ],
+          "object": "2 0 R",
+          "title": "Fixture values"
+        }
+      ],
+      "pageposfrom1": 1
+    }
+  ]
+}

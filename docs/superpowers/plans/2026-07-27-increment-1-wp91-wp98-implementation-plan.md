@@ -191,8 +191,9 @@ Satisfy RFC-007's blocking PDF prerequisite before PDF implementation begins.
 - RFC-008 is accepted and linked from RFC-007 and the governance index.
 - Tool and font versions are pinned with checksums or repository lock data.
 - Compatibility fixtures demonstrate the selected toolchain on every supported
-  release platform. As of 2026-07-28, `macos-x86_64` is the only such platform;
-  the existing `macos-14` ARM64 CI boundary is locked but not yet promoted.
+  release platform. As of 2026-07-28, `macos-x86_64` is the locally evidenced
+  platform; the identical GitHub Actions command is implemented on
+  `macos-15-intel` and awaits its first retained remote evidence run.
 - No repository text makes an unversioned “accessible PDF” claim.
 
 ### Suggested Commit

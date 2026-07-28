@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "exampleOnly": true,
   "candidateHash": "sha256:replace-with-candidate-hash",
-  "scope": { "fixture": "semantic-book.typ", "page": 1, "finding": "exact non-profile visual comparison finding" },
+  "scope": { "fixture": "semantic-book.md", "page": 1, "finding": "exact non-profile finding" },
   "risk": "Describe the bounded risk without claiming conformance.",
   "mitigation": "Describe the remediation plan.",
   "approvedBy": { "name": "replace-with-named-human", "approvedAt": "2026-07-27" },
