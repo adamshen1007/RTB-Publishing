@@ -39,14 +39,20 @@ bound test.
 
 ## Human review and Publish
 
+Follow the
+[beginner publication approval procedure](beginner-publication-approval.md)
+for the complete do-this, verify-this, and check sequence.
+
 Review representative and high-risk pages in all three formats. A named
 reviewer must record the PDF screen-reader/visual decision and the YC migration
-decision. Rebuild after any change. The Creator then approves the exact final
+decision. Rebuild after any change. Beta approval advances the lifecycle
+version, so rebuild at that post-Beta version and repeat all three exact
+candidate reviews before Publish. The Creator then approves the exact final
 candidate hash through the lifecycle Publish gate.
 
 After the three exact, hash-bound review records make the candidate eligible,
-use `--approval-id <stored-approval-id>`. RTB reads that approval from its
-durable lifecycle ledger; a browser-authored JSON file is not accepted. The
-resulting manifest consumes its release ID and approval permanently. RTB
-Publishing does not claim hosted activation or subscriber delivery in
-Increment 1.
+use the exact manifest command Creator Studio displays with
+`--approval-id <stored-approval-id>`. RTB reads that approval from its durable
+lifecycle ledger; a browser-authored JSON file is not accepted. The resulting
+manifest consumes its release ID and approval permanently. RTB Publishing does
+not claim hosted activation or subscriber delivery in Increment 1.

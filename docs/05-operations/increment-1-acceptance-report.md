@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 132/132 passed in the final local quality run.
+- Repository tests: 140/140 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -36,6 +36,10 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   its file hashes, and the exact Git revision and tree.
 - Failure controls: candidate/manifest drift, extra artifacts, stale approval,
   pre-approval manifest creation, and release-ID reuse fail closed in tests.
+- Workflow acceptance: an isolated fixture exercises the real durable
+  Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
+  and single-use release-identity boundaries. The fixture creates no production
+  approval, Notion receipt, or manifest.
 - Future staging is an unreserved `future-staging:` reference with no authority
   or activation claim.
 
@@ -57,3 +61,8 @@ value is evidence for one evaluation, not a standing Publish authorization.
 
 No final immutable release manifest was generated, no approval was fabricated,
 and no Ghost or subscriber-library activation is claimed.
+
+The automated workflow proof does not change the manual gate statuses above.
+Use the
+[beginner publication approval procedure](beginner-publication-approval.md)
+to complete those decisions on the real candidate.

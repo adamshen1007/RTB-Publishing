@@ -57,6 +57,12 @@ the control is blocked, follow the message shown for the missing or stale
 chapter, re-run the private Notion sync, and refresh the workspace. There is no
 manual hash-entry workflow.
 
+After Beta approval, follow the required post-Beta rebuild and candidate
+re-review sequence in the
+[beginner publication approval procedure](beginner-publication-approval.md).
+The pre-Beta candidate and its reviews cannot authorize Publish at the new
+lifecycle version.
+
 ## Privacy and Recovery
 
 - Keep the headquarters and all databases private.

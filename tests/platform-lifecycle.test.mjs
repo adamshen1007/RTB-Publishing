@@ -116,7 +116,7 @@ test("Creator Studio exposes guided controls without manual hashes or reviewer i
   const base = `http://127.0.0.1:${platform.server.address().port}`;
   try {
     const app = await (await fetch(`${base}/app.js`)).text(), html = await (await fetch(`${base}/`)).text();
-    assert.match(html, /Confirm human review session/); assert.match(app, /Candidate-bound release reviews/); assert.match(app, /Displayed candidate/); assert.match(app, /Declaration: my qualified rights-review role/); assert.match(app, /Prepare Beta/); assert.match(app, /\["blueprint", "beta", "publish"\]/); assert.match(app, /`Approve \$\{label\}`/); assert.match(app, /intent/);
+    assert.match(html, /Confirm human review session/); assert.match(app, /Candidate-bound release reviews/); assert.match(app, /Displayed candidate/); assert.match(app, /Declaration: my qualified rights-review role/); assert.match(app, /Prepare Beta/); assert.match(app, /\["blueprint", "beta", "publish"\]/); assert.match(app, /`Approve \$\{label\}`/); assert.match(app, /Create the immutable manifest with/); assert.match(app, /--approval-id/); assert.match(app, /intent/);
     assert.doesNotMatch(app, /window\.prompt|candidateHash|betaSnapshotHash|policyResultsHash|operatorId|beta-evidence/);
   } finally { await new Promise((done) => platform.server.close(done)); }
 });

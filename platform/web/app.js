@@ -37,6 +37,12 @@ function lifecyclePanel(project, lifecycle) {
     row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
     const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
     const needsIntent = ["beta", "publish"].includes(gate), action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator || (needsIntent && !result.intent); action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version, result.intent)); row.append(action); section.append(row);
+    const approval = lifecycle.approvals?.filter((item) => item.gate === gate && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    if (gate === "publish" && approval) {
+      const handoff = node("p", "muted", `Stored Publish approval ${approval.id}. Create the immutable manifest with:`);
+      const command = node("code", "", `pnpm release:candidate -- --lifecycle-version ${approval.lifecycleVersion - 1} --approval-id ${approval.id}`);
+      row.append(handoff, command);
+    }
   });
   return section;
 }
