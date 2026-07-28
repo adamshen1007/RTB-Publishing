@@ -4,7 +4,7 @@ created_at: "2026-01-01T00:00:00.000Z"
 updated_at: "2026-01-01T00:00:00.000Z"
 producer: fixture-author
 validation_rules: [book-blueprint-v1]
-content_hash: sha256:5a093f6d8d6dd599d40a4bcf4e0489058c25900febc988f53aba862602709d27
+content_hash: sha256:cef8ef319a59f7481c13476b727e7c823a4eaed4bac8cde313b335d2f89c9fe4
 project_id: concise-guide
 reader: { description: A new reader, locale: en-US }
 promised_outcome: Make one useful decision.
@@ -15,5 +15,5 @@ budgets: { research_items: 5, provider_cost_usd: 0 }
 provider_egress_policy: { classification: local-only, allowed_providers: [] }
 parts: [{ id: concise-part-one, title: Start, order: 1 }]
 chapter_contracts:
-  - { id: concise-chapter-one, schema_version: "1", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", producer: fixture-author, validation_rules: [chapter-v1], content_hash: sha256:12442db336c4ffa46525044d6e8ad4addd85359bea060b780b62470d458375df, title: Start, order: 1, part_id: concise-part-one, source_path: chapters/start.md, reader_decision: Start now, required_output: Decision }
+  - { id: concise-chapter-one, schema_version: "1", created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z", producer: fixture-author, validation_rules: [chapter-v1], content_hash: sha256:1e2c4dd23229c32cec09b3befdc61c3889d26a4454c9374e364037f78f47dc31, title: Start, order: 1, part_id: concise-part-one, source_path: chapters/start.md, reader_decision: Start now, required_output: Decision }
 materiality_rules: { fields_requiring_reapproval: [thesis] }

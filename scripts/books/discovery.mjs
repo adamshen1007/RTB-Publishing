@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import { parse } from "yaml";
 import { ROOT } from "../lib.mjs";
@@ -79,7 +79,7 @@ export function discoverBookProject(projectOrManifest, options = {}) {
 
 /** Discover only declared manifests, in stable workspace-relative order. */
 export function discoverBooks(workspaceRoot = ROOT, options = {}) {
-  const root = resolve(workspaceRoot);
+  const root = realpathSync(resolve(workspaceRoot));
   const files = manifestFiles(root).filter((file) => !safeRelative(root, file).split("/").some((segment) => ignored.has(segment)));
   const projects = files.map((file) => projectFromManifest(file, { workspaceRoot: root, ...options }));
   const ids = new Set();

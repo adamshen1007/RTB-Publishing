@@ -4,7 +4,7 @@ created_at: "2026-01-02T00:00:00.000Z"
 updated_at: "2026-01-02T00:00:00.000Z"
 producer: fixture-author
 validation_rules: [book-project-v1]
-content_hash: sha256:7e4af9e6a889533203b218c6dcfccd0ba1443fad4ee6b9cb86bd1a8ac5ed6b4a
+content_hash: sha256:4708cacb01500163debdbabfa3fca34461505f3ab5d4a598b0b1e321f98733bc
 locale: fr-FR
 paths: { root: assets, metadata: livre.md, chapters: chapitres, assets: assets }
 output_profiles: [{ id: epub-edition, format: epub, path: avenir/guide.epub }, { id: pdf-edition, format: pdf, path: avenir/guide.pdf }]
