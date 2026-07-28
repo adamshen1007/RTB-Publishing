@@ -65,16 +65,20 @@ fields hashed into that candidate. Each record redundantly binds the exact
 candidate hash, source fingerprint, and HTML, PDF, and EPUB artifact hashes;
 the service resolves those values from the registered candidate and resolves
 the human reviewer from the authenticated server session. A browser cannot
-author any binding or reviewer identity. An approved rights and brand review
-also records a truthful, non-empty qualified reviewer role.
+author any binding or reviewer identity. For an approved rights and brand
+review, the human reviewer must declare a non-empty qualified role. This is a
+recorded human assertion, not independent credential or attestation proof.
 
 Release eligibility is a server-side join of the exact current candidate and
 the latest valid record for each fixed review kind. Wrong-candidate, stale,
 rejected, incomplete, or corrupt evidence fails closed. The Publish approval
-binds the candidate and the resulting zero-blocking-findings decision in the
-durable lifecycle ledger. This separation prevents a review record from
-changing the source fingerprint or candidate it is intended to approve while
-retaining an exact auditable binding at Publish.
+binds the candidate, zero-blocking-findings decision, and exact release-policy
+result hash in the durable lifecycle ledger. Manifest creation re-reads the
+current evidence and requires it to remain eligible with that identical policy
+hash; a later rejection or replacement review cannot reuse the historical
+approval. This separation prevents a review record from changing the source
+fingerprint or candidate it is intended to approve while retaining an exact
+auditable binding at Publish.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest

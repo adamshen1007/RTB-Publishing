@@ -40,7 +40,7 @@ export class ReleaseReviewService {
     const actor = this.actorResolver();
     if (actor?.type !== "human" || typeof actor.id !== "string" || actor.id.trim().length < 2) throw new Error("Release review evidence requires a server-resolved human actor.");
     const qualifiedRole = typeof input.qualifiedRole === "string" ? input.qualifiedRole.trim() : "";
-    if (input.kind === "rights-and-brand-review" && input.decision === "approved" && !qualifiedRole) throw new Error("Rights review approval requires a truthful, non-empty qualified reviewer role.");
+    if (input.kind === "rights-and-brand-review" && input.decision === "approved" && !qualifiedRole) throw new Error("Rights review approval requires a declared, non-empty qualified reviewer role.");
     if (qualifiedRole.length > 200) throw new Error("Qualified reviewer role is too long.");
 
     const candidate = this.store.currentCandidate(this.projectId);

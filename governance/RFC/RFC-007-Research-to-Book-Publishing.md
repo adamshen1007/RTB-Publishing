@@ -211,15 +211,20 @@ source fingerprint and HTML, PDF, and EPUB hashes from that server-side
 record, resolves the human identity from the authenticated local session, and
 appends the decision to SQLite. Browser input cannot supply a candidate,
 fingerprint, artifact hash, reviewer identity, or lifecycle binding. Rights
-approval additionally requires a truthful, non-empty qualified reviewer role.
+approval additionally requires the human reviewer to declare a non-empty
+qualified role. The system records that declaration; it does not independently
+verify a professional credential or external attestation.
 
 Release policy evaluation joins the latest evidence for each fixed review kind
 to that exact registered candidate and rechecks every redundant source and
 artifact binding. Evidence for another candidate, including one with similar
 content or a stale lifecycle version, does not satisfy the policy. The
-server-created Publish binding records zero blocking findings for the exact
-candidate; changing candidate material creates another identity and returns
-the reviews to pending. This operational join breaks the self-reference cycle
+server-created Publish binding records zero blocking findings and the exact
+release-policy result hash for the candidate. Manifest creation re-reads the
+current durable review evidence and requires that same policy identity to
+remain eligible. Changing candidate material or review evidence therefore
+requires a new exact policy evaluation and, when its identity changes, a new
+Publish approval. This operational join breaks the self-reference cycle
 without weakening the Publish gate or making review evidence canonical input.
 
 The final manifest required by ADR-012 derives from the approved envelope. It

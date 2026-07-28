@@ -18,7 +18,7 @@ export class CanonicalLifecycleBindingProvider {
       const candidate = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(this.book.id);
       if (!candidate) return { available: false, message: "Publish is unavailable until a verified release candidate is registered." };
       const value = JSON.parse(candidate.candidate_json), approvals = database.prepare("SELECT gate, bindings_json FROM lifecycle_approvals WHERE project_id = ? AND decision = 'approved' AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations) ORDER BY created_at DESC").all(this.approvalProjectId), binding = (kind) => JSON.parse(approvals.find((item) => item.gate === kind)?.bindings_json ?? "null"), releasePolicies = evaluateReleasePolicies(this.book, value, { databaseFile: this.databaseFile });
-      return { available: true, bindings: { releaseCandidateHash: value.candidateHash, candidateLifecycleVersion: value.lifecycleVersion, blockingFindings: releasePolicies.releaseEligible ? 0 : 1, blueprint: binding("blueprint"), beta: binding("beta") } };
+      return { available: true, bindings: { releaseCandidateHash: value.candidateHash, candidateLifecycleVersion: value.lifecycleVersion, releasePolicyHash: releasePolicies.releasePolicyHash, blockingFindings: releasePolicies.releaseEligible ? 0 : 1, blueprint: binding("blueprint"), beta: binding("beta") } };
     } finally { database.close(); }
   }
 }
