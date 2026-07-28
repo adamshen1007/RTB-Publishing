@@ -363,3 +363,14 @@ test("generation GC removes only an exact empty legacy orphan directory", async 
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
+
+test("generation GC orphan cleanup preserves content and replacement successors added before removal", async (context) => {
+  for (const scenario of ["foreign-content", "replacement-successor"]) await context.test(scenario, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-orphan-race-${scenario}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }; buildProject(project, options); const orphan = resolve(outputRoot, ".gc", project.id, randomUUID()), proof = resolve(orphan, "successor-proof"), displaced = resolve(outputRoot, "displaced-orphan"); mkdirSync(orphan, { recursive: true });
+      assert.throws(() => buildProject(project, { ...options, hooks: { beforeGenerationGcOrphanRemove: ({ path }) => { if (scenario === "replacement-successor") { renameSync(path, displaced); mkdirSync(path); } writeFileSync(resolve(path, "successor-proof"), "untouched"); } } }), /not empty|identity changed/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); if (scenario === "replacement-successor") assert.ok(existsSync(displaced)); unlinkSync(proof); buildProject(project, options); assert.equal(existsSync(orphan), false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
