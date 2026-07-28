@@ -1,235 +1,212 @@
 # RFC-008 — PDF Publication Profile
 
-<!-- cspell:words PDF UA verapdf qpdf Ghostscript ImageMagick Noto YesLogic -->
+<!-- cspell:words Typst verapdf qpdf Ghostscript ImageMagick Noto -->
 
 ## Status
 
-Accepted for Increment 1 implementation on 2026-07-27. This acceptance is the
-technical decision required by RFC-007. It does not record an accessibility
-conformance determination, legal clearance, or a completed human review.
+Accepted for Increment 1 implementation on 2026-07-28. This supersedes the
+2026-07-27 Prince selection in this RFC because it imposed a paid, proprietary
+licence boundary. It is the technical decision required by RFC-007; it does
+not record a legal conclusion or a completed human accessibility review.
 
 ## Summary
 
-This RFC amends [RFC-007](RFC-007-Research-to-Book-Publishing.md). Increment 1
-PDF output targets the combined, versioned **PDF/A-2a + PDF/UA-1** profile:
+Increment 1 targets the combined, versioned **PDF/A-2a + PDF/UA-1** profile:
 
 - PDF/A-2a: ISO 19005-2:2011 archival conformance level a.
 - PDF/UA-1: ISO 14289-1:2014 universal-accessibility profile.
 
-The renderer is YesLogic Prince 16.2. The build requests
-`PDF/A-2a+PDF/UA-1`; it does not infer a profile from defaults. The machine
-gate separately runs veraPDF Greenfield 1.28.2 for `2a` and `ua1`, and uses
-qpdf 12.3.2 to reject unreadable, encrypted, or malformed PDFs. Ghostscript
-10.07.1 rasterizes selected pages and ImageMagick 7.1.2-24 compares the
-resulting PNGs against reviewed visual baselines.
+The selected renderer is **Typst 0.15.0**, an Apache-2.0 open-source compiler.
+The locked command requests both standards explicitly with
+`--pdf-standard=a-2a,ua-1`; it does not infer them from defaults. Typst's
+official documentation states that compatible PDF/A and PDF/UA standards can
+be combined, and that PDF/UA export enables additional checks.
 
-veraPDF runs only on the lock-owned Eclipse Temurin JRE 21.0.11+10. The lock
-contains distinct verified JRE artifacts for macOS Intel, macOS Apple silicon,
-and Ubuntu 24.04 x86_64; an ambient `java` command is not an accepted runtime.
-
-The full, checksum-pinned input is
-[toolchain.lock.json](../../publishing/pdf/toolchain.lock.json). That lock is
-the only supported toolchain selection for Increment 1.
+The machine gate uses veraPDF Greenfield 1.28.2 separately for `2a` and
+`ua1`, qpdf 12.3.2 to reject malformed or encrypted PDFs, and the locked
+Ghostscript/ImageMagick visual comparison path. The exact artifacts, runtimes,
+fonts, command arguments, checksums, and repository locks are in
+[toolchain.lock.json](../../publishing/pdf/toolchain.lock.json).
 
 ## Motivation
 
-RFC-007 requires a named, versioned PDF accessibility and archival profile,
-machine validation, fixtures, and a manual procedure before PDF renderer code
-begins. A renderer's ability to emit tagged PDF is not a conformance result.
-In particular, veraPDF states that its PDF/UA checks cover only machine
-verifiable requirements; the human checks remain necessary.
+RFC-007 requires a named, versioned archival and accessibility profile,
+machine validation, semantic fixtures, and a manual procedure before PDF
+renderer code begins. Tagged output is not a conformance result. In particular,
+veraPDF's PDF/UA checks cover only machine-verifiable requirements; human
+review remains required.
 
-The workflow must be usable by a beginner on a local Mac while remaining
-repeatable in CI. It must also avoid silently changing layouts because a local
-system has a different font or a missing glyph.
+The prior selected renderer depended on a paid proprietary licence. That
+licence boundary is incompatible with the requested no-paid-licence workflow.
+This decision replaces it with an open-source renderer and records a passing
+local prototype rather than treating vendor capability claims as sufficient.
 
 ## Proposal
 
-### Profile and renderer
+### Renderer, inputs, and reproducibility
 
-Prince 16.2 is the selected local executable renderer. Its published profile
-list includes `PDF/A-2a+PDF/UA-1`; the profile turns on tagged PDF, and its
-documentation describes the related tag, font-embedding, Unicode-mapping, and
-alternative-text requirements. The production invocation must be an argument
-array equivalent to:
+Typst 0.15.0 is the selected local executable renderer. It compiles local,
+semantic Typst source in a disk-backed staging directory; rendering does not
+fetch network resources. The production wrapper must invoke an argument array
+equivalent to:
 
 ```text
-prince input.html --output output.pdf --pdf-profile=PDF/A-2a+PDF/UA-1 \
-  --pdf-lang=en-US --no-system-fonts --no-artificial-fonts \
-  --fail-safe --structured-log=buffered
+typst compile input.typ output.pdf --root staging --font-path locked-fonts \
+  --ignore-system-fonts --ignore-embedded-fonts \
+  --creation-timestamp 1785196800 --pdf-standard=a-2a,ua-1 \
+  --diagnostic-format=short
 ```
 
-The future renderer wrapper adds the input stylesheet and fixed, lock-owned
-font paths. It may not enable network fetches or substitute an executable,
-profile, stylesheet, font, or command option without a lock and RFC update.
-It renders only from a clean disk-backed staging directory, writes only to its
-allocated output directory, and records the complete command (with no secrets)
-and its structured log.
+The wrapper may not substitute an executable, profile, font, package cache,
+stylesheet/template, or command argument without an RFC and lock update. It
+must use a clean disk-backed staging directory, an empty package cache, and an
+allocated output directory; it must retain the complete secret-free command
+and diagnostic output. A non-zero compiler result, an unresolved resource, or
+any diagnostic is blocking. The build must run offline after explicit setup.
 
-`--fail-safe` is deliberately required: it stops conversion for profile, tag,
-missing-glyph, missing-resource, incorrect-reference, dropped-content, and
-invalid-license failures. A build also fails on any warning in the structured
-log; an allowlisted warning needs an approved, time-limited waiver.
+The fixed creation timestamp makes compatibility-fixture metadata
+reproducible. Release candidates use the project-approved source-date epoch;
+changing it is a release-input change, not a post-processing step. PDF bytes
+are not required to be identical across architectures, but the locked source,
+semantic checks, validator results, and reviewed visual baseline must agree.
 
 ### Supported platform boundary
 
-Only these platforms are supported for a release-producing PDF run:
+The only current release-producing platform is `macos-x86_64`, verified by the
+recorded local compatibility run on Darwin 24.6.0. Windows, Linux, and macOS
+ARM64 are not currently release-producing platforms.
 
-| ID | Role | Required artifact |
-| --- | --- | --- |
-| `macos-universal` | local creator workflow on Apple silicon or Intel Mac | Prince 16.2 macOS Universal ZIP |
-| `ubuntu-24.04-x86_64` | GitHub Actions / CI workflow | Prince 16.2 Ubuntu 24.04 AMD64 DEB |
-
-Each platform must pass the corresponding named compatibility fixture before
-being used for a release. Windows, FreeBSD, other Linux distributions,
-Linux ARM64, and macOS versions or architectures not covered by a passing
-compatibility run are explicitly unsupported for Increment 1 release builds.
-Their vendor packages, if any, are not acceptance evidence.
-
-The same profile, fixtures, fonts, validation commands, and visual baselines
-run locally and in CI. Platform-specific Prince package bytes are individually
-locked because identical tool *versions* do not make package bytes identical.
-PDF bytes are not required to be identical across the two supported platforms;
-the normalized semantic and validation evidence must agree. A differing visual
-baseline is a blocker unless a new reviewed baseline and a compatibility result
-are committed with a toolchain change.
+The repository's existing GitHub Actions label is `macos-14`, which GitHub
+documents as ARM64. Its exact Typst and Temurin artifacts are checksum-pinned
+in the lock so CI can exercise the same setup, but no ARM64 compatibility
+evidence has been recorded. It is therefore a CI boundary, **not** a supported
+release platform. A passing recorded fixture run is required before promoting
+it. Ubuntu 24.04 is not retained as an aspirational platform.
 
 ### Licensing and installation boundary
 
-Prince is a proprietary renderer. Its vendor documents a free non-commercial
-mode that adds a logo and a separate commercial site licence for commercial
-server use. A human owner must obtain and document the licence that applies to
-the intended use before a non-watermarked or CI release build runs. The licence
-file is a secret: it is never committed, logged, copied into a fixture, or
-included in a manifest. CI mounts it from its secret store into an ephemeral
-path. This RFC makes no conclusion about licence sufficiency or font rights.
-
-The beginner local setup downloads the exact macOS artifact, checks its SHA-256
-against the lock, installs it in a user-writable directory, and runs `prince
---version`. CI checks the exact Ubuntu artifact before installation. veraPDF,
-qpdf, Ghostscript, ImageMagick, and the Java runtime are similarly installed
-from the lock-owned artifact or repository reference; package-manager `latest`
-or an unpinned system copy fails the toolchain check.
+Typst is Apache-2.0 and needs no paid renderer licence or secret licence file.
+The lock is nevertheless not a legal conclusion about the Noto Serif font or
+other content. The setup step downloads the exact architecture artifact,
+recalculates its SHA-256, installs it in a user-writable directory, and checks
+`typst --version`. It repeats that verification for veraPDF, the pinned Temurin
+JRE, qpdf, rasterizer, comparator, and font before use. Package-manager
+`latest` or an unpinned system copy is not an accepted release tool.
 
 ### Validation roles
 
 | Role | Tool and fixed version | Blocking result |
 | --- | --- | --- |
-| renderer | Prince 16.2 | non-zero exit or any structured-log warning |
+| renderer | Typst 0.15.0 | non-zero exit or any diagnostic |
 | Java runtime | Eclipse Temurin JRE 21.0.11+10 | missing, wrong-version, or checksum-mismatched runtime |
 | structural validator | veraPDF Greenfield 1.28.2, `--flavour ua1` | any machine-verifiable PDF/UA-1 failure |
 | archival-profile validator | veraPDF Greenfield 1.28.2, `--flavour 2a` | any PDF/A-2a failure |
 | parser / integrity check | qpdf 12.3.2 | failed `--check`, encryption, bad signature, or unreadable page tree |
 | visual regression | Ghostscript 10.07.1 plus ImageMagick 7.1.2-24 | changed selected-page PNG outside an approved baseline |
 
-The validator reports are retained in the ignored release evidence directory
-and their SHA-256 values enter the candidate envelope. A validator passing does
-not mark the PDF as conformant or replace the manual review.
+Reports stay in the ignored candidate-evidence directory; their SHA-256 values
+enter the candidate envelope. A passing report does not by itself establish
+accessibility conformance.
 
 ### Content contract
 
-The renderer input is semantic HTML with one document language. Increment 1
-supports `en-US` only; a project that declares another language or contains a
-language override fails before rendering until this RFC and the font coverage
-matrix are extended.
+Increment 1 source is semantic Typst, with document language `en-US` and
+document metadata set in `#set document`. An upstream Markdown-to-Typst
+transformation is outside this RFC and must be separately versioned and tested
+before it becomes a release input.
 
-- The HTML `lang`, the fixed `--pdf-lang`, title, author, subject, keywords,
-  creator, and profile metadata must agree with the project metadata. Creation
-  and modification dates follow RFC-007 reproducibility policy and are
-  normalized in comparisons rather than invented.
-- Semantic headings map to H1–H6 in source order. Lists, paragraphs, tables,
-  captions, notes, links, and figures retain their native semantic HTML. CSS
-  role overrides are permitted only where the fixture proves the result.
-- A meaningful figure needs non-empty author-supplied alternative text; a
-  decorative figure is explicitly marked as an artifact. Images without one of
-  those classifications fail. The PDF structure order follows source order;
-  visual positioning must not be used to imply reading order.
-- Data tables require a caption and scoped header cells. Complex tables that
-  cannot be expressed with this contract are blocked pending a tested semantic
-  mapping and human review.
-- Internal links resolve to existing IDs, external links use allowed URLs, and
-  all headings at configured levels produce linked bookmarks. The fixture
-  checks bookmarks, destinations, and both link types.
-- The only permitted body face is the locked Noto Serif variable TTF loaded by
-  `@font-face`. System fonts and artificial bold/italic are disabled. CSS uses
-  `prince-no-fallback`; missing glyph, missing font, or substitution warnings
-  fail the build. The rendered PDF must embed the approved font and map text to
-  Unicode.
+- Document title, author, keywords, language, and fixed date must agree with
+  project metadata. Headings, lists, paragraphs, figures, tables, captions,
+  and links must use Typst's semantic elements in source order.
+- Meaningful figures require non-empty author-supplied alternative text.
+  Decorative content is wrapped in `pdf.artifact`. Visual positioning cannot
+  imply reading order.
+- Data tables use table header cells; complex tables require a tested semantic
+  mapping and human review before release. The compatibility fixture covers a
+  simple header/data table, figure, lists, internal/external links, heading,
+  outline/bookmark, metadata, and alternative text.
+- All headings at configured levels produce linked outline entries. Internal
+  links resolve to existing labels; external links use allowed URLs.
+- The only permitted face is the checksum-pinned Noto Serif variable font.
+  `--font-path` contains only lock-owned fonts and both system and embedded
+  fonts are ignored. A font-resolution or missing-glyph diagnostic blocks the
+  build. The candidate evidence must confirm embedded approved fonts and
+  Unicode text mapping.
 
 ### Waivers
 
-A waiver never turns a failed PDF into a passing PDF automatically. It is
-valid only for a precisely named non-profile warning or visual comparison that
-has no PDF/UA-1, PDF/A-2a, integrity, security, missing-glyph, or unresolved
-accessibility finding. Every waiver must be a versioned record containing:
-
-- the release candidate hash, fixture or page scope, validator/tool version,
-  exact finding, risk, and proposed mitigation;
-- a named human approver and approval date;
-- an expiry date no more than 30 calendar days after approval; and
-- a remediation owner and issue/reference.
-
-An expired, unscoped, unsigned, changed-candidate, or broad class waiver is
-invalid. The example fixture is a schema example only, not an approval.
+A waiver never turns a failed PDF into a pass. It is valid only for a precisely
+named non-profile warning or visual difference that has no PDF/A-2a, PDF/UA-1,
+integrity, security, missing-glyph, or unresolved accessibility finding. It
+must identify the candidate hash, scope, tool version, exact finding, risk,
+mitigation, named human approver/date, expiry no later than 30 days, and a
+remediation owner/reference. An expired, unsigned, changed-candidate, or broad
+class waiver is invalid.
 
 ## Alternatives Considered
 
 | Candidate | Decision | Reason |
 | --- | --- | --- |
-| Prince 16.2 with combined profile | selected | The vendor documents the exact combined profile, tagged-PDF behaviour, macOS Universal and Ubuntu 24.04 packages, and fail-safe options. |
-| Browser print pipeline | not selected | It was not accepted because this RFC has no provider evidence that a chosen browser build produces and validates the selected combined profile. |
-| A renderer without an explicit combined-profile claim | not selected | It was not accepted because tagged output alone is insufficient evidence for the RFC-007 prerequisite. |
-| Hosted conversion service | not selected | It would add content egress and credentials to a local, offline rendering boundary; no exception was proposed. |
+| Typst 0.15.0 | selected | Open-source Apache-2.0 renderer with official combined compatible PDF/A and PDF/UA support; the fixture passed both locked veraPDF profiles locally. |
+| WeasyPrint 69.0 | not selected | Its official documentation exposes PDF/A and PDF/UA variants but does not establish the required combined profile in one export. |
+| LibreOffice headless | not selected | Its documentation describes PDF/UA export, but this decision found no official combined PDF/A-2a + PDF/UA-1 export claim or passing fixture evidence. |
+| Prince 16.2 | superseded | It has the combined profile but is proprietary and requires a paid commercial licence for the intended non-watermarked workflow. |
+| Browser print pipeline / hosted conversion | not selected | Neither supplied an offline, checksum-pinned renderer with evidence for the exact combined profile. |
+
+## Prototype Evidence
+
+On 2026-07-28, the locked Typst x86_64 macOS artifact compiled the semantic
+fixture with only the locked Noto Serif font and the required profile flags.
+qpdf 12.3.2 reported no syntax or stream-encoding errors and no encryption.
+veraPDF 1.28.2 passed `2a` with 153 rules / 7,174 checks and `ua1` with 106
+rules / 1,642 checks, with zero failed rules and checks. Poppler rendered the
+one-page result for visual inspection; no layout or glyph defect was found.
+The recorded hashes and full commands are in the evidence fixture. This is
+machine prototype evidence, not a completed screen-reader review.
 
 ## Risks
 
-- The renderer's licence is a material procurement and legal dependency. A
-  missing or inappropriate licence blocks PDF release generation.
-- veraPDF's PDF/UA coverage is machine-only. A passing report cannot support a
-  statement that human accessibility evidence has passed.
-- Font coverage is intentionally narrow. Unsupported scripts, unclassified
-  figures, complex tables, and unreviewed layouts block rather than degrade.
-- Rendering engines can differ across operating systems. The restricted
-  platform matrix, deterministic fixture inputs, and visual baselines contain
-  that risk but do not prove portability beyond those runs.
+- Typst and validator conformance checks do not replace the required human
+  VoiceOver and visual review.
+- The current release platform is deliberately narrow. CI's ARM64 runner is
+  locked but remains unverified and cannot release PDF candidates.
+- Font coverage is deliberately narrow. Unsupported scripts, missing glyphs,
+  unclassified figures, complex tables, and unreviewed layouts block rather
+  than degrade.
+- This RFC does not authorize an unpinned Markdown conversion tool or package.
 
 ## Acceptance Criteria
 
-- [x] The selected profile, renderer, validators, parser, fonts, visual method,
-  supported platforms, and manual procedure are named and versioned.
-- [x] Tool and font artifacts have a SHA-256 or exact repository-lock reference.
-- [x] Compatibility fixtures exist for both supported platforms and are checked
-  by the repository test suite.
-- [ ] Compatibility evidence passes on both supported platforms. The recorded
-  macOS demo run is blocked by its watermark and the Ubuntu 24.04 runtime was
-  unavailable; see the evidence fixtures for exact findings.
-- [x] The manual review procedure and waiver record fields are versioned.
+- [x] The combined profile, open-source renderer, validators, parser, fonts,
+  visual method, platform boundary, and manual procedure are named/versioned.
+- [x] Tool and font artifacts have SHA-256 values or an exact repository lock.
+- [x] The `macos-x86_64` semantic fixture passed Typst, qpdf, veraPDF `2a`,
+  and veraPDF `ua1`; recorded evidence includes artifact/report hashes.
+- [ ] GitHub Actions `macos-14` ARM64 compatibility evidence is required before
+  that CI runner can produce release candidates.
+- [x] The manual procedure and waiver fields are versioned.
 - [ ] A named reviewer records a passing screen-reader and visual review for a
   specific candidate. This remains a human evidence gate.
-- [ ] A named rights/licensing reviewer records the applicable Prince and font
-  evidence for a specific release. This remains a human evidence gate.
+- [ ] A named rights reviewer confirms rights for actual release content and
+  fonts. This remains separate from the open-source renderer licence.
 
 ## Implementation Plan
 
-1. WP98 implements the fixed-argument, no-network, disk-backed renderer and
-   verifier only from this lock.
-2. The CI and local setup scripts verify artifact bytes before installation and
-   run each compatibility fixture on its listed platform.
-3. Each candidate captures parser, validator, font, link, bookmark, metadata,
-   and visual reports; failure prevents a release candidate.
-4. A named person completes
-   [the PDF review procedure](../../docs/05-operations/pdf-accessibility-review.md)
-   and attaches the completed record to the candidate evidence.
+1. WP98 implements only the fixed-argument, offline, disk-backed renderer and
+   verifier defined by this lock.
+2. Setup verifies artifact bytes before installation; each promoted platform
+   must record the exact fixture result before release use.
+3. Each candidate captures compiler diagnostics, parser, validator, font,
+   link, bookmark, metadata, and visual reports.
+4. A named person completes [the PDF review procedure](../../docs/05-operations/pdf-accessibility-review.md)
+   and attaches the completed record to candidate evidence.
 
 ## Sources
 
-- [Prince PDF output and profiles](https://www.princexml.com/doc/prince-output/) — profile combinations, tags, fonts, metadata, and links.
-- [Prince 16.2 downloads](https://www.princexml.com/download/16/) — macOS Universal and Ubuntu 24.04 artifacts.
-- [Prince command-line options](https://www.princexml.com/doc-refs/) — locked fail-safe and font controls.
-- [Prince licence FAQ](https://www.princexml.com/purchase/license_faq/) — vendor licence descriptions; not legal advice.
+- [Typst PDF reference](https://typst.app/docs/reference/pdf/) — command-line standards, compatible PDF/A + PDF/UA combinations, semantic-tagging and accessibility checks.
+- [Typst accessibility guide](https://typst.app/docs/guides/accessibility/) and [document metadata reference](https://typst.app/docs/reference/model/document/) — semantic/content and title/date requirements.
+- [Typst 0.15.0 release notes](https://typst.app/docs/changelog/0.15.0/) and [source repository licence](https://github.com/typst/typst) — selected version and Apache-2.0 licence.
+- [WeasyPrint API reference](https://doc.courtbouillon.org/weasyprint/stable/api_reference.html) and [LibreOffice PDF/UA help](https://help.libreoffice.org/latest/gu/text/shared/01/ref_pdf_export_universal_accessibility.html) — alternatives examined.
 - [veraPDF validation](https://docs.verapdf.org/validation/) and [CLI validation profiles](https://docs.verapdf.org/cli/validation/) — PDF/A-2a and PDF/UA-1 validation flavours and machine-only PDF/UA scope.
-- [veraPDF 1.28.2 download archive](https://software.verapdf.org/releases/1.28) — locked Greenfield installer artifact.
-- [Eclipse Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10) — locked macOS and Ubuntu JRE artifacts.
-- [qpdf 12.3.2 release](https://github.com/qpdf/qpdf/releases/tag/v12.3.2) — parser release and signed checksum manifest.
-- [Ghostscript releases](https://ghostscript.com/releases/) and [Ghostscript FAQ](https://ghostscript.com/faq/index.html) — PDF rasterizer release and PNG rendering use.
-- [ImageMagick compare](https://imagemagick.org/compare/) — pixel-comparison command semantics.
+- [veraPDF 1.28.2 archive](https://software.verapdf.org/releases/1.28), [Temurin 21.0.11+10 release](https://github.com/adoptium/temurin21-binaries/releases/tag/jdk-21.0.11%2B10), and [qpdf 12.3.2 release](https://github.com/qpdf/qpdf/releases/tag/v12.3.2) — locked validation/runtime/parser artifacts.
+- [GitHub-hosted runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) — `macos-14` ARM64 boundary.

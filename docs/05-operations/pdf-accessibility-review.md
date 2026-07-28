@@ -87,7 +87,7 @@ reviewer:
   role: <role>
   reviewedAt: <RFC 3339 timestamp>
 environment:
-  platform: macos-universal
+  platform: macos-x86_64
   macos: <exact version>
   hardware: <Apple silicon or Intel model>
   screenReader: VoiceOver <version/settings>
@@ -124,4 +124,4 @@ requires a new record.
 ## Sources
 
 - [veraPDF validation scope](https://docs.verapdf.org/validation/)
-- [Prince PDF/UA output requirements](https://www.princexml.com/doc/prince-output/)
+- [Typst PDF accessibility requirements](https://typst.app/docs/reference/pdf/)

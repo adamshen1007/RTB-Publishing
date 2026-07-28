@@ -1,46 +1,53 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "acceptedRfc": "RFC-008",
-  "generatedAt": "2026-07-27",
+  "generatedAt": "2026-07-28",
   "profile": {
     "renderer": "PDF/A-2a+PDF/UA-1",
+    "rendererArgument": "--pdf-standard=a-2a,ua-1",
     "validatorFlavours": ["2a", "ua1"],
     "documentLanguage": "en-US",
+    "sourceDateEpoch": 1785196800,
     "byteIdentityRequiredAcrossPlatforms": false
   },
   "supportedPlatforms": [
     {
-      "id": "macos-universal",
-      "role": "local-creator",
-      "architectures": ["arm64", "x86_64"],
-      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#macos-universal"
-    },
-    {
-      "id": "ubuntu-24.04-x86_64",
-      "role": "ci",
+      "id": "macos-x86_64",
+      "role": "local-creator-and-current-compatibility-evidence",
       "architectures": ["x86_64"],
-      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#ubuntu-24.04-x86_64"
+      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#macos-x86_64"
     }
   ],
+  "ciBoundary": {
+    "workflowLabel": "macos-14",
+    "architecture": "arm64",
+    "rendererArtifact": "tools.renderer.artifacts#macos-14-arm64",
+    "releaseStatus": "not-yet-a-supported-release-platform: it has no recorded compatibility run"
+  },
   "tools": {
     "renderer": {
-      "name": "Prince",
-      "vendor": "YesLogic",
-      "version": "16.2",
+      "name": "Typst",
+      "vendor": "Typst Contributors",
+      "version": "0.15.0",
+      "releaseCommit": "3ae52774",
+      "license": "Apache-2.0",
       "profile": "PDF/A-2a+PDF/UA-1",
+      "repositoryLock": "https://github.com/typst/typst/tree/v0.15.0",
       "artifacts": [
         {
-          "platform": "macos-universal",
-          "url": "https://www.princexml.com/download/prince-16.2-macos.zip",
-          "sha256": "30a14021a68c38b92c36beb2fddc62ea5425392a86d4cdc6767adde38a9af8aa"
+          "platform": "macos-x86_64",
+          "architecture": "x86_64",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-apple-darwin.tar.xz",
+          "sha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be"
         },
         {
-          "platform": "ubuntu-24.04-x86_64",
-          "url": "https://www.princexml.com/download/prince_16.2-1_ubuntu24.04_amd64.deb",
-          "sha256": "305d755ff6437e855c151920d1363970d8cc7bff1ea4006290c36ad5d8e06c69"
+          "platform": "macos-14-arm64",
+          "architecture": "arm64",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.0/typst-aarch64-apple-darwin.tar.xz",
+          "sha256": "fe53838737abf93a774495952a1a797b4686e9c4a21c2d99b9fdf77f46cc3572"
         }
       ],
-      "licenceHandling": "human-provided secret licence file; never committed or logged"
+      "licenceHandling": "Apache-2.0 upstream licence; no paid renderer licence or secret licence file is used"
     },
     "structuralValidator": {
       "name": "veraPDF Greenfield",
@@ -61,25 +68,19 @@
       "version": "21.0.11+10",
       "majorVersion": 21,
       "vendor": "Eclipse Adoptium",
-      "purpose": "runs the pinned veraPDF Greenfield CLI; an unpinned system Java is not permitted",
+      "purpose": "runs the pinned veraPDF Greenfield CLI; an ambient Java runtime is not permitted",
       "artifacts": [
         {
-          "platform": "macos-universal",
+          "platform": "macos-x86_64",
           "architecture": "x86_64",
           "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_mac_hotspot_21.0.11_10.tar.gz",
           "sha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923"
         },
         {
-          "platform": "macos-universal",
+          "platform": "macos-14-arm64",
           "architecture": "arm64",
           "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.11_10.tar.gz",
           "sha256": "4b7a8cd23102c251c8b8be42a9a5f1263fb337cf1037f6f64b25f3070efe4b76"
-        },
-        {
-          "platform": "ubuntu-24.04-x86_64",
-          "architecture": "x86_64",
-          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_linux_hotspot_21.0.11_10.tar.gz",
-          "sha256": "e5038aae3ca9ff670bc696496b0728dbd23d280026bad30291cb919221ecfdcb"
         }
       ]
     },
@@ -109,22 +110,24 @@
       "style": "variable normal",
       "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf",
       "sha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
-      "usage": "only body, heading, table, and code face until a separately pinned face is accepted",
+      "usage": "only body, heading, and table face until another face is separately accepted",
       "licenceEvidence": "https://github.com/google/fonts/tree/main/ofl/notoserif",
-      "fallback": "forbidden: --no-system-fonts, --no-artificial-fonts, prince-no-fallback, and --fail-safe"
+      "fallback": "forbidden: --font-path points only to lock-owned fonts, --ignore-system-fonts, and --ignore-embedded-fonts are required"
     }
   ],
   "requiredRendererArguments": [
-    "--pdf-profile=PDF/A-2a+PDF/UA-1",
-    "--pdf-lang=en-US",
-    "--no-system-fonts",
-    "--no-artificial-fonts",
-    "--fail-safe",
-    "--structured-log=buffered"
+    "compile",
+    "--root=<disk-backed-staging-root>",
+    "--font-path=<lock-owned-font-directory>",
+    "--ignore-system-fonts",
+    "--ignore-embedded-fonts",
+    "--creation-timestamp=1785196800",
+    "--pdf-standard=a-2a,ua-1",
+    "--diagnostic-format=short"
   ],
   "verification": {
-    "sha256Method": "SHA-256 calculated from the exact downloaded artifact on 2026-07-27; installation must recalculate before use.",
+    "sha256Method": "SHA-256 calculated from the exact downloaded artifact on 2026-07-28; installation must recalculate before use.",
     "network": "render and validation runs are offline; downloads occur only in an explicit setup step.",
-    "license": "A lock is not a licence grant or legal conclusion. Human evidence is required before release use."
+    "license": "The renderer is Apache-2.0. This lock is not a conclusion about third-party font rights."
   }
 }

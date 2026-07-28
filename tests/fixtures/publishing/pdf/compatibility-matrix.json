@@ -1,26 +1,28 @@
 {
-  "schemaVersion": 1,
-  "fixture": "semantic-book.html",
-  "purpose": "Run this exact semantic input with the RFC-008 lock on each supported platform before release use.",
+  "schemaVersion": 2,
+  "fixture": "semantic-book.typ",
+  "purpose": "Run this exact semantic Typst input with the RFC-008 lock on each release-producing platform before release use.",
   "expected": {
     "profiles": ["PDF/A-2a+PDF/UA-1", "2a", "ua1"],
     "language": "en-US",
-    "semanticElements": ["h1", "ul", "figure", "img[alt]", "table", "caption", "th[scope]"],
-    "metadata": ["title", "author", "subject", "keywords"],
-    "navigation": ["bookmark", "internal-link", "external-link"]
+    "semanticElements": ["heading", "list", "figure", "figure-alt", "table", "table-header", "internal-link", "external-link"],
+    "metadata": ["title", "author", "keywords", "date"],
+    "navigation": ["outline-bookmark", "internal-link", "external-link"],
+    "fonts": ["Noto Serif only"]
   },
   "platforms": [
     {
-      "id": "macos-universal",
-      "status": "must-run-before-release-use",
-      "rendererArtifact": "Prince 16.2 macOS Universal",
-      "command": ["prince", "semantic-book.html", "--output", "semantic-book.pdf", "--pdf-profile=PDF/A-2a+PDF/UA-1", "--pdf-lang=en-US", "--no-system-fonts", "--no-artificial-fonts", "--fail-safe"]
-    },
-    {
-      "id": "ubuntu-24.04-x86_64",
-      "status": "must-run-before-release-use",
-      "rendererArtifact": "Prince 16.2 Ubuntu 24.04 AMD64",
-      "command": ["prince", "semantic-book.html", "--output", "semantic-book.pdf", "--pdf-profile=PDF/A-2a+PDF/UA-1", "--pdf-lang=en-US", "--no-system-fonts", "--no-artificial-fonts", "--fail-safe"]
+      "id": "macos-x86_64",
+      "status": "passed-2026-07-28",
+      "rendererArtifact": "Typst 0.15.0 macOS x86_64",
+      "command": ["typst", "compile", "--root", "<repository>", "--font-path", "<locked-font-directory>", "--ignore-system-fonts", "--ignore-embedded-fonts", "--creation-timestamp", "1785196800", "--pdf-standard", "a-2a,ua-1", "semantic-book.typ", "semantic-book.pdf"],
+      "evidence": "tests/fixtures/publishing/pdf/evidence/macos-x86_64-2026-07-28.json"
     }
-  ]
+  ],
+  "ciBoundary": {
+    "workflowLabel": "macos-14",
+    "architecture": "arm64",
+    "status": "locked-but-not-yet-a-release-platform",
+    "requiredBeforePromotion": "Run this fixture with the lock's macos-14-arm64 Typst and Temurin artifacts, then record qpdf and both veraPDF results."
+  }
 }

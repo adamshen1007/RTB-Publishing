@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 2,
+  "fixture": "semantic-book.typ",
+  "runAt": "2026-07-28T09:28:00+08:00",
+  "platform": {
+    "id": "macos-x86_64",
+    "kernel": "Darwin 24.6.0",
+    "architecture": "x86_64"
+  },
+  "scope": "Compatibility prototype only. This evidence does not replace the required human VoiceOver, visual, or content-rights review.",
+  "artifactVerification": [
+    {
+      "name": "Typst 0.15.0 macOS x86_64 tar.xz",
+      "expectedSha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be",
+      "actualSha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be",
+      "result": "passed"
+    },
+    {
+      "name": "Eclipse Temurin JRE 21.0.11+10 macOS x64",
+      "expectedSha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+      "actualSha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+      "result": "passed"
+    },
+    {
+      "name": "veraPDF Greenfield 1.28.2 installer",
+      "expectedSha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "actualSha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "result": "passed"
+    },
+    {
+      "name": "qpdf 12.3.2 source archive",
+      "expectedSha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+      "actualSha256": "6cba2f9f2cd887d905faeb99e0e51a307b217920d1bbf3e9cfbb2e8178a2deda",
+      "result": "passed"
+    },
+    {
+      "name": "Noto Serif variable normal TTF",
+      "expectedSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "actualSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "result": "passed"
+    }
+  ],
+  "inputs": {
+    "semanticBookTypSha256": "93dd50d5d0a55646615222fed84b23d422d7c30cf9b32b619bd1c6bd10683ffd",
+    "fontSha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+    "sourceDateEpoch": 1785196800
+  },
+  "tools": {
+    "typst": "0.15.0 (3ae52774)",
+    "java": "Eclipse Temurin 21.0.11+10",
+    "verapdf": "1.28.2",
+    "qpdf": "12.3.2",
+    "visualRasterizer": "Poppler pdftoppm from the Codex runtime (prototype inspection only; not the locked visual-regression tool)"
+  },
+  "commands": [
+    {
+      "name": "render",
+      "arguments": ["typst", "compile", "--root", "<repository>", "--font-path", "<locked-font-directory>", "--ignore-system-fonts", "--ignore-embedded-fonts", "--creation-timestamp", "1785196800", "--pdf-standard", "a-2a,ua-1", "semantic-book.typ", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed"
+    },
+    {
+      "name": "parse",
+      "arguments": ["qpdf", "--check", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed",
+      "finding": "PDF 1.7; not encrypted; no syntax or stream encoding errors."
+    },
+    {
+      "name": "validate-pdfa-2a",
+      "arguments": ["verapdf", "--format", "json", "--flavour", "2a", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed",
+      "reportSha256": "4e75a47d3047ff8457a6ba53ebd488d92bf18f26f1050d4f17179f1c7f68081e",
+      "compliant": true,
+      "passedRules": 153,
+      "failedRules": 0,
+      "passedChecks": 7174,
+      "failedChecks": 0
+    },
+    {
+      "name": "validate-pdfua-1",
+      "arguments": ["verapdf", "--format", "json", "--flavour", "ua1", "semantic-book.pdf"],
+      "exitCode": 0,
+      "result": "passed",
+      "reportSha256": "0e1440cc34dd195694ae4b27e100d1e92e9eeec22ea55a1fdb26eb05a1fa104a",
+      "compliant": true,
+      "passedRules": 106,
+      "failedRules": 0,
+      "passedChecks": 1642,
+      "failedChecks": 0
+    },
+    {
+      "name": "visual-prototype-inspection",
+      "arguments": ["pdftoppm", "-png", "-f", "1", "-l", "1", "-r", "144", "semantic-book.pdf", "page"],
+      "exitCode": 0,
+      "result": "passed",
+      "pngSha256": "1967ec0f20a8e31eee5816eb824554eb33d6a064c4e4b89b1e0a1667a5cf13f7",
+      "finding": "One page inspected at 144 DPI; no clipping, overlap, or missing-glyph defect observed. This is not a reviewed visual-regression baseline."
+    }
+  ],
+  "outputs": {
+    "pdfSha256": "43d7f5bc60ed8ab7cdd84fd74d16e8955cbfae50f8e8778bb91bcac9429d03f5",
+    "pdfBytes": 24459,
+    "retainedPdf": false,
+    "reason": "Generated binaries and validator reports stay outside Git; their hashes and summarized results are retained here."
+  },
+  "overallResult": "passed-for-macos-x86_64-compatibility-fixture"
+}
