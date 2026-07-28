@@ -5,8 +5,12 @@
     "markdownSha256": "f692771eeb13f4746ad77dcf11c8a1c2e11c925dc86c97c78eb21041aa5577b6",
     "figureSha256": "38b542a395f3feebca628a59390bb5f554eac4084287462e487350a781c06eb6",
     "derivedTypstSha256": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d",
-    "transformerSha256": "702b6bd0b1d2d45e4504af37b63a88baff42c4ac6762c90e689a0a3e1c095bb4",
-    "toolchainLockSha256": "42877fee347caeedc3536a74b77fdc02d281e211dfc7c1b608530d4e295645a4"
+    "transformerSha256": "07b18aacbf41501906fd521465c144b9fc0f770f9a63f2684b229e3f4445211d",
+    "toolchainLockSha256": "42877fee347caeedc3536a74b77fdc02d281e211dfc7c1b608530d4e295645a4",
+    "visualBaseline": {
+      "path": "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png",
+      "sha256": "47277d243be33a2758f853bfc7b3e783927059ff1eb3b465bdfa4fe9dfa1c07f"
+    }
   },
   "tools": {
     "typst": "472955622cf3cd10dd89dcf7c3cd9a6c0d2c100ab2f6ea9804a0f1256ad08705",
@@ -18,14 +22,16 @@
   },
   "files": {
     "semantic-book.pdf": "16eff0c84eaa0f789d3d2cf1b3bb3c32c3b4c79197173cb1035d75aeb4282c30",
-    "semantic-book.qdf.pdf": "35493b5d1b42ef1fd669a771fef401517dcd1c9cecb453ec7e2adbe4c6608dc7",
+    "semantic-book.qdf.pdf": "b8e00800481e381ec94eb13568083202e96517eb7a62a37aec0f2d11a98424f3",
     "semantic-book-1.png": "47277d243be33a2758f853bfc7b3e783927059ff1eb3b465bdfa4fe9dfa1c07f",
     "visual-regression.json": "7b84de631b4fc9804bb1626d2cf850c5509bb8a13184031475d09f0d4e799ad9",
+    "visual-negative-1.png": "630ea97988bc1891b896ddeb9f017e64eef2bedbd6b2680e0db328dd8fdc0263",
+    "visual-negative.json": "cf04364cb417e0275f44ecf0ffef07ae319df9687e07c80a28abf6b3f5e2a624",
     "qpdf-check.txt": "205a9e6b569ffd21fee2126cedc0593058f51f7911b174f057c60bbb5b5e3bb6",
     "qpdf-outlines.json": "125d5c0649f19ce6a9493628bdfb318c789869cc392fa6e8e048f331df7bf857",
     "qpdf-pages.json": "09ca7087df1d9d9831788c4feb45bb6c402ece9325bbd844640557fde67b67c6",
-    "verapdf-2a.json": "1a430d3c46195abccf2832c66548aeb092abe38effe99cfa25833ddf64f0c087",
-    "verapdf-ua1.json": "e84b2c0c66957d9dceaf32650195fbf9db626761944fa2f452716c76957234ba",
+    "verapdf-2a.json": "b888df101142effacd68c46fc1dbcfd17da276b21e649451cb8d188e08c4861c",
+    "verapdf-ua1.json": "de431b06b5270636767369d44a720c4a8f45fb74ee03415881cce13e37ab936b",
     "staging/snapshot/semantic-book.md": "f692771eeb13f4746ad77dcf11c8a1c2e11c925dc86c97c78eb21041aa5577b6",
     "staging/snapshot/semantic-book.typ": "7fb81d3695fddf4ff8ae2e4063bf0597931fe8fa15986fa6c4d96d8a7203bd4d",
     "staging/snapshot/semantic-figure.svg": "38b542a395f3feebca628a59390bb5f554eac4084287462e487350a781c06eb6"

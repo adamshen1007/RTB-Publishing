@@ -6,6 +6,7 @@ import test from "node:test";
 import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { assertSafeCompatibilityOutput } from "../scripts/pdf-output-path.mjs";
+import Ajv from "ajv/dist/2020.js";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (file) => readFileSync(resolve(root, file));
@@ -18,6 +19,11 @@ const qdf = read("tests/fixtures/publishing/pdf/evidence/artifacts/semantic-book
 const outlines = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-outlines.json");
 const pages = json("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-pages.json");
 const visual = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-regression.json");
+const visualNegative = json("tests/fixtures/publishing/pdf/evidence/artifacts/visual-negative.json");
+const validate = (schema, value, label) => {
+  const check = new Ajv({ strict: false }).compile(json(`tests/fixtures/publishing/pdf/schemas/${schema}.schema.json`));
+  assert.ok(check(value), `${label} schema invalid: ${JSON.stringify(check.errors)}`);
+};
 
 const requireObject = (value, label) => assert.ok(value && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
 const requireValidationReport = (value, label) => {
@@ -36,6 +42,13 @@ test("lock, manifest, qpdf, and veraPDF evidence have actionable required shapes
   assert.ok(Array.isArray(pages.pages), "qpdf pages must be an array");
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
   requireValidationReport(json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
+  validate("manifest", manifest, "manifest");
+  validate("visual", visual, "visual report");
+  validate("qpdf", outlines, "qpdf outlines");
+  validate("qpdf", pages, "qpdf pages");
+  validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-2a.json"), "veraPDF 2a");
+  validate("verapdf", json("tests/fixtures/publishing/pdf/evidence/artifacts/verapdf-ua1.json"), "veraPDF ua1");
+  assert.throws(() => validate("visual", { schemaVersion: 1, equal: false }, "malformed visual"), /schema invalid/);
 });
 
 test("locks actual executable, runtime, and font bytes", () => {
@@ -58,6 +71,9 @@ test("retained evidence is fresh, inspectable, and passes both veraPDF profiles"
   assert.equal(manifest.sourceSnapshot.figureSha256, sha256("tests/fixtures/publishing/pdf/semantic-figure.svg"));
   assert.equal(manifest.sourceSnapshot.transformerSha256, sha256("scripts/pdf-compatibility.mjs"));
   assert.equal(manifest.sourceSnapshot.toolchainLockSha256, sha256("publishing/pdf/toolchain.lock.json"));
+  assert.equal(manifest.sourceSnapshot.visualBaseline.path, "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png");
+  assert.equal(manifest.sourceSnapshot.visualBaseline.sha256, sha256(manifest.sourceSnapshot.visualBaseline.path));
+  assert.equal(visual.baselineSha256, manifest.sourceSnapshot.visualBaseline.sha256);
   assert.match(read("tests/fixtures/publishing/pdf/evidence/artifacts/qpdf-check.txt").toString(), /No syntax or stream encoding errors found/);
   assert.equal(outlines.outlines[0].title, "Chapter one");
   assert.equal(outlines.outlines[0].kids[0].title, "Fixture values");
@@ -80,6 +96,9 @@ test("retained parsed PDF proves metadata, language, tagged semantics, navigatio
   assert.deepEqual([visual.width, visual.height], [1191, 1684]);
   assert.equal(visual.imageResolution, "semantic-figure.svg 40x20");
   assert.match(visual.overflowOrClipping, /no raster dimension or baseline difference/);
+  assert.equal(visualNegative.geometryRegressionDetected, true);
+  assert.notDeepEqual([visualNegative.width, visualNegative.height], [1191, 1684]);
+  assert.equal(visualNegative.imageResolutionRegressionDetected, true);
 });
 
 test("canonical Markdown is transformed only into the derived Typst snapshot", () => {
@@ -101,4 +120,7 @@ test("compatibility output deletion rejects roots, parents, traversal, and symli
   const linked = resolve(safe, "linked");
   symlinkSync(tmpdir(), linked);
   assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linked, "evidence"), safeRoots: [safe] }), /symbolic link/);
+  const linkedRoot = resolve(tmpdir(), `rtb-pdf-linked-root-${Date.now()}`);
+  symlinkSync(safe, linkedRoot);
+  assert.throws(() => assertSafeCompatibilityOutput({ output: resolve(linkedRoot, "evidence"), safeRoots: [linkedRoot] }), /root may not be a symbolic link/);
 });

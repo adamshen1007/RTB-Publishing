@@ -63,3 +63,19 @@ The focused PDF suite passed all six tests.
 - Record the first remote `macos-15-intel` workflow compatibility run.
 - Complete the named human VoiceOver and visual review for a release candidate.
 - Confirm rights for actual release content and fonts.
+
+## Third re-review remediation — 2026-07-28
+
+- Hardened compatibility-output containment: every safe root is checked for
+  symlinks, the environment root must be a child of an explicit trusted parent,
+  and tests cover root, parent, traversal, nested symlink, and root-symlink
+  rejection before deletion.
+- Bound the fixed repository visual baseline path and SHA-256 into the retained
+  manifest; tests recompute it and compare it to the visual report. CI has no
+  baseline override.
+- Added versioned JSON Schemas for the manifest, visual report, qpdf reports,
+  and veraPDF reports. The focused suite validates retained JSON before semantic
+  assertions and includes a malformed visual-report negative case.
+- Added a renderer-derived A5 negative raster fixture. Its retained dimensions
+  differ from the production A4 baseline and the test asserts that the visual
+  gate detects the geometry/overflow-clipping regression.

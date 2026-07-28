@@ -57,7 +57,7 @@ jobs:
           tar -xf "$PDF_TOOLCHAIN/qpdf.tar.gz" -C "$PDF_TOOLCHAIN"
           export JAVA_HOME="$PDF_TOOLCHAIN/jdk-21.0.11+10-jre/Contents/Home"
           printf '1\n%s\nO\n1\nY\nY\nY\nY\n1\nN\n' "$PDF_TOOLCHAIN/verapdf-home" | "$PDF_TOOLCHAIN/verapdf-greenfield-1.28.2/verapdf-install" -console
-          PDF_TYPST="$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" PDF_JAVA="$JAVA_HOME/bin/java" PDF_VERAPDF="$PDF_TOOLCHAIN/verapdf-home/verapdf" PDF_VERAPDF_JAR="$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" PDF_QPDF="$PDF_TOOLCHAIN/qpdf/12.3.2/bin/qpdf" PDF_FONT="$PDF_TOOLCHAIN/NotoSerif.ttf" PDF_COMPATIBILITY_ROOT="$PDF_TOOLCHAIN" node scripts/pdf-compatibility.mjs --out "$PDF_TOOLCHAIN/evidence"
+          PDF_TYPST="$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" PDF_JAVA="$JAVA_HOME/bin/java" PDF_VERAPDF="$PDF_TOOLCHAIN/verapdf-home/verapdf" PDF_VERAPDF_JAR="$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" PDF_QPDF="$PDF_TOOLCHAIN/qpdf/12.3.2/bin/qpdf" PDF_FONT="$PDF_TOOLCHAIN/NotoSerif.ttf" PDF_COMPATIBILITY_ROOT="$PDF_TOOLCHAIN" PDF_TRUSTED_COMPATIBILITY_PARENT="${{ runner.temp }}" node scripts/pdf-compatibility.mjs --out "$PDF_TOOLCHAIN/evidence"
 
       - name: Upload PDF compatibility evidence
         if: ${{ always() }}
