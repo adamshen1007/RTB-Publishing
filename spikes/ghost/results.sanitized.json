@@ -41,7 +41,7 @@
       "providerStatus": "documented-not-live-verified",
       "evidence": [
         { "id": "DOC-MEMBERS", "kind": "official-documentation", "url": "https://docs.ghost.org/members", "accessedAt": "2026-07-28", "summary": "Passwordless email-link login is documented, without a proof here of expiry, replay denial, rotation, revocation, or outage behavior." },
-        { "id": "SYN-AUTH", "kind": "local-synthetic-exercise", "summary": "Synthetic opaque links expire, reject replay, rotate sessions, revoke on demand, and fail closed during an identity-provider outage." },
+        { "id": "SYN-AUTH", "kind": "local-synthetic-exercise", "summary": "The deterministic harness advances its clock to deny expired links, denies replay, rotates and explicitly revokes sessions, and fails closed during an identity-provider outage." },
         { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live Ghost session or authentication response was observed." }
       ],
       "fallback": "Sidecar controls opaque session state and fail-closed authorization; Ghost login is optional and never evidence of a grant.",
@@ -67,7 +67,7 @@
       "providerStatus": "not-documented-not-live-verified",
       "evidence": [
         { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Documented Admin API integration endpoints do not establish the required release-bound binary grant contract." },
-        { "id": "SYN-DOWNLOAD", "kind": "local-synthetic-exercise", "summary": "Private-object grants are short-lived, audience-bound, release-bound, single-use, and deny revoked, expired, replayed, and copied use." },
+        { "id": "SYN-DOWNLOAD", "kind": "local-synthetic-exercise", "summary": "The deterministic harness advances its clock to deny expired grants; grants are audience-bound, release-bound, single-use, and reject replay and copied use." },
         { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No Ghost-hosted attachment or binary access behavior was tested." }
       ],
       "fallback": "Private object storage plus sidecar-issued short-lived single-use binary grants; Ghost never serves release binaries.",
@@ -93,7 +93,7 @@
       "providerStatus": "documented-not-live-verified",
       "evidence": [
         { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Post and page mutation is documented, but immutable release staging with checksum reconciliation is not proved by this spike." },
-        { "id": "SYN-STAGING", "kind": "local-synthetic-exercise", "summary": "The synthetic store stages an immutable release ID, verifies all manifest artifacts, and refuses duplicate IDs with different checksums without activation." },
+        { "id": "SYN-STAGING", "kind": "local-synthetic-exercise", "summary": "The synthetic store verifies every artifact byte length and SHA-256 checksum plus a canonical manifest checksum before inactive staging, then refuses a reused release ID with different verified content." },
         { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live upload, attachment, partial-upload, or checksum readback was observed." }
       ],
       "fallback": "Private immutable object-storage prefix keyed by release ID and manifest checksum, with sidecar verification before visibility.",
@@ -119,7 +119,7 @@
       "providerStatus": "documented-not-live-verified",
       "evidence": [
         { "id": "DOC-ADMIN-API", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api", "accessedAt": "2026-07-28", "summary": "Content mutation is documented, but retained-release rollback, release-scoped revocation, and compare-and-set unpublish are not proved." },
-        { "id": "SYN-ROLLBACK", "kind": "local-synthetic-exercise", "summary": "The synthetic pointer supports retained rollback and unpublish; stale A-to-B-to-A commands conflict and revoke nothing." },
+        { "id": "SYN-ROLLBACK", "kind": "local-synthetic-exercise", "summary": "The synthetic pointer supports retained rollback and unpublish; stale A-to-B-to-A commands conflict and revoke nothing; legal hold and rollback retention block deletion before a later authorized delete emits a minimal tombstone." },
         { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No provider deletion, restoration, or access-revocation outcome was observed." }
       ],
       "fallback": "Sidecar pointer and grant store performs guarded rollback/unpublish; private objects remain immutable until retention permits deletion.",
@@ -145,7 +145,7 @@
       "providerStatus": "documented-not-live-verified",
       "evidence": [
         { "id": "DOC-WEBHOOKS", "kind": "official-documentation", "url": "https://docs.ghost.org/admin-api/webhooks/overview", "accessedAt": "2026-07-28", "summary": "Webhook mutation is documented, including the absence of independent retrieval; authenticated delivery and deduplication were not proved." },
-        { "id": "SYN-RECONCILIATION", "kind": "local-synthetic-exercise", "summary": "Synthetic signed advisory events are deduplicated while a separate authoritative pointer read detects drift before retry." },
+        { "id": "SYN-RECONCILIATION", "kind": "local-synthetic-exercise", "summary": "The deterministic sidecar rejects an invalid HMAC event, deduplicates an authenticated advisory event, and detects its stale claimed pointer by reading separate authoritative release state." },
         { "id": "LIM-NO-LIVE-CREDENTIALS", "kind": "limitation", "summary": "No live webhook signature, ordering, retry, or provider state reconciliation was observed." }
       ],
       "fallback": "Sidecar treats Ghost webhooks as advisory only and reconciles its own authoritative release-state store before every mutation.",

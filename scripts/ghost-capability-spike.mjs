@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Ajv2020 from "ajv/dist/2020.js";
@@ -21,6 +22,21 @@ export const CAPABILITY_IDS = [
   "webhooks-reconciliation"
 ];
 
+export const SPIKE_SCOPE = [
+  "spikes/ghost/README.md",
+  "spikes/ghost/capability-matrix.md",
+  "spikes/ghost/fixtures/provider-documentation.json",
+  "spikes/ghost/fixtures/synthetic-ghost-state.json",
+  "spikes/ghost/results.sanitized.json",
+  "spikes/ghost/results.schema.json",
+  "scripts/ghost-capability-spike.mjs",
+  "tests/ghost-capability-spike.test.mjs"
+];
+
+const sha256 = (value) => `sha256:${createHash("sha256").update(value).digest("hex")}`;
+const canonicalJson = (value) => JSON.stringify(value);
+const SYNTHETIC_EVENT_AUTH_MATERIAL = "rtb-synthetic-event-auth-material-v1";
+
 export function validateResultRecord(record = json("results.sanitized.json"), schema = json("results.schema.json")) {
   const ajv = new Ajv2020({ allErrors: true, strict: false });
   addFormats(ajv);
@@ -29,7 +45,7 @@ export function validateResultRecord(record = json("results.sanitized.json"), sc
   assert.deepEqual(record.capabilities.map(({ id }) => id).sort(), [...CAPABILITY_IDS].sort(), "result must classify each ADR-012 capability exactly once");
   assert.equal(new Set(record.capabilities.map(({ id }) => id)).size, CAPABILITY_IDS.length, "result must not duplicate a capability row");
   assert.ok(record.capabilities.every(({ classification }) => ["direct", "fallback-required", "infeasible"].includes(classification)), "result has an unsupported classification");
-  assert.ok(record.capabilities.every(({ evidence }) => evidence.some(({ kind }) => kind === "local-synthetic-exercise") && evidence.some(({ kind }) => kind === "limitation")), "each row must retain local exercise and limitation evidence");
+  assert.ok(record.capabilities.every(({ evidence }) => ["official-documentation", "local-synthetic-exercise", "limitation"].every((kind) => evidence.some((item) => item.kind === kind))), "each row must retain official, local, and limitation evidence");
   assert.equal(record.decision.productionGhostCompatibility, false, "a synthetic harness must not claim production Ghost compatibility");
   if (record.capabilities.some(({ classification }) => classification === "infeasible")) {
     assert.equal(record.decision.status, "blocked", "an infeasible required row must block the decision");
@@ -40,7 +56,33 @@ export function validateResultRecord(record = json("results.sanitized.json"), sc
   return record;
 }
 
-class SyntheticFallback {
+export function releaseManifest(release) {
+  return {
+    schemaVersion: 1,
+    releaseId: release.releaseId,
+    artifacts: release.artifacts.map(({ path, mediaType, bytes, checksum }) => ({ path, mediaType, bytes, checksum }))
+  };
+}
+
+export function releaseWithComputedManifest(release) {
+  return { ...release, manifestChecksum: sha256(canonicalJson(releaseManifest(release))) };
+}
+
+export function verifyReleaseIntegrity(release) {
+  if (!release || !Array.isArray(release.artifacts) || !release.releaseId || !release.manifestChecksum) return { valid: false, reason: "malformed-release" };
+  for (const artifact of release.artifacts) {
+    if (typeof artifact.content !== "string" || Buffer.byteLength(artifact.content) !== artifact.bytes) return { valid: false, reason: "artifact-size-mismatch", path: artifact.path };
+    if (sha256(artifact.content) !== artifact.checksum) return { valid: false, reason: "artifact-checksum-mismatch", path: artifact.path };
+  }
+  if (sha256(canonicalJson(releaseManifest(release))) !== release.manifestChecksum) return { valid: false, reason: "manifest-checksum-mismatch" };
+  return { valid: true };
+}
+
+export function signSyntheticEvent(body) {
+  return createHmac("sha256", SYNTHETIC_EVENT_AUTH_MATERIAL).update(canonicalJson(body)).digest("hex");
+}
+
+export class SyntheticFallback {
   constructor(fixture = json("fixtures/synthetic-ghost-state.json")) {
     this.fixture = fixture;
     this.now = 1_784_966_400_000; // 2026-07-28T00:00:00.000Z; deterministic test clock.
@@ -56,12 +98,17 @@ class SyntheticFallback {
     this.holds = new Set();
     this.tombstones = [];
     this.events = new Set();
+    this.authoritativeReads = 0;
   }
 
   invite(email) {
     // Enumeration-safe: callers receive the same acknowledged response either way.
     if (this.allowlist.has(email)) this.links.set(`invite:${email}`, { email, used: false, expiresAt: this.now + 300_000 });
     return { status: "accepted", body: "If eligible, check your inbox." };
+  }
+
+  advance(milliseconds) {
+    this.now += milliseconds;
   }
 
   signIn(email) {
@@ -130,6 +177,8 @@ class SyntheticFallback {
 
   stage(release, idempotencyKey, { partial = false, timeout = false } = {}) {
     if (this.idempotency.has(idempotencyKey)) return this.idempotency.get(idempotencyKey);
+    const integrity = verifyReleaseIntegrity(release);
+    if (!integrity.valid) return { status: "verification-failed", ...integrity };
     if (release.artifacts.some(({ bytes }) => bytes > this.fixture.limits.maxUploadBytes)) return { status: "payload-too-large" };
     if (partial) return { status: "failed-partial-upload" };
     if (timeout) return { status: "blocked-awaiting-reconciliation" };
@@ -149,31 +198,51 @@ class SyntheticFallback {
   compareAndSet(expected, releaseId) {
     if (this.pointer.releaseId !== expected.releaseId || this.pointer.revision !== expected.revision) return { status: "conflict", pointer: { ...this.pointer } };
     if (releaseId !== null && !this.releases.has(releaseId)) return { status: "unverified-release" };
+    const previous = this.pointer.releaseId;
     this.pointer = { releaseId, revision: this.pointer.revision + 1 };
+    if (previous) this.releases.get(previous).rollbackProtectedUntil = this.now + 30 * 24 * 60 * 60 * 1000;
     return { status: "activated", pointer: { ...this.pointer } };
+  }
+
+  authoritativePointer() {
+    this.authoritativeReads += 1;
+    return { ...this.pointer };
   }
 
   deleteRelease(releaseId, { legalHold = false, early = false } = {}) {
     const release = this.releases.get(releaseId);
     if (!release) return { status: "not-found" };
+    if (this.pointer.releaseId === releaseId) return { status: "blocked-active-release" };
     if (legalHold || this.holds.has(releaseId)) return { status: "blocked-legal-hold" };
-    if (early || release.retainedUntil > this.now) return { status: "blocked-retention" };
+    if (early || release.retainedUntil > this.now || release.rollbackProtectedUntil > this.now) return { status: "blocked-retention" };
     this.releases.delete(releaseId);
     this.tombstones.push({ releaseId, manifestChecksum: release.manifestChecksum, deletedAt: this.now });
     return { status: "deleted" };
   }
 
-  acceptEvent(eventId) {
-    if (this.events.has(eventId)) return { status: "duplicate" };
-    this.events.add(eventId);
-    return { status: "accepted" };
+  acceptEvent(event) {
+    if (!event?.eventId || typeof event.signature !== "string" || !event.body) return { status: "unauthenticated" };
+    const expected = signSyntheticEvent(event.body);
+    const supplied = Buffer.from(event.signature, "hex");
+    const calculated = Buffer.from(expected, "hex");
+    if (supplied.length !== calculated.length || !timingSafeEqual(supplied, calculated)) return { status: "unauthenticated" };
+    if (this.events.has(event.eventId)) return { status: "duplicate" };
+    this.events.add(event.eventId);
+    return { status: "accepted", advisory: true };
+  }
+
+  reconcilePointer(advisoryBody) {
+    const authoritative = this.authoritativePointer();
+    const claimed = advisoryBody?.claimedPointer;
+    const matches = claimed?.releaseId === authoritative.releaseId && claimed?.revision === authoritative.revision;
+    return { status: matches ? "in-sync" : "drift-detected", pointer: authoritative };
   }
 }
 
 export function exerciseSyntheticFallback() {
   const adapter = new SyntheticFallback();
   const releaseA = adapter.fixture.release;
-  const releaseB = { ...releaseA, releaseId: "rel-synthetic-20260728-b", manifestChecksum: "sha256:bc02c0df4bd12f9e7c93966fd58d59d1398dd7d86a2ba2c7624e5d77ec7f5238" };
+  const releaseB = releaseWithComputedManifest({ ...releaseA, releaseId: "rel-synthetic-20260728-b" });
 
   const unknownInvite = adapter.invite("unknown@example.test");
   const knownInvite = adapter.invite("ada@example.test");
@@ -181,24 +250,39 @@ export function exerciseSyntheticFallback() {
   const login = adapter.signIn("ada@example.test");
   const session = adapter.redeemLink(login.token).sessionId;
   assert.equal(adapter.redeemLink(login.token).status, "denied", "magic-link replay must fail");
+  const expiredLink = adapter.signIn("ada@example.test").token;
+  adapter.advance(60_001);
+  assert.equal(adapter.redeemLink(expiredLink).status, "denied", "expired magic link must fail");
   const rotated = adapter.rotate(session).sessionId;
   assert.equal(adapter.html(session, releaseA.releaseId).status, "denied", "rotated session must fail");
   assert.match(adapter.html(rotated, releaseA.releaseId).cacheKey, /ada@example\.test$/, "authenticated cache must be member-scoped");
   const grant = adapter.issueGrant(rotated, releaseA.releaseId, "book.pdf").token;
   assert.equal(adapter.redeemGrant(grant, rotated).status, "download", "valid download grant must work once");
   assert.equal(adapter.redeemGrant(grant, rotated).status, "denied", "download grant replay must fail");
+  const expiredGrant = adapter.issueGrant(rotated, releaseA.releaseId, "book.pdf").token;
+  adapter.advance(60_001);
+  assert.equal(adapter.redeemGrant(expiredGrant, rotated).status, "denied", "expired download grant must fail");
   const copiedGrant = adapter.issueGrant(rotated, releaseA.releaseId, "book.epub").token;
   const bob = adapter.redeemLink(adapter.signIn("bob@example.test").token).sessionId;
   assert.equal(adapter.redeemGrant(copiedGrant, bob).status, "denied", "copied grant must fail for another member");
   assert.equal(adapter.search(rotated, "synthetic").length, 1, "authorized search should return allowlisted release metadata");
   assert.equal(adapter.search("missing", "synthetic").length, 0, "unauthorized search must reveal nothing");
+  adapter.revoke(bob);
+  assert.equal(adapter.html(bob, releaseA.releaseId).status, "denied", "explicitly revoked session must fail");
 
+  assert.deepEqual(verifyReleaseIntegrity(releaseA), { valid: true }, "fixture release must have a valid manifest and artifacts");
   assert.equal(adapter.stage(releaseA, "stage-a").status, "staged", "staging must not activate");
   assert.equal(adapter.pointer.releaseId, null, "staging must leave the pointer inactive");
   assert.equal(adapter.stage(releaseA, "stage-a").status, "staged", "same idempotency key must reconcile the prior stage");
-  assert.equal(adapter.stage({ ...releaseA, manifestChecksum: "sha256:changed" }, "stage-changed").status, "release-id-conflict", "release IDs cannot be overwritten");
-  assert.equal(adapter.stage({ ...releaseA, releaseId: "partial" }, "partial", { partial: true }).status, "failed-partial-upload", "partial uploads must fail");
-  assert.equal(adapter.stage({ ...releaseA, releaseId: "timeout" }, "timeout", { timeout: true }).status, "blocked-awaiting-reconciliation", "uncertain effects must block");
+  const conflictingReleaseA = releaseWithComputedManifest({
+    ...releaseA,
+    artifacts: releaseA.artifacts.map((artifact, index) => index === 0 ? { ...artifact, content: "<main>Changed synthetic book</main>", bytes: Buffer.byteLength("<main>Changed synthetic book</main>"), checksum: sha256("<main>Changed synthetic book</main>") } : artifact)
+  });
+  assert.equal(adapter.stage(conflictingReleaseA, "stage-changed").status, "release-id-conflict", "release IDs cannot be overwritten");
+  assert.equal(adapter.stage({ ...releaseB, artifacts: releaseB.artifacts.map((artifact, index) => index === 0 ? { ...artifact, content: "tampered" } : artifact) }, "bad-artifact").status, "verification-failed", "changed artifact content must fail checksum verification");
+  assert.equal(adapter.stage({ ...releaseB, manifestChecksum: "sha256:changed" }, "bad-manifest").status, "verification-failed", "changed manifest checksum must fail verification");
+  assert.equal(adapter.stage(releaseWithComputedManifest({ ...releaseA, releaseId: "partial" }), "partial", { partial: true }).status, "failed-partial-upload", "partial uploads must fail");
+  assert.equal(adapter.stage(releaseWithComputedManifest({ ...releaseA, releaseId: "timeout" }), "timeout", { timeout: true }).status, "blocked-awaiting-reconciliation", "uncertain effects must block");
   assert.equal(adapter.request().status, "accepted");
   assert.equal(adapter.request().status, "accepted");
   assert.equal(adapter.request().status, "rate-limited", "requests above the recorded window must be bounded");
@@ -214,8 +298,17 @@ export function exerciseSyntheticFallback() {
   assert.equal(adapter.deleteRelease(releaseA.releaseId, { early: true }).status, "blocked-retention", "rollback target cannot be deleted early");
   adapter.holds.add(releaseB.releaseId);
   assert.equal(adapter.deleteRelease(releaseB.releaseId, { legalHold: true }).status, "blocked-legal-hold", "legal hold must pause deletion");
-  assert.equal(adapter.acceptEvent("evt-1").status, "accepted");
-  assert.equal(adapter.acceptEvent("evt-1").status, "duplicate", "events must be deduplicated");
+  adapter.holds.delete(releaseB.releaseId);
+  adapter.advance(31 * 24 * 60 * 60 * 1000);
+  assert.equal(adapter.deleteRelease(releaseB.releaseId).status, "deleted", "retention-authorized deletion must succeed");
+  assert.deepEqual(adapter.tombstones, [{ releaseId: releaseB.releaseId, manifestChecksum: releaseB.manifestChecksum, deletedAt: adapter.now }], "authorized deletion must leave only a minimal tombstone");
+  const staleEventBody = { event: "release.updated", claimedPointer: { releaseId: releaseB.releaseId, revision: 2 } };
+  assert.equal(adapter.acceptEvent({ eventId: "evt-1", body: staleEventBody, signature: "00" }).status, "unauthenticated", "invalid event signatures must fail");
+  const authenticatedEvent = { eventId: "evt-1", body: staleEventBody, signature: signSyntheticEvent(staleEventBody) };
+  assert.equal(adapter.acceptEvent(authenticatedEvent).status, "accepted", "valid event signatures must be accepted as advisory only");
+  assert.equal(adapter.acceptEvent(authenticatedEvent).status, "duplicate", "authenticated duplicate events must be deduplicated");
+  assert.deepEqual(adapter.reconcilePointer(staleEventBody), { status: "drift-detected", pointer: { releaseId: null, revision: 4 } }, "authoritative pointer read must detect advisory drift");
+  assert.equal(adapter.authoritativeReads, 1, "reconciliation must read authoritative state rather than trust event body");
   adapter.identityAvailable = false;
   assert.equal(adapter.signIn("ada@example.test").status, "denied", "identity outage must fail closed");
 

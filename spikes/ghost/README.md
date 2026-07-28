@@ -25,7 +25,10 @@ node --test tests/ghost-capability-spike.test.mjs
 ```
 
 The first command validates [results.schema.json](results.schema.json), then
-uses only [synthetic fixture state](fixtures/synthetic-ghost-state.json). The
+uses only [synthetic fixture state](fixtures/synthetic-ghost-state.json). It
+also exercises artifact and manifest checksum verification, time-based expiry,
+explicit session revocation, authenticated advisory events, authoritative
+pointer reconciliation, and retention-authorized deletion/tombstones. The
 second command covers GHO-001 through GHO-008. Both commands must report that
 provider calls are `none`.
 
@@ -73,7 +76,9 @@ a `direct` classification.
 
 ## Evidence rules
 
-Each evidence item in the result has one of three kinds:
+Each capability row must contain all three evidence kinds below. The schema
+also permits an official-documentation URL only on `docs.ghost.org` or
+`ghost.org`, and forbids a `go` decision when `providerCalls` is `none`.
 
 | Kind | Meaning | What it cannot establish |
 | --- | --- | --- |

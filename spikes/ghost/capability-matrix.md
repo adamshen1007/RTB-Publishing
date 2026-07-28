@@ -33,19 +33,23 @@ The deterministic harness proves the chosen fallback's behavior with only
 synthetic data:
 
 - Generic allowlist responses prevent address enumeration.
-- Opaque links expire, deny replay, rotate sessions, permit revocation, and
-  fail closed if the identity service is unavailable.
+- The harness advances a deterministic clock to prove opaque-link expiry and
+  expired-grant denial; it also proves replay denial, session rotation,
+  explicit revocation, and fail-closed identity outage behavior.
 - HTML authorization and search filter by the current session. Binary grants
   expire, bind to one audience and release, and are single-use.
-- Staging is inactive, release IDs cannot be replaced, duplicate idempotency
-  keys reconcile, oversized and partial uploads fail, and uncertain timeouts
-  become blocked work.
+- Staging verifies every artifact byte size and SHA-256 checksum plus the
+  canonical manifest checksum before it remains inactive. Release IDs cannot
+  be replaced, duplicate idempotency keys reconcile, oversized and partial
+  uploads fail, and uncertain timeouts become blocked work.
 - The active pointer only changes through exact compare-and-set, increments its
   revision, preserves stale-pair conflicts after A-to-B-to-A, supports guarded
   unpublish, and protects retained releases from early deletion or legal-hold
-  deletion.
-- Advisory events deduplicate while a separate state read remains the
-  reconciliation authority.
+  deletion. After the window and hold are clear, deletion succeeds and leaves
+  only a minimal tombstone.
+- Invalid event signatures are rejected. Authenticated events are advisory and
+  deduplicated; a separate authoritative pointer read detects drift rather
+  than trusting the event body.
 
 See [the result record](results.sanitized.json) for row-level evidence IDs and
 [the harness](../../scripts/ghost-capability-spike.mjs) for executable cases.
