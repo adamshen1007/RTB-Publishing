@@ -25,11 +25,11 @@ export function pendingReleasePolicies() {
 }
 
 /** Resolve current human policy evidence from durable local state for one exact registered candidate. */
-export function evaluateReleasePolicies(project, candidate, { databaseFile } = {}) {
+export function evaluateReleasePolicies(project, candidate, { databaseFile, database } = {}) {
   const candidateHash = typeof candidate === "string" ? candidate : candidate?.candidateHash;
   if (typeof candidateHash !== "string") throw new Error("Release policy evaluation requires an exact registered candidate hash.");
   const root = project.legacyRoot ?? project.root;
-  const store = new ReleaseReviewStore({ root, ...(databaseFile ? { databaseFile } : {}) });
+  const store = new ReleaseReviewStore({ root, ...(databaseFile ? { databaseFile } : {}), ...(database ? { database } : {}) });
   const registered = store.registeredCandidate(project.id, candidateHash);
   if (!registered) throw new Error("Release policy evaluation requires an exact registered candidate.");
 

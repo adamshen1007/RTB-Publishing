@@ -44,10 +44,10 @@ export class ReleaseReviewService {
       const record = latest[kind];
       return [kind, record ? { decision: record.decision, reviewer: record.reviewer, createdAt: record.createdAt, message: record.decision === "approved" ? "Durable approval recorded for the current exact candidate." : "The current exact candidate was rejected; resolve the finding, rebuild, and review the new candidate." } : { decision: "pending", message: "No durable decision has been recorded for the current exact candidate." }];
     }));
-    return { state: Object.values(reviews).every((review) => review.decision === "approved") ? "approved" : "review_required", message: "Review decisions below are durable and bound to the latest registered candidate.", candidateHash: candidate.candidateHash, reviews };
+    return { state: Object.values(reviews).every((review) => review.decision === "approved") ? "approved" : "review_required", message: "Review decisions below are durable and bound to the latest registered candidate.", candidateHash: candidate.candidateHash, candidateIdentity: candidate.candidateHash.slice(0, 16), reviews };
   }
 
-  record(input = {}) {
+  record(input = {}, { expectedCandidateHash } = {}) {
     for (const field of AUTHORITATIVE_FIELDS) if (Object.hasOwn(input, field)) throw new Error(`Release review requests cannot author ${field}; it is resolved by the server.`);
     const supplied = Object.keys(input);
     if (supplied.some((field) => !["kind", "decision", "qualifiedRole"].includes(field))) throw new Error("Release review requests contain an unsupported field.");
@@ -62,6 +62,11 @@ export class ReleaseReviewService {
 
     const candidate = this.store.currentCandidate(this.projectId);
     if (!candidate) throw new Error("Release review is unavailable until a verified release candidate is registered.");
+    if (expectedCandidateHash && candidate.candidateHash !== expectedCandidateHash) {
+      const error = new Error("The release candidate changed after it was displayed. Review the new exact candidate before recording a decision.");
+      error.code = "STALE_REVIEW_INTENT";
+      throw error;
+    }
     verifyCandidate(candidate);
     if (candidate.projectId !== this.projectId || typeof candidate.sourceFingerprint !== "string" || !SHA256.test(candidate.sourceFingerprint)) throw new Error("The registered release candidate has an invalid project or source binding.");
     const artifactHashes = resolvedArtifactHashes(candidate);
@@ -79,6 +84,10 @@ export class ReleaseReviewService {
       reviewer: { type: "human", id: actor.id.trim(), ...(qualifiedRole ? { qualifiedRole } : {}) },
       createdAt,
     };
-    return this.store.append(record);
+    try { return this.store.append(record); }
+    catch (error) {
+      if (expectedCandidateHash && /current registered candidate changed/.test(error.message)) error.code = "STALE_REVIEW_INTENT";
+      throw error;
+    }
   }
 }

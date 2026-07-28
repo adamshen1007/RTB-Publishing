@@ -21,29 +21,30 @@ const rowToRecord = (row) => row && ({
 });
 
 export class ReleaseReviewStore {
-  constructor({ root, databaseFile } = {}) {
-    if (!root && !databaseFile) throw new Error("A release review store requires a local state database.");
+  constructor({ root, databaseFile, database } = {}) {
+    if (!root && !databaseFile && !database) throw new Error("A release review store requires a local state database.");
     this.databaseFile = databaseFile ?? resolve(root, ".rtb-state", "state.sqlite");
+    this.database = database;
   }
 
+  use(operation) { const database = this.database ?? openStateDatabase(this.databaseFile); try { return operation(database); } finally { if (!this.database) database.close(); } }
+
   registeredCandidate(projectId, candidateHash) {
-    const database = openStateDatabase(this.databaseFile);
-    try {
+    return this.use((database) => {
       const row = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? AND candidate_hash = ?").get(projectId, candidateHash);
       return row ? JSON.parse(row.candidate_json) : null;
-    } finally { database.close(); }
+    });
   }
 
   currentCandidate(projectId) {
-    const database = openStateDatabase(this.databaseFile);
-    try {
+    return this.use((database) => {
       const row = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(projectId);
       return row ? JSON.parse(row.candidate_json) : null;
-    } finally { database.close(); }
+    });
   }
 
   append(record) {
-    const database = openStateDatabase(this.databaseFile);
+    const database = this.database ?? openStateDatabase(this.databaseFile);
     try {
       database.exec("BEGIN IMMEDIATE");
       const currentRow = database.prepare("SELECT candidate_hash, candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(record.projectId);
@@ -65,18 +66,17 @@ export class ReleaseReviewStore {
     } catch (error) {
       if (database.inTransaction) database.exec("ROLLBACK");
       throw error;
-    } finally { database.close(); }
+    } finally { if (!this.database) database.close(); }
   }
 
   latestForCandidate(projectId, candidateHash) {
-    const database = openStateDatabase(this.databaseFile);
-    try {
+    return this.use((database) => {
       const rows = database.prepare(`SELECT * FROM release_reviews
         WHERE project_id = ? AND candidate_hash = ?
         ORDER BY created_at DESC, rowid DESC`).all(projectId, candidateHash);
       const latest = new Map();
       for (const row of rows) if (!latest.has(row.kind)) latest.set(row.kind, rowToRecord(row));
       return Object.fromEntries(latest);
-    } finally { database.close(); }
+    });
   }
 }

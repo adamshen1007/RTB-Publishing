@@ -10,16 +10,16 @@ export class CanonicalLifecycleBindingProvider {
   constructor({ book, approvalProjectId = book.id, databaseFile = resolve(book.legacyRoot, ".rtb-state", "state.sqlite") }) { this.book = book; this.approvalProjectId = approvalProjectId; this.databaseFile = databaseFile; }
   blueprint() { const blueprint = this.book.blueprint; return { briefHash: hash(readFileSync(this.book.metadataPath)), sourcePolicyHash: hash(blueprint.source_policy), budgetsHash: hash(blueprint.budgets), egressPolicyHash: hash(blueprint.provider_egress_policy), blueprintHash: hash(readFileSync(resolve(this.book.root, this.book.manifest.blueprint.path))) }; }
   registerBeta(input) { return registerBetaBinding({ book: this.book, approvalProjectId: this.approvalProjectId, ...input }); }
-  resolve(gate) {
+  resolve(gate, { database: providedDatabase } = {}) {
     if (gate === "blueprint") return { available: true, bindings: this.blueprint() };
-    const database = openStateDatabase(this.databaseFile);
+    const database = providedDatabase ?? openStateDatabase(this.databaseFile);
     try {
       if (gate === "beta") { const row = database.prepare("SELECT bindings_json FROM lifecycle_material_bindings WHERE project_id = ? AND kind = 'beta' ORDER BY created_at DESC, id DESC LIMIT 1").get(this.approvalProjectId); return row ? { available: true, bindings: JSON.parse(row.bindings_json) } : { available: false, message: "Beta is unavailable until a verified Notion review snapshot is registered." }; }
       const candidate = database.prepare("SELECT candidate_json FROM release_candidates WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1").get(this.book.id);
       if (!candidate) return { available: false, message: "Publish is unavailable until a verified release candidate is registered." };
-      const value = JSON.parse(candidate.candidate_json), approvals = database.prepare("SELECT gate, bindings_json FROM lifecycle_approvals WHERE project_id = ? AND decision = 'approved' AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations) ORDER BY created_at DESC").all(this.approvalProjectId), binding = (kind) => JSON.parse(approvals.find((item) => item.gate === kind)?.bindings_json ?? "null"), releasePolicies = evaluateReleasePolicies(this.book, value, { databaseFile: this.databaseFile });
+      const value = JSON.parse(candidate.candidate_json), approvals = database.prepare("SELECT gate, bindings_json FROM lifecycle_approvals WHERE project_id = ? AND decision = 'approved' AND id NOT IN (SELECT approval_id FROM lifecycle_approval_invalidations) ORDER BY created_at DESC").all(this.approvalProjectId), binding = (kind) => JSON.parse(approvals.find((item) => item.gate === kind)?.bindings_json ?? "null"), releasePolicies = evaluateReleasePolicies(this.book, value, { databaseFile: this.databaseFile, database });
       return { available: true, bindings: { releaseCandidateHash: value.candidateHash, candidateLifecycleVersion: value.lifecycleVersion, releasePolicyHash: releasePolicies.releasePolicyHash, blockingFindings: releasePolicies.releaseEligible ? 0 : 1, blueprint: binding("blueprint"), beta: binding("beta") } };
-    } finally { database.close(); }
+    } finally { if (!providedDatabase) database.close(); }
   }
 }
 

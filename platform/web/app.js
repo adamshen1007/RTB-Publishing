@@ -36,7 +36,7 @@ function lifecyclePanel(project, lifecycle) {
     const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
     row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
     const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
-    const action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version)); row.append(action); section.append(row);
+    const needsIntent = ["beta", "publish"].includes(gate), action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator || (needsIntent && !result.intent); action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, current.version, result.intent)); row.append(action); section.append(row);
   });
   return section;
 }
@@ -49,7 +49,7 @@ const reviewLabels = {
 
 function releaseReviewControls(project, status) {
   const group = node("div", "review-group");
-  const heading = node("h5", "", "Candidate-bound release reviews"); group.append(heading, node("p", "muted", status.message));
+  const heading = node("h5", "", "Candidate-bound release reviews"); group.append(heading, node("p", "candidate-identity", status.candidateIdentity ? `Displayed candidate ${status.candidateIdentity}` : "No release candidate displayed"), node("p", "muted", status.message));
   Object.entries(reviewLabels).forEach(([kind, label]) => {
     const review = status.reviews[kind], row = node("div", "review-row"), detailId = `${project.id}-${kind}-status`;
     const title = node("strong", "", label), durable = node("span", `review-decision ${review.decision}`, review.decision); row.append(title, durable);
@@ -61,7 +61,7 @@ function releaseReviewControls(project, status) {
       const help = node("small", "muted", "Required only for approval. This is your human declaration, not a server-verified credential."); help.id = `${inputId}-help`; row.append(labelNode, roleInput, help);
     }
     const actions = node("div", "review-actions");
-    ["approved", "rejected"].forEach((decision) => { const button = node("button", decision === "approved" ? "action" : "quiet-button", decision === "approved" ? "Record approval" : "Record rejection"); button.type = "button"; button.disabled = !state.operator || !status.candidateHash; button.setAttribute("aria-describedby", detailId); button.addEventListener("click", () => recordReleaseReview(project, kind, decision, roleInput)); actions.append(button); });
+    ["approved", "rejected"].forEach((decision) => { const button = node("button", decision === "approved" ? "action" : "quiet-button", decision === "approved" ? "Record approval" : "Record rejection"); button.type = "button"; button.disabled = !state.operator || !status.intent; button.setAttribute("aria-describedby", detailId); button.addEventListener("click", () => recordReleaseReview(project, kind, decision, roleInput, status.intent)); actions.append(button); });
     row.append(actions); group.append(row);
   });
   return group;
@@ -129,11 +129,12 @@ async function jobAction(job, action) {
   const result = await response.json(); if (!response.ok) return showNotice(result.message); showNotice(""); await refresh();
 }
 
-async function confirmGate(project, gate, expectedVersion) {
+async function confirmGate(project, gate, expectedVersion, intent) {
   if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
-  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true, expectedVersion, reason: `Explicit guided Creator Studio ${gate} approval` }) });
+  const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, ...(["beta", "publish"].includes(gate) ? { intent } : { expectedVersion }) };
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
   const result = await response.json();
-  captureRotation(response); if (!response.ok) return showNotice(result.message); await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
+  captureRotation(response); if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
 }
 
 async function prepareBeta(project) {
@@ -143,14 +144,14 @@ async function prepareBeta(project) {
   if (!response.ok) return showNotice(result.message); await refresh(); showNotice("Exact Beta material prepared on the server. Review the now-ready Beta gate before approving it.");
 }
 
-async function recordReleaseReview(project, kind, decision, roleInput) {
+async function recordReleaseReview(project, kind, decision, roleInput, intent) {
   const qualifiedRole = roleInput?.value.trim() ?? "";
   if (kind === "rights-and-brand-review" && decision === "approved" && !qualifiedRole) { roleInput.focus(); return showNotice("Declare your non-empty qualified rights-review role before recording approval."); }
   if (!window.confirm(`Record a durable ${decision} decision for ${reviewLabels[kind]} on the latest exact candidate?`)) return;
-  const payload = { confirm: true, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
+  const payload = { confirm: true, intent, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
   const response = await fetch(`/api/projects/${project.id}/release-reviews/${kind}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
   const result = await response.json(); captureRotation(response);
-  if (!response.ok) return showNotice(result.message); await refresh(); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the latest exact candidate.`);
+  if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the displayed exact candidate.`);
 }
 
 async function bootstrapOperator() {

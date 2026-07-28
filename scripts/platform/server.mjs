@@ -36,7 +36,8 @@ const cookies = (request) => Object.fromEntries((request.headers.cookie ?? "").s
 
 export class LocalSessionManager {
   constructor({ now = () => Date.now(), ttlMs = 5 * 60 * 1000 } = {}) { this.now = now; this.ttlMs = ttlMs; this.sessions = new Map(); }
-  issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), operatorId: null, expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
+  issue() { const id = randomBytes(24).toString("hex"); const session = { id, csrfToken: randomBytes(24).toString("hex"), capability: randomBytes(24).toString("hex"), operatorId: null, intents: new Map(), expiresAt: this.now() + this.ttlMs }; this.sessions.set(id, session); return session; }
+  peek(id) { const session = this.sessions.get(id); return session && session.expiresAt > this.now() ? session : null; }
   consume(id, csrfToken, capability) {
     const session = this.sessions.get(id);
     if (!session || session.expiresAt <= this.now() || session.csrfToken !== csrfToken || session.capability !== capability) return null;
@@ -49,6 +50,21 @@ export class LocalSessionManager {
     if (!session) return null;
     session.operatorId ??= `human-${randomBytes(12).toString("hex")}`;
     return session;
+  }
+  issueIntent(session, value) {
+    if (!session?.operatorId || session.expiresAt <= this.now()) return null;
+    const signature = JSON.stringify(value);
+    for (const [token, intent] of session.intents) if (intent.signature === signature && intent.expiresAt > this.now()) return token;
+    while (session.intents.size >= 50) session.intents.delete(session.intents.keys().next().value);
+    const token = randomBytes(24).toString("hex");
+    session.intents.set(token, { ...value, signature, expiresAt: Math.min(session.expiresAt, this.now() + this.ttlMs) });
+    return token;
+  }
+  consumeIntent(session, token, expected = {}) {
+    if (!session || typeof token !== "string") return null;
+    const intent = session.intents.get(token); session.intents.delete(token);
+    if (!intent || intent.expiresAt <= this.now() || Object.entries(expected).some(([key, value]) => intent[key] !== value)) return null;
+    return intent;
   }
   cookie(session) { return `rtb_session=${session.id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.ttlMs / 1000)}`; }
 }
@@ -112,6 +128,23 @@ function publicBetaStatus(service) {
   return { state, code, message, ...(chapterCount == null ? {} : { chapterCount }), ...(failures ? { failures } : {}) };
 }
 
+function publicationStatus({ lifecycleServices, releaseReviewServices, betaPreparationServices, sessions, session }) {
+  const lifecycle = Object.fromEntries([...lifecycleServices].map(([projectId, service]) => {
+    const status = service.status();
+    if (session?.operatorId) for (const gate of ["beta", "publish"]) {
+      const material = status.gates?.[gate];
+      if (material?.ok && material.materialRevision) material.intent = sessions.issueIntent(session, { action: "lifecycle-gate", projectId, gate, lifecycleVersion: status.lifecycle.version, materialRevision: material.materialRevision });
+    }
+    return [projectId, status];
+  }));
+  const releaseReviews = Object.fromEntries([...releaseReviewServices].map(([projectId]) => {
+    const status = contextualService(releaseReviewServices, projectId)?.status();
+    if (session?.operatorId && status?.candidateHash) status.intent = sessions.issueIntent(session, { action: "release-review", projectId, candidateHash: status.candidateHash });
+    return [projectId, status];
+  }));
+  return { lifecycle, releaseReviews, betaPreparation: Object.fromEntries([...betaPreparationServices].map(([projectId]) => [projectId, publicBetaStatus(contextualService(betaPreparationServices, projectId))])) };
+}
+
 export function createPlatformServer(options = {}) {
   const indexService = options.indexService ?? (options.index ? { refresh: () => options.index } : new WorkspaceIndex({ file: options.workspaceFile, localFile: options.localFile }));
   const jobs = options.jobs ?? new JobManager(options.jobOptions);
@@ -149,7 +182,10 @@ export function createPlatformServer(options = {}) {
         return json(response, 200, { operator: session.operatorId, csrfToken: session.csrfToken, mutationCapability: session.capability, expiresAt: new Date(session.expiresAt).toISOString() }, { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability });
       }
       const index = indexService.refresh();
-      if (request.method === "GET" && url.pathname === "/api/workspace") return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), lifecycle: Object.fromEntries([...lifecycleServices].map(([id, service]) => [id, service.status()])), releaseReviews: Object.fromEntries([...releaseReviewServices].map(([id]) => [id, contextualService(releaseReviewServices, id)?.status()])), betaPreparation: Object.fromEntries([...betaPreparationServices].map(([id]) => [id, publicBetaStatus(contextualService(betaPreparationServices, id))])) });
+      if (request.method === "GET" && url.pathname === "/api/workspace") {
+        const session = sessions.peek(cookies(request).rtb_session);
+        return json(response, 200, { ...index, pilot: pilotStatus(options.pilotDirectory), onboarding: { registeredProjects: index.projects.length, localProjects: index.projects.filter((project) => project.source === "local").length, externalWorkflows: "disabled", nextCommand: "rtb-publishing platform project onboard /absolute/path/to/project" }, jobs: jobs.snapshot(), ...publicationStatus({ lifecycleServices, releaseReviewServices, betaPreparationServices, sessions, session }) });
+      }
       const betaPreparationMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/beta-preparation$/);
       if (request.method === "POST" && betaPreparationMatch) {
         const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
@@ -169,18 +205,24 @@ export function createPlatformServer(options = {}) {
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
         const input = await body(request);
         if (input.confirm !== true) return json(response, 400, { error: "confirmation", message: "Explicit human review confirmation is required." }, rebootstrap);
-        const recordInput = { ...input, kind: reviewMatch[2] }; delete recordInput.confirm;
-        try { return json(response, 201, service.record(recordInput), rebootstrap); }
-        catch (error) { return json(response, 400, { error: "release_review_rejected", message: error.message }, rebootstrap); }
+        const authority = sessions.consumeIntent(session, input.intent, { action: "release-review", projectId: reviewMatch[1] });
+        if (!authority) return json(response, 409, { error: "stale_review_intent", message: "This review view is stale or was already used. Refresh and inspect the current exact candidate before deciding." }, rebootstrap);
+        const recordInput = { ...input, kind: reviewMatch[2] }; delete recordInput.confirm; delete recordInput.intent;
+        try { return json(response, 201, service.record(recordInput, { expectedCandidateHash: authority.candidateHash }), rebootstrap); }
+        catch (error) { return json(response, error.code === "STALE_REVIEW_INTENT" ? 409 : 400, { error: error.code === "STALE_REVIEW_INTENT" ? "stale_review_intent" : "release_review_rejected", message: error.message }, rebootstrap); }
       }
       const gateMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)\/lifecycle\/gates\/(blueprint|beta|publish)$/);
       if (request.method === "POST" && gateMatch) {
         const service = lifecycleServices.get(gateMatch[1]); const session = sessions.consume(cookies(request).rtb_session, request.headers["x-rtb-publishing-csrf"], request.headers["x-rtb-publishing-capability"]);
         if (!service || !session?.operatorId || !sameListener || request.headers["x-forwarded-host"] || request.headers.forwarded || !exactJson(request.headers["content-type"]) || request.headers.origin !== `http://${listenerHost}` || request.headers["sec-fetch-site"] !== "same-origin") return json(response, 403, { error: "gate_auth", message: "A bootstrapped local operator and direct local confirmation are required." });
-        const input = await body(request); if (input.confirm !== true || !Number.isInteger(input.expectedVersion) || (input.reason && typeof input.reason !== "string") || Object.keys(input).some((key) => !["confirm", "expectedVersion", "reason"].includes(key))) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and current version are required; lifecycle bindings and actor identity are resolved by the server." });
+        const input = await body(request), intentRequired = ["beta", "publish"].includes(gateMatch[2]);
+        const allowed = intentRequired ? ["confirm", "intent", "reason"] : ["confirm", "expectedVersion", "reason"];
+        if (input.confirm !== true || (input.reason && typeof input.reason !== "string") || Object.keys(input).some((key) => !allowed.includes(key)) || (!intentRequired && !Number.isInteger(input.expectedVersion))) return json(response, 400, { error: "confirmation", message: "Explicit confirmation and the server-issued current-material intent are required; lifecycle bindings and actor identity are resolved by the server." });
         rebootstrap = { "x-rtb-publishing-next-csrf": session.csrfToken, "x-rtb-publishing-next-capability": session.capability };
-        const result = await service.approve({ gate: gateMatch[2], expectedVersion: input.expectedVersion, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
-        return json(response, result.state === "succeeded" ? 202 : result.state === "conflict" ? 409 : 400, result, rebootstrap);
+        const authority = intentRequired ? sessions.consumeIntent(session, input.intent, { action: "lifecycle-gate", projectId: gateMatch[1], gate: gateMatch[2] }) : null;
+        if (intentRequired && !authority) return json(response, 409, { error: "stale_gate_intent", message: "This approval view is stale or was already used. Refresh and inspect the current exact material before approving it." }, rebootstrap);
+        const result = await service.approve({ gate: gateMatch[2], expectedVersion: authority?.lifecycleVersion ?? input.expectedVersion, expectedMaterialRevision: authority?.materialRevision, explicitConfirmation: true, actor: { type: "human", id: `local-operator:${session.operatorId}` }, reason: input.reason ?? "Explicit local confirmation" });
+        return json(response, result.state === "succeeded" ? 202 : ["conflict", "stale"].includes(result.state) ? 409 : 400, result, rebootstrap);
       }
       const projectMatch = url.pathname.match(/^\/api\/projects\/([a-z0-9-]+)$/);
       if (request.method === "GET" && projectMatch) {

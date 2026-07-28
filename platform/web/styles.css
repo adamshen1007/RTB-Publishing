@@ -108,6 +108,7 @@ dialog::backdrop { background: rgba(17,24,32,.42); }
 .lifecycle-review { margin-top: 1.2rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); }
 .lifecycle-review h4 { margin: 0 0 .35rem; font: 700 1rem var(--display); }
 .review-group h5 { margin: 1.1rem 0 .3rem; font: 700 .78rem var(--mono); text-transform: uppercase; }
+.candidate-identity { margin: .4rem 0; font: 700 .65rem var(--mono); text-transform: uppercase; }
 .review-row, .gate-row { margin-top: .75rem; padding: .85rem; display: grid; grid-template-columns: 1fr auto; gap: .45rem .8rem; border: 1px solid var(--rule); }
 .review-row p, .gate-row p { margin: 0; grid-column: 1 / -1; font-size: .76rem; line-height: 1.45; }
 .review-decision, .gate-ready, .gate-unavailable { align-self: start; font: 700 .61rem var(--mono); text-transform: uppercase; }

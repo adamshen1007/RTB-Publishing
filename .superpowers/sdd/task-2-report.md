@@ -1,122 +1,86 @@
-# WP92 — PDF Profile and Toolchain Decision Report
+# Task 2 Report — Guided Beta Preparation and Creator Studio Controls
 
-## Result
+## Design
 
-The remote PDF compatibility evidence gate passed. The local/code remediation
-uses RFC-008's Typst
-0.15.0 under Apache-2.0 for the explicit combined `PDF/A-2a+PDF/UA-1`
-profile. Canonical Markdown and Git remain the source authority; Typst is a
-derived build intermediate in the immutable, disk-backed snapshot.
+- Added a deterministic Beta preparation boundary that reads only the fixed
+  Git-ignored Notion receipt, validates every canonical chapter ID/hash, and
+  blocks with specific missing, malformed, or stale guidance.
+- Beta snapshot material excludes private Notion identifiers. The server hashes
+  normalized canonical chapter material and a deterministic passed policy result,
+  then registers both hashes with a server-created human-session reviewer ID.
+- Added direct-loopback, same-origin, exact-JSON, bootstrapped-session routes for
+  Beta preparation and the three fixed reviews. CSRF/capability pairs rotate on
+  authenticated actions, and browser-authored bindings, hashes, candidates, and
+  reviewer identities are rejected.
+- Release review routes instantiate Task 1's `ReleaseReviewService`, which resolves
+  the latest registered candidate, exact artifact hashes, and reviewer actor on
+  the server. Both approved and rejected decisions are durable.
+- Creator Studio now shows durable current-candidate review state, blocked repair
+  guidance, Beta preparation, Beta approval, Publish approval, and all three review
+  controls. Rights approval labels the qualified role as a human declaration.
+  Manual Beta hash prompts and the old browser-authored evidence route were removed.
 
-## Re-review remediation
+## Files
 
-- Added a canonical Markdown fixture, a fixture SVG asset, and the versioned
-  deterministic `scripts/pdf-compatibility.mjs` Markdown-to-derived-Typst
-  transformation. The generated Typst file stays inside the evidence staging
-  snapshot and cannot become authored content.
-- The common command verifies the exact Typst, Temurin Java, veraPDF launcher
-  and main JAR, and Noto Serif executable/font hashes before rendering. It uses
-  a clean disk-backed staging root, the exact `pnpm-lock.yaml` PDF.js parser,
-  and both veraPDF profiles.
-- Retained sanitized, inspectable evidence in
-  `tests/fixtures/publishing/pdf/evidence/artifacts/`: PDF, the retained
-  PDF.js parse/semantic report, veraPDF `2a`/`ua1` JSON reports, the
-  source/derived snapshot, and a SHA-256 freshness manifest.
-- Tests recalculate every retained artifact hash and inspect parser/profile
-  evidence for title, `en-US`, tags, table/figure roles, alternative text,
-  links, bookmarks, API-exposed font identifiers/families, and one page.
-- Removed unused Ghostscript/ImageMagick locks. `pdfjs-dist` 5.4.624 records
-  the exact pnpm integrity value and full lockfile SHA-256 provenance.
-- GitHub Actions now uses the official `macos-15-intel` label and implements
-  the identical `node scripts/pdf-compatibility.mjs` command after verified
-  tool setup. It has no GHCR token/download dependency and uploads compatibility
-  evidence with `always()` even when a validator fails. The first remote
-  workflow run is recorded below.
-- Restored an executed visual-regression check using Typst's locked native PNG
-  raster at 144 PPI. The command retains its raster, baseline equality result,
-  1191x1684 A4 geometry, one-page sample, and 40x20 SVG image-resolution
-  evidence. The test suite checks overflow/clipping proxy fields and baseline
-  equality.
+- `scripts/lifecycle/beta-preparation.mjs`
+- `scripts/platform/server.mjs`
+- `scripts/publishing/release-review-service.mjs`
+- `platform/web/index.html`
+- `platform/web/app.js`
+- `platform/web/styles.css`
+- `tests/beta-preparation.test.mjs`
+- `tests/platform-lifecycle.test.mjs`
+- `specs/009-notion-sync-spec.md`
+- `docs/05-operations/notion-editorial-workspace.md`
 
-## Exact local evidence command and result
+## Tests
 
-```text
-PDF_TYPST=/tmp/.../typst PDF_JAVA=/tmp/.../java PDF_VERAPDF=/tmp/.../verapdf \
-PDF_VERAPDF_JAR=/tmp/.../greenfield-apps-1.28.2.jar \
-PDF_FONT=/tmp/.../NotoSerif.ttf \
-node scripts/pdf-compatibility.mjs
-```
+- Focused/covering: 32 passed, 0 failed.
+- Full suite: 138 passed, 0 failed.
+- Targeted Markdown lint: 0 errors.
+- Targeted spelling: 0 issues.
+- JavaScript syntax checks and `git diff --check`: passed.
 
-The command regenerates the retained manifest, parses with lockfile-pinned
-`pdfjs-dist` 5.4.624, and passes veraPDF `2a` (153 rules, 7,201 checks) and
-veraPDF `ua1` (106 rules, 1,642 checks), with
-zero failed rules/checks. The replacement change passed the focused six-test
-PDF suite and the full 71-test suite locally. Markdown lint and spelling also
-passed.
+## Output
 
-## Remaining gates
+The Creator Studio workflow is executable without browser-authored hashes or
+reviewer identities. Missing or stale Notion state blocks Beta preparation;
+current state creates exact server-side bindings. Review status is durable and
+candidate-bound, including rejected outcomes and the rights-role declaration.
 
-- Complete the named human VoiceOver and visual review for a release candidate.
-- Confirm rights for actual release content and fonts.
+## Commit
 
-## Third re-review remediation — 2026-07-28
+`55bc1b2` — `feat: guide secure publication approvals`
 
-- Hardened compatibility-output containment: every safe root is checked for
-  symlinks, the environment root must be a child of an explicit trusted parent,
-  and tests cover root, parent, traversal, nested symlink, and root-symlink
-  rejection before deletion.
-- Bound the fixed repository visual baseline path and SHA-256 into the retained
-  manifest; tests recompute it and compare it to the visual report. CI has no
-  baseline override.
-- Added versioned JSON Schemas for the manifest, visual report, parser report,
-  and veraPDF reports. The focused suite validates retained JSON before semantic
-  assertions and includes a malformed visual-report negative case.
-- Added a renderer-derived A5 negative raster fixture. Its retained dimensions
-  differ from the production A4 baseline and the test asserts that the visual
-  gate detects the geometry/overflow-clipping regression.
+## Concerns
 
-## Fourth re-review visual remediation — 2026-07-28
+None known. The full end-to-end rebuild and immutable-manifest exercise remains
+Task 3 by plan.
 
-- Added a renderer-produced clipping fixture: a 200pt red rectangle is rendered
-  onto a 100pt page and the retained PNG pixel scan proves its red bounds touch
-  the rendered right edge (`maxX: 199`), which is the clipping detection.
-- Added a renderer-produced altered-image fixture: a 4x2 red SVG is rendered
-  and the retained PNG pixel scan measures a 6x3 rendered bound. The test
-  rejects the production-size threshold, proving altered image dimensions are
-  detected from rendered pixels rather than from a preset boolean.
-- Added a strict schema for the retained pixel-measurement artifact and a
-  rejecting negative test for missing derived bounds before semantic checks.
+## Fixes / Review Follow-up
 
-## PDF.js remediation — 2026-07-28
+Independent review found that the original browser controls displayed one
+candidate or lifecycle material set but allowed the server to resolve a newer
+set at click time. The follow-up closes both time-of-review/time-of-use gaps:
 
-- Replaced the failed Homebrew qpdf 12.3.2 bottle with Apache-2.0
-  `pdfjs-dist` 5.4.624, pinned by the pnpm lockfile integrity
-  (`sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==`).
-- The parser report retains successful parsing, page count, metadata/language,
-  bookmarks, internal/external link annotations, tag/structure tree including
-  table roles and figure alternative text, plus font identifiers and families
-  where PDF.js exposes them. veraPDF remains the authoritative PDF/A/PDF/UA
-  validator.
-- Remote run `30323389374` failed only because the extracted qpdf dynamically
-  linked Homebrew OpenSSL and could not resolve `_ERR_clear_error`; evidence
-  artifact upload still succeeded. The next run is expected to avoid that
-  native-library boundary because the common parser is the pnpm-installed
-  package.
-- On the replacement change, the retained evidence was regenerated locally;
-  `node --test tests/pdf-toolchain.test.mjs` passed 6/6 and `pnpm test` passed
-  71/71. Markdown lint and spelling checks also passed.
+- Workspace status now issues session-bound opaque one-time intents. A release
+  review intent binds the displayed server-resolved candidate hash; Beta and
+  Publish intents bind both lifecycle version and a stable hash of the exact
+  resolved lifecycle bindings. The browser echoes only the opaque intent.
+- The Creator Studio displays the server-resolved candidate identity prefix and
+  refreshes current guidance after a stale `409` response.
+- `ReleaseReviewService` compares the intent's server-side expectation with the
+  current candidate, while the append transaction rechecks the latest candidate
+  before writing. A replacement candidate therefore cannot inherit an unseen
+  review decision.
+- Lifecycle approval acquires its lease, starts an immediate SQLite transaction,
+  then re-resolves and compares the exact Beta or Publish material before writing
+  the approval. Canonical binding resolution and release-policy reads share that
+  transaction's database connection, fencing concurrent Beta registration,
+  candidate registration, and review changes until the decision commits.
+- Added two-tab regressions for release-candidate rollover, Beta binding rollover,
+  and Publish candidate/material rollover. Each stale action returns `409` and
+  leaves the previous lifecycle/review state unchanged.
 
-## Remote compatibility evidence — 2026-07-28
-
-- GitHub Actions [run 30323970497](https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497)
-  is green for implementation SHA `67d60df66e9b45fe7a0ea326a86f5d96e14354fe`
-  on `macos-15-intel` x86_64. Quality job `90165388216` and downstream build
-  job `90165966469` both passed.
-- The PDF compatibility fixture, compatibility-evidence upload, complete
-  quality job, and downstream build/artifact job all passed. The uploaded artifact is
-  `pdf-compatibility-67d60df66e9b45fe7a0ea326a86f5d96e14354fe`, retained for
-  14 days.
-- `tests/fixtures/publishing/pdf/remote-run-evidence.json` and its schema bind
-  the remote URLs, platform, SHA, artifact, retention, and successful statuses.
-  This closes only the remote machine-evidence gate; it does not replace the
-  required human VoiceOver/visual or release-rights reviews.
+Follow-up verification: focused 12 passed, 0 failed; full suite 138 passed,
+0 failed. The follow-up is committed as `fix: bind approvals to displayed material`.
