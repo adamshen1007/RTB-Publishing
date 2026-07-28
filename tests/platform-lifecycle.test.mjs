@@ -63,6 +63,10 @@ test("Blueprint approval consumes a session-bound exact-material intent", async 
     assert.equal(forgedMaterialRevision.status, 400); assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
 
     ({ headers } = await issueAndBootstrap(base));
+    const malformedIntent = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true, intent: null }) });
+    assert.equal(malformedIntent.status, 400); assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
+
+    ({ headers } = await issueAndBootstrap(base));
     const missing = await fetch(`${base}/api/projects/fixture-book/lifecycle/gates/blueprint`, { method: "POST", headers, body: JSON.stringify({ confirm: true }) });
     assert.equal(missing.status, 409); headers = rotate(headers, missing);
     assert.equal(lifecycle.status().lifecycle.version, 0); assert.equal(lifecycle.status().approvals.length, 0);
