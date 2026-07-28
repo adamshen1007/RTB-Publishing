@@ -81,18 +81,27 @@ The promotion boundary accepts no output directory from a caller. It validates
 both live locks and the discovered book/workspace relationship before marker
 recovery, then derives the only permitted immutable target from the workspace,
 project ID, and release ID.
-Both locks pin the real directory path plus device and inode. Existing path
+Both locks pin the real directory path plus device and inode. Each handle also
+pins its lock parent and file, keeps the file descriptor open, and rechecks the
+descriptor identity, one-link status, and exact owner bytes. Existing path
 segments below the workspace—including the project, lock directories,
 `build`, `dist`, candidates, immutable releases, staging, and promotion
 targets—must be physical directories rather than symbolic links. Replacing a
-root after lock acquisition invalidates its handle before further mutation.
+root, lock parent, or lock file after acquisition—or unlinking or hard-linking
+the lock—invalidates its handle before further mutation. A stale release cannot
+remove a successor lock.
 
 The project is re-discovered only after both locks are held. RTB compares the
 fresh canonical identity—including snapshot pointer hash/version and all
 manifest, Blueprint, metadata, and chapter material—with the caller's view,
-then rechecks it after rendering and immediately before ledger completion. If
+then rechecks it after rendering and after the final completion hook,
+immediately before one-time capability consumption and ledger completion. If
 the pointer or material changes, the attempt cannot promote or complete; start
 a fresh build from the newly discovered project.
+The capability also pins the complete output directory chain and every exact
+candidate, manifest, verification, artifact, and retained-source file. A copied
+replacement of the immutable root, project namespace, or release target fails
+closed before completion and before cleanup.
 The prior release backup remains until the promoted directory passes exact
 verification again. Every rename has durable intent and completion phases.
 Before durable material verification, failure or restart restores the prior

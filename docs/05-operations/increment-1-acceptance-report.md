@@ -16,7 +16,7 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
 
 ## Automated evidence
 
-- Repository tests: 297/297 passed in the final local quality run.
+- Repository tests: 309/309 passed in the final local quality run.
 - Real YC candidate: HTML, 60-page PDF, and EPUB built from one fingerprint.
 - PDF/A-2a: compliant, zero failed rules and checks.
 - PDF/UA-1: compliant, zero failed rules and checks.
@@ -65,14 +65,22 @@ and veraPDF Greenfield 1.28.2. No paid renderer licence or secret is required.
   workspace-mismatched authority before marker recovery or filesystem mutation.
   The approved build prints a fully shell-quoted verification command with the
   actual release identity; that exact command is executed in acceptance tests.
-- Workspace and project locks pin canonical physical path, device, and inode identity. Tests
-  reject symlinked project, lock, `dist`, candidates, and immutable path
-  segments, as well as a physical root replaced after lock acquisition, before
-  external mutation or ledger completion.
+- Workspace and project locks pin canonical physical path, device, and inode
+  identity plus the lock parent, lock file, open descriptor, one-link status,
+  and owner bytes. Tests reject parent/file replacement, unlink, hard-link,
+  symlinked project, lock, `dist`, candidates, and immutable path segments, as
+  well as a physical root replaced after lock acquisition, before external
+  mutation or ledger completion. Stale release preserves a successor lock.
 - Publishing re-discovers the complete canonical project under both locks and
-  rechecks its snapshot pointer/material after rendering and immediately before
-  completion. Pointer changes at all three tested race boundaries fail closed,
+  rechecks its snapshot pointer/material after rendering, after the final
+  completion hook, and immediately before capability consumption. Pointer
+  changes at all four tested race boundaries fail closed,
   roll back promoted material, and require a fresh discovery/build.
+- Promotion completion pins and revalidates the full physical output chain and
+  exact files. Exact copied replacements of the immutable root, project
+  namespace, or release target leave both ledger rows pending. Generic builds
+  likewise reject symbolic output roots, stale pointers, and hard-linked
+  canonical pointer/snapshot inputs.
 - Workflow acceptance: an isolated fixture exercises the real durable
   Blueprint, review, Notion receipt, Beta, post-Beta rebuild, Publish, manifest,
   and single-use release-identity boundaries. The fixture creates no production

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { inspectBetaMaterial } from "../lifecycle/beta-material.mjs";
 import { durableCheckpoint, openStateDatabase } from "../state/database.mjs";
-import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, assertPinnedDirectory, pinPhysicalDirectory } from "../state/project-lock.mjs";
+import { acquireProjectLock, acquireWorkspaceOutputLock, assertLiveProjectLock, assertLiveWorkspaceOutputLock, assertNoSymlinkPath, assertPinnedDirectory, assertPinnedEntry, pinPhysicalDirectory, pinPhysicalEntry } from "../state/project-lock.mjs";
 import { assertFutureExpiry, loadPublishApprovalFromDatabase } from "./approval-store.mjs";
 import { verifyCandidate } from "./candidate.mjs";
 import { materialHash, writeJsonAtomic } from "./common.mjs";
@@ -13,6 +13,13 @@ import { assertCurrentProjectIdentity, projectCanonicalIdentity, resolveBookProj
 
 const liveVerifiedPromotions = new WeakSet();
 function inside(root, path) { const value = relative(resolve(root), resolve(path)); return value !== ".." && !value.startsWith(`..${sep}`); }
+function pinPromotionOutput(authority, candidate) {
+  const directories = [resolve(authority.workspace, "dist"), resolve(authority.workspace, "dist", "releases"), authority.immutableRoot, resolve(authority.immutableRoot, candidate.projectId), authority.target].map((path) => pinPhysicalEntry(path, "directory"));
+  const relativeFiles = ["candidate.json", "verification.json", "manifest.json", ...Object.values(candidate.artifacts).map((item) => item.path), ...candidate.snapshot.bundle.files.map((item) => join(candidate.snapshot.bundle.path, item.path))];
+  const files = relativeFiles.map((path) => pinPhysicalEntry(resolve(authority.target, path), "file"));
+  return { directories, files };
+}
+function assertPromotionOutput(output) { for (const identity of output.directories) assertPinnedEntry(identity, "directory"); for (const identity of output.files) assertPinnedEntry(identity, "file"); return true; }
 
 function assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock }) {
   if (!heldWorkspaceLock || !heldLock) throw new Error("Immutable release promotion requires live workspace and project lock authority.");
@@ -84,8 +91,8 @@ function prepare(database, project, candidateHash, approvalId, legacyReleaseDire
 
 function complete(database, root, project, releaseDirectory, manifest, capability, beforeCommit) {
   const workspaceIdentity = pinPhysicalDirectory(project.workspaceRoot ?? ""), projectIdentity = pinPhysicalDirectory(root), workspace = workspaceIdentity.path, immutableRoot = resolve(workspace, "dist", "releases", "immutable");
-  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
-  if (!capability || !liveVerifiedPromotions.delete(capability) || capability.workspaceRoot !== workspace || capability.workspaceIdentity.dev !== workspaceIdentity.dev || capability.workspaceIdentity.ino !== workspaceIdentity.ino || capability.immutableRoot !== immutableRoot || capability.projectRoot !== projectIdentity.path || capability.projectIdentity.dev !== projectIdentity.dev || capability.projectIdentity.ino !== projectIdentity.ino || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
+  assertCurrentProjectIdentity(project); assertPinnedDirectory(capability?.workspaceIdentity ?? {}); assertPinnedDirectory(capability?.projectIdentity ?? {}); assertPromotionOutput(capability.outputIdentity); assertNoSymlinkPath(workspace, immutableRoot, { allowMissing: false }); assertNoSymlinkPath(workspace, releaseDirectory, { allowMissing: false });
+  if (!capability || !liveVerifiedPromotions.has(capability) || capability.workspaceRoot !== workspace || capability.workspaceIdentity.dev !== workspaceIdentity.dev || capability.workspaceIdentity.ino !== workspaceIdentity.ino || capability.immutableRoot !== immutableRoot || capability.projectRoot !== projectIdentity.path || capability.projectIdentity.dev !== projectIdentity.dev || capability.projectIdentity.ino !== projectIdentity.ino || capability.projectId !== project.id || capability.releaseId !== manifest.releaseId || capability.releaseDirectory !== resolve(immutableRoot, project.id, manifest.releaseId) || capability.releaseDirectory !== resolve(releaseDirectory) || capability.manifestHash !== manifest.manifestHash || capability.context.phase !== "material-verified") throw new Error("Release completion requires a live, exact, one-time verified-promotion capability.");
   database.exec("BEGIN IMMEDIATE");
   try {
     const record = database.prepare("SELECT * FROM release_finalizations WHERE release_id = ?").get(manifest.releaseId);
@@ -102,8 +109,10 @@ function complete(database, root, project, releaseDirectory, manifest, capabilit
     if (policies.releasePolicyHash !== approval.releasePolicyHash || !policies.releaseEligible) throw new Error("Pending finalization no longer has current exact release policy or approval.");
     verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
     beforeCommit?.();
-    if (!currentBetaMatches(project, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization completion commit.");
+    const freshProject = assertCurrentProjectIdentity(project); assertPromotionOutput(capability.outputIdentity);
+    if (!currentBetaMatches(freshProject, approvedBeta)) throw new Error("Canonical or Notion material changed before finalization completion commit.");
     verifyReleaseDirectoryMaterial(releaseDirectory, candidate, { manifest: stored });
+    if (!liveVerifiedPromotions.delete(capability)) throw new Error("Verified promotion capability was already consumed.");
     const approvalRow = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(record.approval_id);
     database.prepare("UPDATE release_finalizations SET status = 'completed', completed_at = ?, approval_actor_type = ?, approval_actor_id = ?, approval_created_at = ?, approval_lifecycle_version = ?, approval_bindings_json = ?, completed_while_current = 1 WHERE release_id = ? AND status = 'pending'").run(new Date().toISOString(), approvalRow.actor_type, approvalRow.actor_id, approvalRow.created_at, approvalRow.lifecycle_version, approvalRow.bindings_json, record.release_id);
     database.prepare("UPDATE release_identities SET status = 'completed' WHERE release_id = ? AND status = 'pending'").run(record.release_id);
@@ -159,7 +168,7 @@ export async function promoteFinalizedRelease(options) {
   const authority = assertCanonicalPromotionAuthority({ root, workspaceRoot, project, manifest, heldWorkspaceLock, heldLock });
   if (!token) throw new Error("Immutable release promotion requires its build transaction token.");
   const promotionInput = { outputRoot: authority.immutableRoot, projectId: project.id, releaseId: manifest.releaseId, token };
-  let context;
+  let context, verifiedOutputIdentity;
   const pending = promotionMarkers(promotionInput.outputRoot, project.id, manifest.releaseId);
   for (const marker of pending) {
     const recovered = recoverPromotion(marker, hooks.promotionBoundary);
@@ -170,15 +179,16 @@ export async function promoteFinalizedRelease(options) {
   try {
     await hooks.beforePromotionVerification?.({ release: target, promotion: context });
     verifyReleaseDirectoryMaterial(target, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
+    verifiedOutputIdentity = pinPromotionOutput(authority, candidate);
     await hooks.afterPromotionVerification?.({ release: target, promotion: context });
     if (context.phase !== "material-verified") context = markPromotionMaterialVerified(context, hooks.promotionBoundary);
-    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context };
+    const capability = { workspaceRoot: authority.workspace, workspaceIdentity: authority.workspaceIdentity, immutableRoot: authority.immutableRoot, projectRoot: authority.projectRoot, projectIdentity: authority.projectIdentity, projectId: project.id, releaseId: manifest.releaseId, releaseDirectory: target, manifestHash: manifest.manifestHash, context, outputIdentity: verifiedOutputIdentity };
     liveVerifiedPromotions.add(capability);
     await completeFinalizedRelease({ root, workspaceRoot, project, releaseDirectory: target, manifest, capability, heldWorkspaceLock, heldLock, hooks });
     await hooks.afterLedgerCompletion?.({ release: target, promotion: context });
     context = markPromotionLedgerCompleted(context, hooks.promotionBoundary);
     verifyReleaseDirectory(target, candidate, { manifest, root, heldLock, immutableRoot: promotionInput.outputRoot, workspaceRoot, heldWorkspaceLock });
-    commitPromotion(context, hooks.promotionBoundary);
+    assertPromotionOutput(capability.outputIdentity); commitPromotion(context, hooks.promotionBoundary);
     return target;
   } catch (error) {
     let ledgerCompleted = false;
@@ -190,7 +200,9 @@ export async function promoteFinalizedRelease(options) {
     // A process can fail after the database commit but before the ledger marker.
     // Preserve the verified target in that case so the next locked retry can
     // durably record ledger-completed and finish promotion cleanup.
-    if (!ledgerCompleted && context?.phase !== "ledger-completed") rollbackPromotion(context, hooks.promotionBoundary);
+    let outputStillAuthoritative = true;
+    if (verifiedOutputIdentity) { try { assertPromotionOutput(verifiedOutputIdentity); } catch { outputStillAuthoritative = false; } }
+    if (!ledgerCompleted && context?.phase !== "ledger-completed" && outputStillAuthoritative) rollbackPromotion(context, hooks.promotionBoundary);
     throw error;
   }
 }

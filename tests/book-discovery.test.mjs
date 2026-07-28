@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
-import { initializeSnapshots } from "../scripts/state/snapshots.mjs";
+import { initializeSnapshots, materializeSnapshot, pointerPath, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
 import { buildProject, outputDispatch } from "../scripts/build-book.mjs";
 
 test("MIG-001/MIG-003: generic discovery finds versioned projects of different shapes", () => {
@@ -76,5 +76,38 @@ test("MIG-002: discovery pins the current immutable root instead of mixing legac
     assert.equal(before.authority, "rtb-content-current");
     assert.equal(after.authority, "rtb-content-current");
     assert.equal(readFileSync(after.chapters[0].sourcePath, "utf8"), readFileSync(before.chapters[0].sourcePath, "utf8"));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generic build rejects symbolic output roots without touching their targets", () => {
+  for (const kind of ["build", "dist"]) {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generic-${kind}-`)), external = mkdtempSync(resolve(tmpdir(), `rtb-generic-external-${kind}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); writeFileSync(resolve(external, "sentinel"), "untouched");
+      const project = discoverBookProject(root, { workspaceRoot: root }), buildRoot = resolve(root, "build"), outputRoot = resolve(root, "dist");
+      symlinkSync(external, kind === "build" ? buildRoot : outputRoot);
+      assert.throws(() => buildProject(project, { buildRoot, outputRoot, workspaceRoot: root }), /symbolic link|real directory/);
+      assert.equal(readFileSync(resolve(external, "sentinel"), "utf8"), "untouched"); assert.deepEqual(new Set(["sentinel"]), new Set(readdirSync(external)));
+    } finally { rmSync(root, { recursive: true, force: true }); rmSync(external, { recursive: true, force: true }); }
+  }
+});
+
+test("generic build rejects stale pointers and hard-linked canonical inputs", () => {
+  const make = (label) => { const root = mkdtempSync(resolve(tmpdir(), `rtb-generic-${label}-`)); cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); initializeSnapshots(root); return root; };
+  let root = make("stale");
+  try {
+    const stale = discoverBookProject(root, { workspaceRoot: root }), prior = readPointer(root), next = materializeSnapshot(root, { sourceRoot: snapshotRoot(root, prior.snapshotHash) }); writePointer(root, { expected: prior, nextSnapshotHash: next.hash, nextVersion: prior.version + 1 });
+    assert.throws(() => buildProject(stale, { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }), /stale/);
+    const fresh = discoverBookProject(root, { workspaceRoot: root }), result = buildProject(fresh, { buildRoot: resolve(root, "build"), outputRoot: resolve(root, "dist"), workspaceRoot: root }); assert.ok(existsSync(result.outputs[0].file));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  root = make("pointer-link");
+  try {
+    const pointer = pointerPath(root), outside = resolve(root, "pointer-copy"); writeFileSync(outside, readFileSync(pointer)); unlinkSync(pointer); linkSync(outside, pointer);
+    assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /private regular file with one link/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  root = make("snapshot-link");
+  try {
+    const pointer = readPointer(root), manifest = resolve(snapshotRoot(root, pointer.snapshotHash), "book.project.yaml"), outside = resolve(root, "manifest-copy"); writeFileSync(outside, readFileSync(manifest)); unlinkSync(manifest); linkSync(outside, manifest);
+    assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /multiply linked|private regular file/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

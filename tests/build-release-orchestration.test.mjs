@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { basename, resolve } from "node:path";
@@ -202,6 +202,35 @@ test("stale canonical pointers before lock, after render, and before completion 
       const fresh = resolveBookProject(item.legacyRoot, { workspaceRoot: item.workspaceRoot });
       await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /snapshot is stale/);
       const freshCandidate = await buildRelease(fresh, base); assert.equal(freshCandidate.project.pointerVersion, item.project.pointerVersion + 1); assert.ok(freshCandidate.candidate.candidateHash);
+    } finally { item.dispose(); }
+  });
+  await context.test("inside the final completion hook", async () => {
+    const item = fixture({ snapshots: true });
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("completion-hook") }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { beforeCompleteCommit: () => advancePointer(item.legacyRoot, "changed-in-completion-hook") } }), /snapshot or material changed/);
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+      finally { database.close(); }
+    } finally { item.dispose(); }
+  });
+});
+
+test("verified promotion capability rejects copied replacements of every output namespace", async (context) => {
+  for (const level of ["immutable", "project", "target"]) await context.test(level, async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(`replace-${level}`) }, candidateOnly = await buildRelease(item.project, base), approval = await approve(item.project, candidateOnly.candidate);
+      let replacedTarget, displacedTarget;
+      const replace = ({ release }) => {
+        const target = level === "target" ? release : level === "project" ? resolve(release, "..") : resolve(release, "..", "..");
+        const displaced = `${target}-displaced`; renameSync(target, displaced); cpSync(displaced, target, { recursive: true }); replacedTarget = target; displacedTarget = displaced;
+      };
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks: { afterPromotionVerification: replace } }), /identity changed|physical identity/);
+      assert.equal(existsSync(replacedTarget), true, "failure cleanup must not mutate a replacement namespace"); assert.equal(existsSync(displacedTarget), true);
+      const database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+      finally { database.close(); }
     } finally { item.dispose(); }
   });
 });

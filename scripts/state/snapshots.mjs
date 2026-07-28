@@ -43,7 +43,7 @@ function assertNoSymlinkTree(root, directory = root) {
     const status = lstatSync(full);
     if (status.isSymbolicLink()) throw new Error(`Canonical tree contains a symbolic link: ${relative(root, full)}`);
     if (status.isDirectory()) assertNoSymlinkTree(root, full);
-    else if (!status.isFile()) throw new Error(`Canonical tree contains an unsupported entry: ${relative(root, full)}`);
+    else if (!status.isFile() || status.nlink !== 1) throw new Error(`Canonical tree contains an unsupported or multiply linked entry: ${relative(root, full)}`);
   }
 }
 
@@ -87,6 +87,7 @@ function durableTree(root, trace, sourcePaths = []) {
 }
 
 export function readPointer(root) {
+  const pointerEntry = lstatSync(pointerPath(root)); if (pointerEntry.isSymbolicLink() || !pointerEntry.isFile() || pointerEntry.nlink !== 1) throw new Error("Current snapshot pointer must be a private regular file with one link.");
   const pointer = JSON.parse(readFileSync(pointerPath(root), "utf8"));
   if (!/^[a-f0-9]{64}$/.test(pointer.snapshotHash) || !Number.isInteger(pointer.version) || pointer.version < 1) throw new Error("Current snapshot pointer is corrupt.");
   return pointer;

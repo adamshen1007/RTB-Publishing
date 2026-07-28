@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -42,6 +42,41 @@ test("locks reject symbolic lock directories and physical root replacement", asy
     assert.throws(() => assertLiveWorkspaceOutputLock(handle, root), /physical identity/);
     handle.release();
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(moved, { recursive: true, force: true }); rmSync(external, { recursive: true, force: true }); }
+});
+
+test("lock authority pins its parent and release never unlinks a successor parent", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-parent-")), displaced = resolve(root, ".rtb-state-old");
+  try {
+    const first = await acquireProjectLock(root);
+    renameSync(resolve(root, ".rtb-state"), displaced); mkdirSync(resolve(root, ".rtb-state"));
+    const successor = await acquireProjectLock(root);
+    assert.throws(() => assertLiveProjectLock(first, root), /parent|physical identity/);
+    first.release();
+    assert.equal(existsSync(projectLockPath(root)), true, "stale release must preserve the successor lock");
+    assert.equal(assertLiveProjectLock(successor, root), successor); successor.release();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("lock authority rejects file replacement, unlink, and extra hard links", async (context) => {
+  await context.test("replacement with copied owner content", async () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-replace-"));
+    try {
+      const handle = await acquireProjectLock(root), lock = projectLockPath(root), moved = `${lock}.old`, content = readFileSync(lock, "utf8");
+      renameSync(lock, moved); writeFileSync(lock, content, { mode: 0o600 });
+      assert.throws(() => assertLiveProjectLock(handle, root), /file|physical identity/); handle.release();
+      assert.equal(existsSync(lock), true, "stale release must not remove replacement lock");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("unlink", async () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-unlink-"));
+    try { const handle = await acquireProjectLock(root), lock = projectLockPath(root); unlinkSync(lock); assert.throws(() => assertLiveProjectLock(handle, root), /physical identity/); handle.release(); }
+    finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("hard link", async () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-lock-hardlink-"));
+    try { const handle = await acquireProjectLock(root), lock = projectLockPath(root); linkSync(lock, `${lock}.alias`); assert.throws(() => assertLiveProjectLock(handle, root), /physical identity/); handle.release(); }
+    finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });
 
 test("clean waits for a nested project's workspace output lock before removing outputs", async () => {

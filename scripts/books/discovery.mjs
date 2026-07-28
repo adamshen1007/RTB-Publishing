@@ -16,8 +16,9 @@ function safeRelative(root, target) {
 }
 
 function readYaml(root, path) {
-  return parse(readFileSync(resolveSafeRelativePath(root, path, { mustExist: true }), "utf8"));
+  const file = resolveSafeRelativePath(root, path, { mustExist: true }); assertPrivateFile(file); return parse(readFileSync(file, "utf8"));
 }
+function assertPrivateFile(path) { const entry = lstatSync(path); if (entry.isSymbolicLink() || !entry.isFile() || entry.nlink !== 1) throw new Error(`Canonical input must be a private regular file with one link: ${path}`); return path; }
 
 /**
  * Resolve one immutable project root once. `.rtb-content/current.json` is the
@@ -42,14 +43,17 @@ function projectFromManifest(manifestFile, { workspaceRoot = ROOT, preferCanonic
   const resolved = resolveProjectRoot(legacyRoot, { preferCanonical });
   const manifestPath = resolve(resolved.root, "book.project.yaml");
   if (!existsSync(manifestPath) || lstatSync(manifestPath).isSymbolicLink()) throw new Error(`Canonical project root has no safe manifest: ${manifestFile}`);
+  assertPrivateFile(manifestPath);
   const validation = validateFile(manifestPath, { root: resolved.root, recordType: "book-project", checkPaths: true });
   if (!validation.valid) throw new Error(validation.diagnostics.map((item) => `${item.field}: ${item.problem}`).join("\n"));
   const manifest = validation.record;
   const blueprint = readYaml(resolved.root, manifest.blueprint.path);
-  const metadata = readFileSync(resolveSafeRelativePath(resolved.root, manifest.paths.metadata, { mustExist: true }), "utf8");
+  assertPrivateFile(resolveSafeRelativePath(resolved.root, manifest.lifecycle.path, { mustExist: true }));
+  const metadata = readFileSync(assertPrivateFile(resolveSafeRelativePath(resolved.root, manifest.paths.metadata, { mustExist: true })), "utf8");
   const chapters = blueprint.chapter_contracts
     .map((chapter) => ({ ...chapter, sourcePath: resolveSafeRelativePath(resolved.root, chapter.source_path, { mustExist: true }) }))
     .sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
+  for (const chapter of chapters) assertPrivateFile(chapter.sourcePath);
   if (new Set(chapters.map((chapter) => chapter.order)).size !== chapters.length) throw new Error(`Book Project ${manifest.id} has duplicate chapter order values.`);
   const parts = [...blueprint.parts].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
   const partIds = new Set(parts.map((part) => part.id));

@@ -116,16 +116,22 @@ or recovering any promotion marker it validates both unforgeable live lock
 handles, proves the discovered project path belongs to that exact workspace,
 and derives `dist/releases/immutable/<project-id>/<release-id>` from those
 trusted identities. The one-time completion capability binds that workspace,
-canonical immutable root, project root, target, manifest, and live promotion
-transaction. Released, forged, wrong-root, non-canonical, and replayed
-authority cannot complete a ledger row.
+every physical output directory from `dist/` through the exact target, every
+expected artifact and retained-source file, the project root, manifest, and
+live promotion transaction. Each directory and file identity is revalidated
+before the final database commit and before promotion cleanup. Released,
+forged, wrong-root, replaced, non-canonical, and replayed authority cannot
+complete a ledger row.
 
 Held-lock authority is a process-private live handle, not a caller-supplied
 path or owner string. It is accepted only for the exact project root that
-created it. Release is idempotent and removes the lock file only when its inode,
-process, and random owner still match, so a stale or repeated release cannot
-unlink a successor writer's lock. This hierarchy ensures a workspace clean
-cannot race a build or finalization whose project root is nested below it.
+created it. The handle pins the lock parent and lock file, retains an open file
+descriptor, and rechecks descriptor/path device and inode, one-link status, and
+exact owner bytes. Release is idempotent and removes the lock only while all of
+those facts still match, so parent replacement, file replacement, unlinking,
+hard-linking, or repeated release cannot unlink a successor writer's lock. This
+hierarchy ensures a workspace clean cannot race a build or finalization whose
+project root is nested below it.
 
 Workspace and project locks pin physical directory identity: canonical
 path plus device and inode. Lock acquisition rejects a symbolic-link lock
@@ -140,10 +146,17 @@ After both physical locks are held, publication discards the caller's material
 view and re-discovers the canonical Book Project. It requires the caller view
 to match the fresh ID, physical roots, workspace path, authority, snapshot hash,
 pointer version, manifest, Blueprint, metadata, and chapter-byte identity.
-That identity is checked again after rendering, before finalization, and
-immediately before promotion capability consumption. A changed
+That identity is checked again after rendering, before finalization, after the
+last completion hook, and immediately before promotion capability consumption.
+Capability consumption occurs only after these final checks. A changed
 `.rtb-content/current.json` pointer or canonical byte causes rollback and leaves
 the release ledger pending; only a newly discovered build may retry.
+
+The generic non-release book builder follows the same physical-lock and fresh
+discovery rules. It renders only into unique, physically validated staging
+directories and moves verified outputs into validated final namespaces. It
+rejects stale project views, symbolic output roots, multiply linked snapshot
+files, and multiply linked canonical pointer files.
 
 The release build holds that lock while it renders in unique staging,
 registers the candidate, finalizes approved material, and performs the last
