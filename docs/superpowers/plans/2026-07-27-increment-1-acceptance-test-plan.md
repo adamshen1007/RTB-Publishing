@@ -39,7 +39,7 @@ RFC amendment explicitly changes their priority or applicability.
 | Evidence | Location | Git policy |
 | --- | --- | --- |
 | Machine test reports | `build/acceptance/increment-1/<run-id>/` | Ignored generated output |
-| Release candidates | `build/releases/<candidate-id>/` | Ignored until approved |
+| Transient publishing work | `build/publishing/.staging/<run-id>/` | Ignored and never review authority |
 | Candidate-only bundle | `dist/candidates/<project-id>/<candidate-hash>/` | Generated review evidence; never a release |
 | Approved release bundle | `dist/releases/immutable/<project-id>/<release-id>/` | Generated, immutable by process, not committed |
 | Migration review | `books/volume-01-yc-playbook/migrations/` | Commit sanitized report and human decision |

@@ -40,8 +40,10 @@ function lifecyclePanel(project, lifecycle) {
     const approval = lifecycle.approvals?.filter((item) => item.gate === gate && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
     if (gate === "publish" && approval) {
       const handoff = node("p", "muted", `Stored Publish approval ${approval.id}. Create the immutable manifest with:`);
-      const command = node("code", "", `pnpm release:candidate -- --lifecycle-version ${approval.lifecycleVersion - 1} --approval-id ${approval.id}`);
-      row.append(handoff, command);
+      const projectPath = lifecycle.projectPath || project.path;
+      const command = node("code", "", `pnpm release:candidate -- ${projectPath} --lifecycle-version ${approval.lifecycleVersion - 1} --approval-id ${approval.id}`);
+      const verify = node("code", "", `pnpm release:verify -- dist/releases/immutable/${project.id}/<release-id> ${projectPath} .`);
+      row.append(handoff, command, node("p", "muted", "The build prints the exact immutable directory. Copy it into this required verification command:"), verify);
     }
   });
   return section;

@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { openStateDatabase } from "../state/database.mjs";
 
-export function loadPublishApprovalFromDatabase(database, approvalId, candidate) {
+export function loadPublishApprovalFromDatabase(database, approvalId, candidate, { now = Date.now() } = {}) {
   const row = database.prepare(`SELECT approval.*, invalidation.id AS invalidation_id FROM lifecycle_approvals approval LEFT JOIN lifecycle_approval_invalidations invalidation ON invalidation.approval_id = approval.id WHERE approval.id = ? AND approval.project_id = ?`).get(approvalId, candidate.projectId);
-  if (!row || row.invalidation_id || row.gate !== "publish" || row.decision !== "approved" || row.actor_type !== "human" || row.explicit_confirmation !== 1) throw new Error("No current explicit human Publish approval exists for this project.");
+  if (!row || row.invalidation_id || row.gate !== "publish" || row.decision !== "approved" || row.actor_type !== "human" || row.explicit_confirmation !== 1 || row.expires_at && Date.parse(row.expires_at) <= now) throw new Error("No current, unexpired explicit human Publish approval exists for this project.");
   const bindings = JSON.parse(row.bindings_json);
   if (bindings.releaseCandidateHash !== candidate.candidateHash || bindings.candidateLifecycleVersion !== candidate.lifecycleVersion || row.lifecycle_version !== candidate.lifecycleVersion + 1 || bindings.blockingFindings !== 0 || !/^[a-f0-9]{64}$/.test(bindings.releasePolicyHash ?? "")) throw new Error("Stored Publish approval is not bound to this exact eligible candidate, policy result, and lifecycle version.");
   return { id: row.id, gate: row.gate, decision: row.decision, actor: { type: row.actor_type, id: row.actor_id }, explicitConfirmation: true, candidateHash: bindings.releaseCandidateHash, lifecycleVersion: bindings.candidateLifecycleVersion, approvalLifecycleVersion: row.lifecycle_version, releasePolicyHash: bindings.releasePolicyHash };

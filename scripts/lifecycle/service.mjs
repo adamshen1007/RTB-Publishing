@@ -11,9 +11,10 @@ import { currentApproval, gateGuard, materialBlueprintChange } from "./guards.mj
 const next = { blueprint: ["evidence", "blueprint_approved"], beta: ["notion_beta", "beta_approved"], publish: ["published", "published"] };
 
 export class LifecycleService {
-  constructor({ root, projectId, bindingProvider, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now() } = {}) {
+  constructor({ root, projectId, projectPath = null, bindingProvider, databaseFile = resolve(root, ".rtb-state", "state.sqlite"), now = () => Date.now() } = {}) {
     this.root = resolve(root);
     this.projectId = projectId;
+    this.projectPath = projectPath;
     this.databaseFile = databaseFile;
     this.bindingProvider = bindingProvider;
     this.now = now;

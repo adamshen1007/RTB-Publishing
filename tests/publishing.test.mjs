@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -21,8 +22,8 @@ import { projectLockPath } from "../scripts/state/project-lock.mjs";
 
 test("SEC-004 rejects active markup and unsafe URLs while permitting inert task boxes", () => { assert.throws(() => assertSafeMarkup('<img src="x" onerror="alert(1)">', "HTML"), /security/); assert.throws(() => assertSafeMarkup('<a href="javascript:alert(1)">bad</a>', "EPUB"), /security/); assert.doesNotThrow(() => assertSafeMarkup('<input type="checkbox"></input>', "HTML")); });
 
-function releaseFixture(lifecycleVersion = 4) { const root = mkdtempSync(resolve(tmpdir(), "rtb-release-")), artifacts = {}; for (const [format, name] of [["html", "book.html"], ["pdf", "book.pdf"], ["epub", "book.epub"]]) { const file = resolve(root, name); writeFileSync(file, `${format}-artifact`); artifacts[format] = { path: name, mediaType: "test/fixture", bytes: Buffer.byteLength(`${format}-artifact`), sha256: fileHash(file) }; } const bundleDirectory = resolve(root, "source-snapshot"); mkdirSync(bundleDirectory); writeFileSync(resolve(bundleDirectory, "book.md"), "# Source\n"); const snapshot = { hash: "b".repeat(64), repository: { revision: "c".repeat(40), tree: "d".repeat(40) }, bundle: { path: "source-snapshot", files: [{ path: "book.md", sha256: fileHash(resolve(bundleDirectory, "book.md")), bytes: 9 }] } }, verification = { sourceFingerprint: "a".repeat(64), status: "passed", semanticParity: { status: "passed" }, pdf: { vera: { "2a": { compliant: true }, ua1: { compliant: true } } }, artifacts }; const candidate = createCandidate({ projectId: "generic-consulting-book", lifecycleVersion, sourceFingerprint: "a".repeat(64), snapshot, verification, policies: { releaseEligible: true } }); writeJson(resolve(root, "candidate.json"), candidate); writeJson(resolve(root, "verification.json"), verification); return { root, candidate, snapshot, dispose: () => rmSync(root, { recursive: true, force: true }) }; }
-function releaseDirectory(item, name = "release") { const directory = resolve(item.root, name); mkdirSync(directory); for (const artifact of Object.values(item.candidate.artifacts)) copyFileSync(resolve(item.root, artifact.path), resolve(directory, artifact.path)); mkdirSync(resolve(directory, "source-snapshot")); copyFileSync(resolve(item.root, "source-snapshot", "book.md"), resolve(directory, "source-snapshot", "book.md")); writeJson(resolve(directory, "candidate.json"), item.candidate); writeJson(resolve(directory, "verification.json"), { sourceFingerprint: item.candidate.sourceFingerprint, ...item.candidate.validators, artifacts: item.candidate.artifacts }); return directory; }
+function releaseFixture(lifecycleVersion = 4, projectId = "generic-consulting-book") { const root = mkdtempSync(resolve(tmpdir(), "rtb-release-")), artifacts = {}; for (const [format, name] of [["html", "book.html"], ["pdf", "book.pdf"], ["epub", "book.epub"]]) { const file = resolve(root, name); writeFileSync(file, `${format}-artifact`); artifacts[format] = { path: name, mediaType: "test/fixture", bytes: Buffer.byteLength(`${format}-artifact`), sha256: fileHash(file) }; } const bundleDirectory = resolve(root, "source-snapshot"); mkdirSync(bundleDirectory); writeFileSync(resolve(bundleDirectory, "book.md"), "# Source\n"); const snapshot = { hash: "b".repeat(64), repository: { revision: "c".repeat(40), tree: "d".repeat(40) }, bundle: { path: "source-snapshot", files: [{ path: "book.md", sha256: fileHash(resolve(bundleDirectory, "book.md")), bytes: 9 }] } }, verification = { sourceFingerprint: "a".repeat(64), status: "passed", semanticParity: { status: "passed" }, pdf: { vera: { "2a": { compliant: true }, ua1: { compliant: true } } }, artifacts }; const candidate = createCandidate({ projectId, lifecycleVersion, sourceFingerprint: "a".repeat(64), snapshot, verification, policies: { releaseEligible: true } }); writeJson(resolve(root, "candidate.json"), candidate); writeJson(resolve(root, "verification.json"), verification); return { root, candidate, snapshot, dispose: () => rmSync(root, { recursive: true, force: true }) }; }
+function releaseDirectory(item, name = "release") { const directory = resolve(item.root, name); mkdirSync(directory, { recursive: true }); for (const artifact of Object.values(item.candidate.artifacts)) copyFileSync(resolve(item.root, artifact.path), resolve(directory, artifact.path)); mkdirSync(resolve(directory, "source-snapshot")); copyFileSync(resolve(item.root, "source-snapshot", "book.md"), resolve(directory, "source-snapshot", "book.md")); writeJson(resolve(directory, "candidate.json"), item.candidate); writeJson(resolve(directory, "verification.json"), { sourceFingerprint: item.candidate.sourceFingerprint, ...item.candidate.validators, artifacts: item.candidate.artifacts }); return directory; }
 test("PUB/REL candidate is deterministic, provider-neutral, and fails closed on drift", () => { const item = releaseFixture(); try { assert.equal(verifyCandidate(item.candidate), true); const duplicate = createCandidate({ projectId: item.candidate.projectId, lifecycleVersion: 4, sourceFingerprint: "a".repeat(64), snapshot: item.snapshot, verification: { status: "passed", semanticParity: { status: "passed" }, pdf: item.candidate.validators.pdf, artifacts: item.candidate.artifacts }, policies: { releaseEligible: true } }); assert.equal(duplicate.candidateHash, item.candidate.candidateHash); assert.match(item.candidate.futureStaging.reference, /^future-staging:/); assert.equal(item.candidate.futureStaging.activated, false); const changed = structuredClone(item.candidate); changed.artifacts.pdf.sha256 = "0".repeat(64); assert.throws(() => verifyCandidate(changed), /hash/); assert.equal(verifyReleaseDirectory(item.root, item.candidate), true); writeFileSync(resolve(item.root, "candidate.json"), "{\"tampered\":true}\n"); assert.throws(() => verifyReleaseDirectory(item.root, item.candidate), /candidate.json/); writeJson(resolve(item.root, "candidate.json"), item.candidate); writeFileSync(resolve(item.root, "unexpected.bin"), "x"); assert.throws(() => verifyReleaseDirectory(item.root, item.candidate), /extra/); } finally { item.dispose(); } });
 test("REL policy remains blocked without durable exact review evidence", () => { const item = releaseFixture(); try { registerReleaseCandidate(item.root, item.candidate); assert.equal(evaluateReleasePolicies({ id: item.candidate.projectId, root: item.root, legacyRoot: item.root }, item.candidate).releaseEligible, false); } finally { item.dispose(); } });
 
@@ -76,6 +77,17 @@ test("real lifecycle services atomically finalize current exact evidence", async
   } finally { item.dispose(); }
 });
 
+test("documented release verification command executes with immutable directory, project, and workspace", async () => {
+  const item = releaseFixture(2, "concise-guide");
+  try {
+    const { book, published } = await publishable(item), provisional = releaseDirectory(item, "provisional"), { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: provisional }), immutable = releaseDirectory(item, `dist/releases/immutable/${item.candidate.projectId}/${manifest.releaseId}`);
+    writeJson(resolve(immutable, "manifest.json"), manifest);
+    cpSync(resolve("tests/fixtures/books/one-chapter"), item.root, { recursive: true, force: true });
+    const result = spawnSync(process.execPath, [resolve("scripts/publishing/verify-release.mjs"), immutable, item.root, item.root], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr); assert.match(result.stdout, /Verified immutable release/);
+  } finally { item.dispose(); }
+});
+
 test("atomic finalization rechecks policy after preliminary evaluation and consumes no identity on rejection", async () => {
   const item = releaseFixture(2);
   try {
@@ -91,6 +103,17 @@ test("atomic finalization rechecks policy after preliminary evaluation and consu
     try { assert.equal(database.prepare("SELECT COUNT(*) AS count FROM release_identities").get().count, 0); }
     finally { database.close(); }
   } finally { item.dispose(); }
+});
+
+test("live finalization rejects expired Publish and Beta approvals", async (context) => {
+  for (const gate of ["publish", "beta"]) await context.test(gate, async () => {
+    const item = releaseFixture(2);
+    try {
+      const { book, published } = await publishable(item), directory = releaseDirectory(item, `expired-${gate}`), database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite"));
+      try { database.prepare("UPDATE lifecycle_approvals SET expires_at = '2000-01-01T00:00:00.000Z' WHERE gate = ?").run(gate); } finally { database.close(); }
+      await assert.rejects(() => finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory }), /unexpired|expired/);
+    } finally { item.dispose(); }
+  });
 });
 
 test("pending finalization resumes after manifest write and verification failures", async () => {
@@ -181,6 +204,10 @@ test("migration-007 backfill rejects every independently corrupted redundant aut
     "Beta material": (db) => db.prepare("UPDATE lifecycle_material_bindings SET bindings_json = '{}' WHERE kind = 'beta'").run(),
     "Beta approval lifecycle": (db) => db.prepare("UPDATE lifecycle_approvals SET lifecycle_version = lifecycle_version + 1 WHERE gate = 'beta'").run(),
     "Beta approval timestamp": (db) => db.prepare("UPDATE lifecycle_approvals SET created_at = 'not-a-time' WHERE gate = 'beta'").run(),
+    "Beta approval expiry": (db) => db.prepare("UPDATE lifecycle_approvals SET expires_at = created_at WHERE gate = 'beta'").run(),
+    "candidate registered before Beta": (db) => db.prepare("UPDATE release_candidates SET created_at = '2000-01-01T00:00:00.000Z'").run(),
+    "review before candidate registration": (db) => { db.exec("DROP TRIGGER release_reviews_no_update"); db.prepare("UPDATE release_reviews SET created_at = '2000-01-01T00:00:00.000Z'").run(); },
+    "review after Publish approval": (db) => { db.exec("DROP TRIGGER release_reviews_no_update"); db.prepare("UPDATE release_reviews SET created_at = '2999-01-01T00:00:00.000Z'").run(); },
     "Beta pre-completion invalidation": (db) => { const beta = db.prepare("SELECT * FROM lifecycle_approvals WHERE gate = 'beta'").get(); db.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES ('INV-BETA-007', ?, ?, 'stale beta', ?)").run(beta.id, beta.project_id, beta.created_at); },
     "historical review policy": (db) => { db.exec("DROP TRIGGER release_reviews_no_update"); db.prepare("UPDATE release_reviews SET decision = 'rejected' WHERE kind = 'migration-visual-review'").run(); },
     "manifest JSON": (db) => db.prepare("UPDATE release_finalizations SET manifest_json = '{}'").run(),
@@ -197,6 +224,8 @@ test("migration-007 backfill rejects every independently corrupted redundant aut
     "finalization release": (db) => db.prepare("UPDATE release_finalizations SET release_id = 'REL-WRONG'").run(),
     "finalization timestamp": (db) => db.prepare("UPDATE release_finalizations SET created_at = 'not-a-time'").run(),
     "identity timestamp": (db) => db.prepare("UPDATE release_identities SET created_at = 'not-a-time'").run(),
+    "identity before Publish approval": (db) => db.prepare("UPDATE release_identities SET created_at = '2000-01-01T00:00:00.000Z'").run(),
+    "finalization before identity": (db) => db.prepare("UPDATE release_finalizations SET created_at = '2000-01-01T00:00:00.000Z'").run(),
     "pre-completion invalidation": (db, approval) => db.prepare("INSERT INTO lifecycle_approval_invalidations (id, approval_id, project_id, reason, created_at) VALUES (?, ?, ?, ?, ?)").run("INV-MIGRATION-007", approval.id, approval.project_id, "pre-completion invalidation", approval.created_at),
   };
   for (const [name, mutate] of Object.entries(cases)) await context.test(name, async () => {
@@ -207,7 +236,32 @@ test("migration-007 backfill rejects every independently corrupted redundant aut
       let testedManifest = manifest;
       try { const approval = database.prepare("SELECT * FROM lifecycle_approvals WHERE id = ?").get(published.approval.id); database.prepare("UPDATE release_finalizations SET approval_actor_type = NULL, approval_actor_id = NULL, approval_created_at = NULL, approval_lifecycle_version = NULL, approval_bindings_json = NULL, completed_while_current = 0").run(); mutate(database, approval, directory, manifest, (value) => { testedManifest = value; }); }
       finally { database.close(); }
-      assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest: testedManifest, root: item.root }), /requires approval-facts reconciliation/);
+      assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest: testedManifest, root: item.root }), /approval-facts reconciliation|exact completed durable/);
+    } finally { item.dispose(); }
+  });
+});
+
+test("ordinary completed releases always reject corrupted redundant authority", async (context) => {
+  const cases = {
+    "identity project": (db) => db.prepare("UPDATE release_identities SET project_id = 'wrong-project'").run(),
+    "identity candidate": (db) => db.prepare("UPDATE release_identities SET candidate_hash = ?").run("0".repeat(64)),
+    "identity approval": (db) => db.prepare("UPDATE release_identities SET approval_id = 'APR-WRONG'").run(),
+    "identity timestamp": (db) => db.prepare("UPDATE release_identities SET created_at = '2999-01-01T00:00:00.000Z'").run(),
+    "finalization project": (db) => db.prepare("UPDATE release_finalizations SET project_id = 'wrong-project'").run(),
+    "finalization candidate": (db) => db.prepare("UPDATE release_finalizations SET candidate_hash = ?").run("0".repeat(64)),
+    "finalization approval": (db) => db.prepare("UPDATE release_finalizations SET approval_id = 'APR-WRONG'").run(),
+    "finalization completion": (db) => db.prepare("UPDATE release_finalizations SET completed_at = created_at || 'later'").run(),
+    "candidate registry project": (db) => db.prepare("UPDATE release_candidates SET project_id = 'wrong-project'").run(),
+    "candidate registry lifecycle": (db) => db.prepare("UPDATE release_candidates SET lifecycle_version = lifecycle_version + 1").run(),
+    "Publish actor": (db) => db.prepare("UPDATE lifecycle_approvals SET actor_id = 'other' WHERE gate = 'publish'").run(),
+    "Publish stored facts": (db) => db.prepare("UPDATE release_finalizations SET approval_actor_id = 'other'").run(),
+  };
+  for (const [name, mutate] of Object.entries(cases)) await context.test(name, async () => {
+    const item = releaseFixture(2);
+    try {
+      const { book, published } = await publishable(item), directory = releaseDirectory(item, `ordinary-${name.replaceAll(" ", "-")}`), { manifest } = await finalizeRelease({ root: item.root, project: book, candidateHash: item.candidate.candidateHash, approvalId: published.approval.id, releaseDirectory: directory });
+      const database = openStateDatabase(resolve(item.root, ".rtb-state", "state.sqlite")); try { mutate(database); } finally { database.close(); }
+      assert.throws(() => verifyReleaseDirectory(directory, item.candidate, { manifest, root: item.root }), /exact completed|exact completed durable/);
     } finally { item.dispose(); }
   });
 });

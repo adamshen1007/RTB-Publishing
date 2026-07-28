@@ -98,7 +98,7 @@ export function createRegisteredMutationServices({ workspaceFile, localFile, now
 
 export function createRegisteredLifecycleServices({ workspaceFile, localFile, now } = {}) {
   const workspace = loadEffectiveWorkspace(workspaceFile, localFile); const services = new Map();
-  for (const project of workspace.projects) if (project.id === "rtb-publishing-core" && project.source !== "local") { const book = resolveBookProject(); services.set(project.id, new LifecycleService({ root: book.legacyRoot, projectId: project.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book, approvalProjectId: project.id }), now })); services.set(book.id, new LifecycleService({ root: book.legacyRoot, projectId: book.id, bindingProvider: new CanonicalLifecycleBindingProvider({ book }), now })); }
+  for (const project of workspace.projects) if (project.id === "rtb-publishing-core" && project.source !== "local") { const book = resolveBookProject(); services.set(project.id, new LifecycleService({ root: book.legacyRoot, projectId: project.id, projectPath: book.workspacePath, bindingProvider: new CanonicalLifecycleBindingProvider({ book, approvalProjectId: project.id }), now })); services.set(book.id, new LifecycleService({ root: book.legacyRoot, projectId: book.id, projectPath: book.workspacePath, bindingProvider: new CanonicalLifecycleBindingProvider({ book }), now })); }
   return services;
 }
 
@@ -135,7 +135,7 @@ function publicationStatus({ lifecycleServices, releaseReviewServices, betaPrepa
       const material = status.gates?.[gate];
       if (material?.ok && material.materialRevision) material.intent = sessions.issueIntent(session, { action: "lifecycle-gate", projectId, gate, lifecycleVersion: status.lifecycle.version, materialRevision: material.materialRevision });
     }
-    return [projectId, status];
+    return [projectId, { ...status, projectPath: service.projectPath ?? null }];
   }));
   const releaseReviews = Object.fromEntries([...releaseReviewServices].map(([projectId]) => {
     const status = contextualService(releaseReviewServices, projectId)?.status();

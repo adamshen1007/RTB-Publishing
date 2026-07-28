@@ -10,9 +10,9 @@ import { renderHtml } from "./html.mjs";
 import { pdfTools, renderPdf } from "./pdf.mjs";
 import { prepareSnapshot, verifySnapshot } from "./snapshot.mjs";
 import { verifyFormats } from "./verify.mjs";
-import { verifyReleaseDirectory } from "./verify-release.mjs";
+import { verifyReleaseDirectory, verifyReleaseDirectoryMaterial } from "./verify-release.mjs";
 import { registerReleaseCandidate } from "./release-registry.mjs";
-import { finalizeRelease } from "./finalize-release.mjs";
+import { completeFinalizedRelease, finalizeRelease } from "./finalize-release.mjs";
 import { evaluateReleasePolicies, pendingReleasePolicies } from "./policies.mjs";
 import { writeJson } from "./common.mjs";
 import { fileHashChunked } from "./common.mjs";
@@ -44,8 +44,8 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
     const candidate = createCandidate({ projectId: project.id, lifecycleVersion, sourceFingerprint: snapshot.record.sourceFingerprint, snapshot: { authority: snapshot.record.authority, canonicalSnapshotHash: snapshot.record.canonicalSnapshotHash, repository: snapshot.record.materials.repository, files: snapshot.record.files, materials: snapshot.record.materials, bundle, ...(resourceProof ? { resourceProof } : {}) }, verification, policies }); writeJson(resolve(staging, "candidate.json"), candidate); registerReleaseCandidate(project.legacyRoot, candidate);
     let releasePolicies = evaluateReleasePolicies(project, candidate);
     let manifest = null;
-    if (approvalId) { const finalized = await finalizeRelease({ root: project.legacyRoot, workspaceRoot, project, candidateHash: candidate.candidateHash, approvalId, releaseDirectory: staging, legacyReleaseDirectory: legacyRelease, heldWorkspaceLock: workspaceLock, heldLock: publicationLock }); manifest = finalized.manifest; releasePolicies = evaluateReleasePolicies(project, candidate); }
-    verifyReleaseDirectory(staging, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock });
+    if (approvalId) { const finalized = await finalizeRelease({ root: project.legacyRoot, workspaceRoot, project, candidateHash: candidate.candidateHash, approvalId, releaseDirectory: staging, legacyReleaseDirectory: legacyRelease, heldWorkspaceLock: workspaceLock, heldLock: publicationLock, deferCompletion: true }); manifest = finalized.manifest; releasePolicies = evaluateReleasePolicies(project, candidate); }
+    verifyReleaseDirectoryMaterial(staging, candidate, { manifest });
     let publishedDirectory = null, candidateDirectory = null;
     if (!manifest) {
       candidateDirectory = resolve(candidateRoot, project.id, candidate.candidateHash);
@@ -55,14 +55,22 @@ export async function buildRelease(project, { lifecycleVersion = 0, approvalId =
       promotionInput = { outputRoot: resolve(releaseRoot, "immutable"), projectId: project.id, releaseId: manifest.releaseId, token };
       for (const pending of promotionMarkers(promotionInput.outputRoot, project.id, manifest.releaseId)) recoverPromotion(pending);
       publishedDirectory = resolve(promotionInput.outputRoot, project.id, manifest.releaseId);
-      if (existsSync(publishedDirectory)) { verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock }); rmSync(staging, { recursive: true, force: true }); }
+      if (existsSync(publishedDirectory)) {
+        verifyReleaseDirectoryMaterial(publishedDirectory, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
+        await completeFinalizedRelease({ root: project.legacyRoot, workspaceRoot, project, releaseDirectory: publishedDirectory, manifest, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
+        verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock, immutableRoot: promotionInput.outputRoot }); rmSync(staging, { recursive: true, force: true });
+      }
       else {
         promotion = beginPromotion(promotionInput, hooks.promotionBoundary);
         await hooks.afterPromotionRename?.({ release: publishedDirectory, staging, promotion });
         await hooks.beforePromotionVerification?.({ release: publishedDirectory, promotion });
-        verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock });
+        verifyReleaseDirectoryMaterial(publishedDirectory, candidate, { manifest, immutableRoot: promotionInput.outputRoot });
         await hooks.afterPromotionVerification?.({ release: publishedDirectory, promotion });
-        promotion = markPromotionVerified(promotion, hooks.promotionBoundary); commitPromotion(promotion, hooks.promotionBoundary); promotion = null;
+        promotion = markPromotionVerified(promotion, hooks.promotionBoundary);
+        await completeFinalizedRelease({ root: project.legacyRoot, workspaceRoot, project, releaseDirectory: publishedDirectory, manifest, heldWorkspaceLock: workspaceLock, heldLock: publicationLock });
+        await hooks.afterLedgerCompletion?.({ release: publishedDirectory, promotion });
+        verifyReleaseDirectory(publishedDirectory, candidate, { manifest, root: project.legacyRoot, heldLock: publicationLock, immutableRoot: promotionInput.outputRoot });
+        commitPromotion(promotion, hooks.promotionBoundary); promotion = null;
       }
     }
     const destination = publishedDirectory ?? candidateDirectory, outputs = Object.fromEntries(Object.entries(stagedOutputs).map(([format, file]) => [format, resolve(destination, basename(file))]));

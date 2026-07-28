@@ -200,13 +200,21 @@ Do this:
    It has this shape:
 
    ```sh
-   pnpm release:candidate -- --lifecycle-version 2 \
+   pnpm release:candidate -- books/volume-01-yc-playbook \
+     --lifecycle-version 2 \
      --approval-id <server-stored-publish-approval-id>
    ```
 
 4. Run the displayed command without changing its lifecycle version or approval
    ID.
-5. Run `pnpm release:verify`.
+5. Copy the exact immutable directory printed by the build, including its
+   release ID, and run:
+
+   ```sh
+   pnpm release:verify -- \
+     dist/releases/immutable/rtb-yc-playbook/<release-id> \
+     books/volume-01-yc-playbook .
+   ```
 
 Verify this:
 
@@ -223,10 +231,12 @@ Check:
 - A Publish approval and release identity are single-use. Reusing either is
   rejected.
 - The displayed command creates a durable pending record for one exact
-  manifest, atomically writes and verifies its files, then marks it completed.
-  Only completed records verify as releases. If writing or verification is
-  interrupted, run the identical command again; it resumes the same manifest
-  and identity rather than consuming a new one.
+  manifest, promotes and verifies the exact immutable directory, durably marks
+  that filesystem promotion verified, and only then marks the finalization and
+  identity completed. Only completed records verify as releases. If writing,
+  promotion, or verification is interrupted, run the identical build command
+  again; it recovers the same manifest and identity rather than consuming a
+  new one.
 - Finalization reloads the current candidate, Beta, Publish approval, and exact
   review policy. A rejection, invalidation, newer candidate, or detected
   canonical/receipt change makes it fail closed.

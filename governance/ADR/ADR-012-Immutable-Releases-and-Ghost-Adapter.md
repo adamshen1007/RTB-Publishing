@@ -82,14 +82,18 @@ auditable binding at Publish.
 
 Manifest authority uses a recoverable pending-to-completed protocol under the
 project writer lock. The first immediate SQLite transaction reloads the latest
-candidate, current non-invalidated Publish approval, current Beta, and exact
-durable reviews, then persists the normalized manifest JSON and hash with a
-pending identity. The system atomically writes and verifies that exact
-manifest and release directory before a second transaction marks both records
-completed. Only completed records verify as releases. Identical retries resume
-pending material after write, verification, or process interruption; they
-cannot consume a different identity. No separate reservation API accepts a
-caller-created manifest.
+candidate, current unexpired and non-invalidated Publish approval, current
+unexpired exact Beta approval, and exact durable reviews, then persists the
+normalized manifest JSON and hash with a pending identity. The system writes
+staging, promotes and verifies the exact immutable target, and durably records
+the filesystem `verified` phase before a second SQLite transaction marks the
+finalization and identity completed together. Recovery at that filesystem
+phase preserves the promoted target, while a pending ledger retry completes
+only after re-verifying it. Earlier promotion failure leaves both ledger rows
+pending. Only completed records verify as releases. Identical retries resume
+pending material after write, promotion, verification, or process
+interruption; they cannot consume a different identity. No separate
+reservation API accepts a caller-created manifest.
 
 The lock order is workspace output lock, project writer lock, then SQLite
 immediate transaction. Every command that can change shared `build/` or
@@ -116,7 +120,8 @@ verification. Candidate-only builds move to
 `dist/candidates/<project>/<candidate-hash>` and never enter the release
 namespace. Only exact approved finalization may enter
 `dist/releases/immutable/<project>/<release-id>`. Existing immutable targets
-are reused only after exact verification; no different material can overwrite
+are reused only after exact path, real-path containment, symbolic-link-free
+tree, material, and ledger verification; no different material can overwrite
 a release ID. The old `dist/releases/<project>` location remains read-only
 legacy reconciliation evidence.
 
@@ -142,6 +147,15 @@ without a finalization record may be adopted only when its deterministic
 release ID, candidate, real current approval and policy, current Beta, and
 existing manifest bytes exactly reproduce. Otherwise recovery requires a new
 exact Publish approval and never silently blesses the legacy row.
+
+Completed verification is not a shortcut around authority reconstruction. It
+always proves exact finalization, identity, candidate registry JSON and row,
+manifest and artifact/source hashes, preserved Publish facts, Beta material
+and approval, review evidence, project/release/candidate/approval equality,
+expiry at completion, and the causal sequence from Beta preparation and
+approval through final-candidate registration, reviews, Publish approval,
+identity/finalization creation, and completion. Only the one-time population
+of missing migration-007 completion facts is conditional.
 
 Completed verification is historical integrity, not current eligibility. The
 completion record preserves approval actor, creation time, lifecycle version,

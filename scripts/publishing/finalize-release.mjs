@@ -23,6 +23,18 @@ function currentBetaMatches(project, approvedBeta) {
   return current.state === "ready" && approvedBeta?.betaSnapshotHash === current.betaSnapshotHash && approvedBeta?.policyResultsHash === current.policyResultsHash;
 }
 
+function assertCurrentBetaApproval(database, projectId, approvedBeta, now = Date.now()) {
+  const row = database.prepare(`SELECT approval.*, invalidation.id AS invalidation_id
+    FROM lifecycle_approvals approval
+    LEFT JOIN lifecycle_approval_invalidations invalidation ON invalidation.approval_id = approval.id
+    WHERE approval.project_id = ? AND approval.gate = 'beta' AND approval.decision = 'approved'
+      AND approval.explicit_confirmation = 1 AND approval.actor_type = 'human'
+      AND approval.bindings_json = ?
+    ORDER BY approval.created_at DESC, approval.rowid DESC LIMIT 1`).get(projectId, JSON.stringify(approvedBeta));
+  if (!row || row.invalidation_id || row.expires_at && Date.parse(row.expires_at) <= now) throw new Error("Atomic release finalization requires a current, unexpired exact Beta approval.");
+  return row;
+}
+
 function prepare(database, project, candidateHash, approvalId, legacyReleaseDirectory, beforeCommit) {
   database.exec("BEGIN IMMEDIATE");
   try {
@@ -32,6 +44,7 @@ function prepare(database, project, candidateHash, approvalId, legacyReleaseDire
     if (!row || row.candidate_hash !== candidateHash) throw new Error("Atomic release finalization requires the exact current registered candidate.");
     const candidate = JSON.parse(row.candidate_json), approval = loadPublishApprovalFromDatabase(database, approvalId, candidate);
     const approvedBeta = JSON.parse(database.prepare("SELECT bindings_json FROM lifecycle_approvals WHERE id = ?").get(approvalId).bindings_json).beta;
+    assertCurrentBetaApproval(database, project.id, approvedBeta);
     if (!currentBetaMatches(project, approvedBeta)) throw new Error("Atomic release finalization requires the approved Beta to match current canonical and Notion material.");
     const policies = evaluateReleasePolicies(project, candidate, { database }), manifest = buildManifest(candidate, approval, policies);
     beforeCommit?.();
@@ -59,6 +72,7 @@ function complete(database, root, project, releaseDirectory, manifest, beforeCom
     const candidate = JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(record.candidate_hash, project.id).candidate_json);
     const approval = loadPublishApprovalFromDatabase(database, record.approval_id, candidate);
     const approvedBeta = JSON.parse(database.prepare("SELECT bindings_json FROM lifecycle_approvals WHERE id = ?").get(record.approval_id).bindings_json).beta;
+    assertCurrentBetaApproval(database, project.id, approvedBeta);
     if (!currentBetaMatches(project, approvedBeta)) throw new Error("Pending finalization no longer has current exact Beta material.");
     const policies = evaluateReleasePolicies(project, candidate, { database });
     if (policies.releasePolicyHash !== approval.releasePolicyHash || !policies.releaseEligible) throw new Error("Pending finalization no longer has current exact release policy or approval.");
@@ -75,7 +89,7 @@ function complete(database, root, project, releaseDirectory, manifest, beforeCom
 
 /** Sole authority for preparing, writing, verifying, and completing a release manifest. */
 export async function finalizeRelease(options) {
-  const { root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldWorkspaceLock = null, heldLock = null } = options;
+  const { root, project, candidateHash, approvalId, releaseDirectory, legacyReleaseDirectory = releaseDirectory, hooks = {}, heldWorkspaceLock = null, heldLock = null, deferCompletion = false } = options;
   const workspaceRoot = options.workspaceRoot ?? project.workspaceRoot ?? root;
   if (heldLock && !heldWorkspaceLock) throw new Error("Held project lock authority requires the enclosing workspace output lock to preserve lock order.");
   if (heldWorkspaceLock) assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
@@ -89,9 +103,27 @@ export async function finalizeRelease(options) {
     const prepared = prepare(database, project, candidateHash, approvalId, legacyReleaseDirectory, hooks.beforePrepareCommit);
     (hooks.writeManifest ?? writeJsonAtomic)(resolve(releaseDirectory, "manifest.json"), prepared.manifest);
     hooks.afterManifestWrite?.();
-    if (prepared.status !== "completed") {
+    if (prepared.status !== "completed" && !deferCompletion) {
       complete(database, root, project, releaseDirectory, prepared.manifest, hooks.beforeCompleteCommit);
-    } else verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ?").get(candidateHash).candidate_json), { manifest: prepared.manifest });
-    return { manifest: prepared.manifest };
+    } else verifyReleaseDirectoryMaterial(releaseDirectory, JSON.parse(database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ? AND project_id = ?").get(candidateHash, project.id).candidate_json), { manifest: prepared.manifest });
+    return { manifest: prepared.manifest, status: deferCompletion && prepared.status !== "completed" ? "pending" : "completed" };
+  } finally { database?.close(); if (!heldLock) lock?.release(); if (!heldWorkspaceLock) workspaceLock.release(); }
+}
+
+/** Complete a prepared finalization only after its immutable target was promoted and verified. */
+export async function completeFinalizedRelease(options) {
+  const { root, project, releaseDirectory, manifest, hooks = {}, heldWorkspaceLock = null, heldLock = null } = options;
+  const workspaceRoot = options.workspaceRoot ?? project.workspaceRoot ?? root;
+  if (heldLock && !heldWorkspaceLock) throw new Error("Held project lock authority requires the enclosing workspace output lock to preserve lock order.");
+  if (heldWorkspaceLock) assertLiveWorkspaceOutputLock(heldWorkspaceLock, workspaceRoot);
+  if (heldLock) assertLiveProjectLock(heldLock, root);
+  const workspaceLock = heldWorkspaceLock ?? await acquireWorkspaceOutputLock(workspaceRoot, { ownerId: `publication-completion-output-${process.pid}` });
+  let lock;
+  let database;
+  try {
+    lock = heldLock ?? await acquireProjectLock(root, { ownerId: `publication-completion-${process.pid}` });
+    database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite"));
+    complete(database, root, project, releaseDirectory, manifest, hooks.beforeCompleteCommit);
+    return { manifest, status: "completed" };
   } finally { database?.close(); if (!heldLock) lock?.release(); if (!heldWorkspaceLock) workspaceLock.release(); }
 }

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import test from "node:test";
 import { buildRelease } from "../scripts/publishing/project-build.mjs";
-import { fileHash, writeJson } from "../scripts/publishing/common.mjs";
+import { fileHash, materialHash, writeJson } from "../scripts/publishing/common.mjs";
 import { finalizeRelease } from "../scripts/publishing/finalize-release.mjs";
 import { verifyReleaseDirectory } from "../scripts/publishing/verify-release.mjs";
 import { cleanOutputs } from "../scripts/clean.mjs";
@@ -39,6 +39,7 @@ async function approve(project, candidate) {
   await service.approve({ gate: "blueprint", expectedVersion: 0, actor: { type: "human", id: "creator" }, explicitConfirmation: true });
   const payload = publicationExport(project), stateFile = resolve(project.legacyRoot, ".rtb-publishing", "notion", "sync-state.json"); mkdirSync(resolve(stateFile, ".."), { recursive: true }); writeJson(stateFile, { chapters: Object.fromEntries(payload.chapters.map((chapter) => [chapter.id, { sourceHash: chapter.sourceHash }])) });
   await new BetaPreparationService({ book: project, bindingProvider: provider, actorResolver: () => ({ type: "human", id: "creator" }), stateFile }).prepare(); await service.approve({ gate: "beta", expectedVersion: 1, actor: { type: "human", id: "creator" }, explicitConfirmation: true });
+  const database = openStateDatabase(resolve(project.legacyRoot, ".rtb-state", "state.sqlite")); try { database.prepare("UPDATE release_candidates SET created_at = ? WHERE candidate_hash = ?").run(new Date().toISOString(), candidate.candidateHash); } finally { database.close(); }
   const reviews = new ReleaseReviewService({ root: project.legacyRoot, projectId: project.id, actorResolver: () => ({ type: "human", id: "creator" }) }); for (const kind of ["migration-visual-review", "pdf-screen-reader-visual-review"]) reviews.record({ kind, decision: "approved" }); reviews.record({ kind: "rights-and-brand-review", decision: "approved", qualifiedRole: "publishing rights owner" });
   return (await service.approve({ gate: "publish", expectedVersion: 2, actor: { type: "human", id: "creator" }, explicitConfirmation: true })).approval;
 }
@@ -66,5 +67,45 @@ test("real buildRelease excludes concurrent clean, recovers interrupted activati
     await cleaning; assert.equal(existsSync(resolve(item.workspaceRoot, "dist")), false, "clean runs only after build releases the workspace lock");
     const retried = await buildRelease(item.project, { ...base, approvalId: approval.id, orchestration: deterministicOrchestration("old") }); assert.equal(existsSync(retried.release), true); const immutableHash = JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash;
     const candidateOnly = await buildRelease(item.project, { ...base, orchestration: deterministicOrchestration("new") }); assert.equal(candidateOnly.release, null); assert.notEqual(candidateOnly.candidate.candidateHash, immutableHash); assert.equal(JSON.parse(readFileSync(resolve(retried.release, "candidate.json"), "utf8")).candidateHash, immutableHash);
+  } finally { item.dispose(); }
+});
+
+test("promotion failures remain pending until a verified immutable retry completes the exact ledger", async (context) => {
+  const failures = {
+    "before immutable verification": { beforePromotionVerification: () => { throw new Error("fault-before-verification"); } },
+    "after immutable verification": { afterPromotionVerification: () => { throw new Error("fault-after-verification"); } },
+    "after durable verified marker": { promotionBoundary: (event) => { if (event === "after-marker-verified") throw new Error("fault-after-verified-marker"); } },
+  };
+  for (const [name, hooks] of Object.entries(failures)) await context.test(name, async () => {
+    const item = fixture();
+    try {
+      const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration(name) };
+      const candidate = await buildRelease(item.project, base), approval = await approve(item.project, candidate.candidate);
+      await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id, hooks }), /fault-/);
+      let database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { assert.equal(database.prepare("SELECT status FROM release_finalizations").get().status, "pending"); assert.equal(database.prepare("SELECT status FROM release_identities").get().status, "pending"); }
+      finally { database.close(); }
+      const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
+      database = openStateDatabase(resolve(item.legacyRoot, ".rtb-state", "state.sqlite"));
+      try { const finalization = database.prepare("SELECT * FROM release_finalizations").get(), identity = database.prepare("SELECT * FROM release_identities").get(); assert.equal(finalization.status, "completed"); assert.equal(identity.status, "completed"); assert.equal(identity.release_id, completed.manifest.releaseId); assert.equal(finalization.manifest_hash, completed.manifest.manifestHash); }
+      finally { database.close(); }
+    } finally { item.dispose(); }
+  });
+});
+
+test("immutable release verification rejects external and internal symbolic links without mutating targets", async () => {
+  const item = fixture();
+  try {
+    const base = { lifecycleVersion: 2, buildRoot: item.buildRoot, candidateRoot: item.candidateRoot, releaseRoot: item.releaseRoot, workspaceRoot: item.workspaceRoot, orchestration: deterministicOrchestration("links") };
+    const candidate = await buildRelease(item.project, base), approval = await approve(item.project, candidate.candidate);
+    const releaseId = `REL-${materialHash({ candidateHash: candidate.candidate.candidateHash, approvalId: approval.id }).slice(0, 20).toUpperCase()}`, release = resolve(item.releaseRoot, "immutable", item.project.id, releaseId), outsideDirectory = resolve(item.workspaceRoot, "outside-release");
+    mkdirSync(resolve(release, ".."), { recursive: true }); mkdirSync(outsideDirectory); writeFileSync(resolve(outsideDirectory, "proof"), "untouched"); symlinkSync(outsideDirectory, release);
+    await assert.rejects(() => buildRelease(item.project, { ...base, approvalId: approval.id }), /symbolic link|escapes its trusted/);
+    assert.equal(readFileSync(resolve(outsideDirectory, "proof"), "utf8"), "untouched"); unlinkSync(release);
+    const completed = await buildRelease(item.project, { ...base, approvalId: approval.id });
+    const outsideArtifact = resolve(item.workspaceRoot, "outside-artifact"); writeFileSync(outsideArtifact, readFileSync(resolve(completed.release, "nested-book.pdf")));
+    unlinkSync(resolve(completed.release, "nested-book.pdf")); symlinkSync(outsideArtifact, resolve(completed.release, "nested-book.pdf"));
+    assert.throws(() => verifyReleaseDirectory(completed.release, completed.candidate, { manifest: completed.manifest, root: item.legacyRoot, immutableRoot: resolve(item.releaseRoot, "immutable") }), /symbolic links/);
+    assert.equal(readFileSync(outsideArtifact, "utf8"), "pdf-links");
   } finally { item.dispose(); }
 });
