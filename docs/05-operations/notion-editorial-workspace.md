@@ -51,6 +51,18 @@ Any missing chapter or hash mismatch is stale. Inspect unresolved findings
 before resyncing so reviewer work is not overwritten. The receipt is local and
 Git-ignored because it contains private workspace identifiers.
 
+In Creator Studio, **Prepare Beta** performs this same complete freshness check
+and creates the exact Beta snapshot and policy hashes on the local server. If
+the control is blocked, follow the message shown for the missing or stale
+chapter, re-run the private Notion sync, and refresh the workspace. There is no
+manual hash-entry workflow.
+
+After Beta approval, follow the required post-Beta rebuild and candidate
+re-review sequence in the
+[beginner publication approval procedure](beginner-publication-approval.md).
+The pre-Beta candidate and its reviews cannot authorize Publish at the new
+lifecycle version.
+
 ## Privacy and Recovery
 
 - Keep the headquarters and all databases private.

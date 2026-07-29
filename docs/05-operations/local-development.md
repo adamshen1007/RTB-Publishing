@@ -1,5 +1,7 @@
 # Local Development
 
+<!-- cspell:words APFS -->
+
 ## Purpose
 
 This guide sets up and runs the publishing and engineering-kit workflows on
@@ -68,6 +70,42 @@ pnpm preview
 ```
 
 Open <http://127.0.0.1:4173> and press `Ctrl+C` in Terminal when finished.
+
+Each generic build writes its combined manuscript and rendered files into one
+private generation below `dist/books/.generations/`. There is no separate
+generic `buildRoot`; co-locating both halves prevents a mixed generation. After
+every file and directory has been flushed, RTB atomically replaces the small
+project pointer in `dist/books/.current/`. Preview resolves that pointer for
+every request, opens the selected file without following symbolic links, reads
+only through the pinned descriptor, and rechecks the descriptor, path, and
+pointer before returning bytes under the workspace output lock. It never falls
+back to an older conventional output directory. If the pointer
+is missing or invalid, rebuild instead of selecting generation files by hand.
+The successful build keeps the current generation and two complete
+predecessors. Older generations first move into a project-and-token-scoped
+private quarantine with a closed-schema version 3 transaction record that binds
+the exact pointer bytes and hash while the pointer is rechecked before every
+move, before `delete_pending`, and again immediately before every removal. Any
+pointer change restores every still-owned quarantined generation, including a
+generation newly selected after quarantine.
+Each rename is preceded by `move_pending`; each bounded removal is preceded by
+`delete_pending`. Journal writes use a file-fsynced temporary plus a durable
+authority record containing its exact name, hash, size, device, and inode;
+unlisted or mismatched temps are preserved and stop recovery. A restart restores
+an interrupted move or resumes an exact owned deletion. Each removal first
+claims the exact quarantined inode and rechecks the pointer immediately before
+removal. Successful cleanup first renames the completed
+transaction to a project-scoped terminal tombstone, flushes its parent, and
+then claims and revalidates the exact terminal inventory before removal. A
+replacement or extra entry is preserved and fails closed. Recovery finishes
+either side of that terminal boundary
+and never removes shared or other-project `.gc` data.
+
+The flush-and-rename protocol is designed for local APFS and ordinary Linux
+filesystems that implement file and directory `fsync`. It cannot promise
+equivalent power-loss behavior on every network, virtual, removable, or
+vendor-specific filesystem; build and publish on a supported local filesystem
+when release evidence matters.
 
 Remove generated files:
 
@@ -150,17 +188,20 @@ recovery.
 
 ## Generated Files
 
-The build writes review artifacts to:
+The build writes private generated material to:
 
 ```text
-dist/books/volume-01-yc-playbook/
-├── index.html
-├── rtb-publishing-playbook.epub
-└── rtb-publishing-playbook.docx
+dist/books/
+├── .current/<project-id>.json
+└── .generations/<project-id>/<generation-id>/
+    ├── build/combined.md
+    ├── build/diagrams/
+    └── output-root/<project-id>/<declared artifacts>
 ```
 
-Intermediate Markdown and rendered diagrams live under `build/`. Both
-directories are ignored by Git and may be deleted at any time.
+These paths are internal and ignored by Git. Use `pnpm preview` rather than
+opening a remembered generation path. `pnpm clean` may remove them after active
+build and preview readers release the workspace output lock.
 
 ## Adding a Chapter
 

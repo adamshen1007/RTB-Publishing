@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "implementationSha": "67d60df66e9b45fe7a0ea326a86f5d96e14354fe",
+  "platform": {
+    "workflowLabel": "macos-15-intel",
+    "architecture": "x86_64"
+  },
+  "workflowRun": {
+    "id": 30323970497,
+    "url": "https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497",
+    "status": "passed"
+  },
+  "qualityJob": {
+    "id": 90165388216,
+    "url": "https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497/job/90165388216",
+    "status": "passed"
+  },
+  "buildJob": {
+    "id": 90165966469,
+    "url": "https://github.com/adamshen1007/RTB-Publishing/actions/runs/30323970497/job/90165966469",
+    "status": "passed"
+  },
+  "artifact": {
+    "name": "pdf-compatibility-67d60df66e9b45fe7a0ea326a86f5d96e14354fe",
+    "retentionDays": 14,
+    "status": "uploaded"
+  },
+  "gates": {
+    "pdfCompatibilityFixture": "passed",
+    "pdfCompatibilityEvidenceUpload": "passed",
+    "quality": "passed",
+    "buildPublishingArtifacts": "passed"
+  }
+}

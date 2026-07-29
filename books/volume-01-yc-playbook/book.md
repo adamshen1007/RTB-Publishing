@@ -68,5 +68,4 @@ worksheet, take the smallest responsible action, and return with evidence.
 - 22 — Your First 90 Days
 - 23 — Build Your AI Founder Operating System
 
-The canonical filenames, decisions, and chapter outputs are defined in the
-[table of contents](table-of-contents.md).
+The canonical chapter sequence appears in this edition's table of contents.

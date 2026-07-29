@@ -1,0 +1,4 @@
+import { resolve } from "node:path";
+import { openStateDatabase, durableCheckpoint } from "../state/database.mjs";
+import { verifyCandidate } from "./candidate.mjs";
+export function registerReleaseCandidate(root, candidate) { verifyCandidate(candidate); const database = openStateDatabase(resolve(root, ".rtb-state", "state.sqlite")); try { const existing = database.prepare("SELECT candidate_json FROM release_candidates WHERE candidate_hash = ?").get(candidate.candidateHash); if (existing) { if (existing.candidate_json !== JSON.stringify(candidate)) throw new Error("Release candidate identity collision."); return candidate.candidateHash; } database.prepare("INSERT INTO release_candidates VALUES (?, ?, ?, ?, ?)").run(candidate.candidateHash, candidate.projectId, candidate.lifecycleVersion, JSON.stringify(candidate), new Date().toISOString()); durableCheckpoint(database); return candidate.candidateHash; } finally { database.close(); } }

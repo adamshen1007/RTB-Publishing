@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - codex/**
   workflow_dispatch:
 
 permissions:
@@ -13,10 +14,12 @@ permissions:
 jobs:
   quality:
     name: Quality gates
-    runs-on: macos-14
+    runs-on: macos-15-intel
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -35,8 +38,64 @@ jobs:
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify pinned PDF compatibility fixture
+        env:
+          PDF_TOOLCHAIN: ${{ runner.temp }}/rtb-pdf-toolchain
+        run: |
+          mkdir -p "$PDF_TOOLCHAIN"
+          curl -fsSL -o "$PDF_TOOLCHAIN/typst.tar.xz" https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-apple-darwin.tar.xz
+          echo "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be  $PDF_TOOLCHAIN/typst.tar.xz" | shasum -a 256 -c -
+          tar -xf "$PDF_TOOLCHAIN/typst.tar.xz" -C "$PDF_TOOLCHAIN"
+          curl -fsSL -o "$PDF_TOOLCHAIN/java.tar.gz" https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_mac_hotspot_21.0.11_10.tar.gz
+          echo "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923  $PDF_TOOLCHAIN/java.tar.gz" | shasum -a 256 -c -
+          tar -xf "$PDF_TOOLCHAIN/java.tar.gz" -C "$PDF_TOOLCHAIN"
+          curl -fsSL -o "$PDF_TOOLCHAIN/verapdf.zip" https://software.verapdf.org/releases/1.28/verapdf-greenfield-1.28.2-installer.zip
+          echo "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89  $PDF_TOOLCHAIN/verapdf.zip" | shasum -a 256 -c -
+          unzip -q "$PDF_TOOLCHAIN/verapdf.zip" -d "$PDF_TOOLCHAIN"
+          curl -fsSL -o "$PDF_TOOLCHAIN/NotoSerif.ttf" https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf
+          echo "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713  $PDF_TOOLCHAIN/NotoSerif.ttf" | shasum -a 256 -c -
+          curl -fsSL -o "$PDF_TOOLCHAIN/epubcheck.zip" https://github.com/w3c/epubcheck/releases/download/v5.3.0/epubcheck-5.3.0.zip
+          echo "6c07e68584b2e2ce2f89fe06e1246dfead3eb36b46b340e7d93524f29dcff6c5  $PDF_TOOLCHAIN/epubcheck.zip" | shasum -a 256 -c -
+          unzip -q "$PDF_TOOLCHAIN/epubcheck.zip" -d "$PDF_TOOLCHAIN/epubcheck"
+          export JAVA_HOME="$PDF_TOOLCHAIN/jdk-21.0.11+10-jre/Contents/Home"
+          printf '1\n%s\nO\n1\nY\nY\nY\nY\n1\nN\n' "$PDF_TOOLCHAIN/verapdf-home" | "$PDF_TOOLCHAIN/verapdf-greenfield-1.28.2/verapdf-install" -console
+          PDF_TYPST="$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" PDF_JAVA="$JAVA_HOME/bin/java" PDF_VERAPDF="$PDF_TOOLCHAIN/verapdf-home/verapdf" PDF_VERAPDF_JAR="$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" PDF_FONT="$PDF_TOOLCHAIN/NotoSerif.ttf" PDF_COMPATIBILITY_ROOT="$PDF_TOOLCHAIN" PDF_TRUSTED_COMPATIBILITY_PARENT="${{ runner.temp }}" node scripts/pdf-compatibility.mjs --out "$PDF_TOOLCHAIN/evidence"
+          echo "PDF_TYPST=$PDF_TOOLCHAIN/typst-x86_64-apple-darwin/typst" >> "$GITHUB_ENV"
+          echo "PDF_JAVA=$JAVA_HOME/bin/java" >> "$GITHUB_ENV"
+          echo "PDF_VERAPDF=$PDF_TOOLCHAIN/verapdf-home/verapdf" >> "$GITHUB_ENV"
+          echo "PDF_VERAPDF_JAR=$PDF_TOOLCHAIN/verapdf-home/bin/greenfield-apps-1.28.2.jar" >> "$GITHUB_ENV"
+          echo "PDF_FONT=$PDF_TOOLCHAIN/NotoSerif.ttf" >> "$GITHUB_ENV"
+          echo "EPUBCHECK_ARCHIVE=$PDF_TOOLCHAIN/epubcheck.zip" >> "$GITHUB_ENV"
+          echo "EPUBCHECK_JAR=$PDF_TOOLCHAIN/epubcheck/epubcheck-5.3.0/epubcheck.jar" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      - name: Upload PDF compatibility evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-compatibility-${{ github.sha }}
+          path: ${{ runner.temp }}/rtb-pdf-toolchain/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Run quality gates
         run: pnpm check
+
+      - name: Build the verified three-format release candidate
+        run: pnpm release:candidate
+
+      - name: Prove bounded disk-backed release processing
+        run: pnpm release:resource-proof "${{ runner.temp }}/resource-proof.json"
+
+      - name: Upload release-candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.sha }}
+          path: |
+            dist/releases/
+            ${{ runner.temp }}/resource-proof.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Verify engineering-kit example is deterministic
         run: pnpm check:example
@@ -53,39 +112,3 @@ jobs:
         env:
           OPENAI_API_KEY: ""
         run: pnpm test:platform && pnpm check:platform
-
-  build:
-    name: Build publishing artifacts
-    needs: quality
-    runs-on: macos-14
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-
-      - name: Install system publishing tools
-        run: brew install pandoc vale
-
-      - name: Install project dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build and verify artifacts
-        run: pnpm build
-
-      - name: Upload publishing artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: rtb-publishing-playbook-${{ github.sha }}
-          path: dist/books/volume-01-yc-playbook/
-          if-no-files-found: error
-          retention-days: 14

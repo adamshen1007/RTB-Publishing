@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "fixture": "a5-page-geometry",
+  "raster": "visual-negative-1.png",
+  "width": 839,
+  "height": 1191,
+  "expectedProductionGeometry": {
+    "width": 1191,
+    "height": 1684
+  },
+  "geometryRegressionDetected": true,
+  "imageResolutionRegressionDetected": true,
+  "evidence": "The renderer produced a non-production A5 raster; the compatibility check treats mismatched rendered geometry as a blocking overflow/clipping regression."
+}

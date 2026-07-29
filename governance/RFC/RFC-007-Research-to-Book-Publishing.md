@@ -54,6 +54,14 @@ Markdown and Git remain the authority for authored publication content.
 Generated artifacts, build intermediates, release manifests, Ghost, and object
 storage are derived and cannot write canonical content.
 
+Human release decisions are durable operational evidence, not authored
+publication content. The three fixed release reviews -- migration visual,
+PDF screen-reader and visual, and rights and brand -- are append-only local
+SQLite records under `.rtb-state/`. They are excluded from the canonical
+source snapshot and source fingerprint. A review therefore cannot invalidate
+the source identity it records or require its own bytes to be hashed into that
+identity.
+
 One build resolves an immutable source snapshot containing:
 
 - Project and edition configuration
@@ -129,6 +137,9 @@ tests.
 
 ### PDF Profile
 
+RFC-008 is the accepted amendment that selects the Increment 1 PDF profile and
+toolchain. Its human accessibility and legal evidence gates remain unclaimed.
+
 Before PDF implementation begins, the Increment 1 plan must explicitly select:
 
 - A named PDF accessibility and archival profile with a fixed version
@@ -184,7 +195,7 @@ versioned, immutable release-candidate envelope. It records:
 - The complete required format set
 - Validator profiles, versions, configurations, and machine-readable results
 - Renderer, template, font, sanitizer, policy, and dependency-lock hashes
-- Rights, citations, links, visual provenance, accessibility,
+- Machine-derived rights, citations, links, visual provenance, accessibility,
   quality-policy, and release-integrity results
 - Lifecycle version, versioned hosted-access policy, build run, and creation
   evidence
@@ -193,6 +204,69 @@ The pipeline calculates a SHA-256 hash over the canonical serialization of the
 complete envelope. The human Publish action binds that exact envelope hash and
 lifecycle version and fails closed unless that lifecycle has a current Beta
 approval. Any material change requires a new envelope, hash, and approval.
+
+Beta registration and Beta approval each re-derive the complete normalized
+canonical/Notion snapshot from the current private sync receipt while holding
+their durable transaction boundary. Missing, malformed, stale, or changed
+receipt material makes the Beta binding unavailable. A previously prepared
+binding cannot authorize canonical Markdown that changed afterward.
+
+The candidate envelope does not embed the three mutable human release-review
+decisions. After a candidate is registered, the review service resolves its
+source fingerprint and HTML, PDF, and EPUB hashes from that server-side
+record, resolves the human identity from the authenticated local session, and
+appends the decision to SQLite. Browser input cannot supply a candidate,
+fingerprint, artifact hash, reviewer identity, or lifecycle binding. Rights
+approval additionally requires the human reviewer to declare a non-empty
+qualified role. The system records that declaration; it does not independently
+verify a professional credential or external attestation.
+
+Release policy evaluation joins the latest evidence for each fixed review kind
+to that exact registered candidate and rechecks every redundant source and
+artifact binding. Evidence for another candidate, including one with similar
+content or a stale lifecycle version, does not satisfy the policy. The
+server-created Publish binding records zero blocking findings and the exact
+release-policy result hash for the candidate. Manifest creation re-reads the
+current durable review evidence and requires that same policy identity to
+remain eligible. Changing candidate material or review evidence therefore
+requires a new exact policy evaluation and, when its identity changes, a new
+Publish approval. This operational join breaks the self-reference cycle
+without weakening the Publish gate or making review evidence canonical input.
+
+Final manifest authority uses a recoverable two-phase local protocol under the
+project writer lock. An immediate SQLite transaction reloads the latest
+registered candidate, non-invalidated exact Publish approval, current Beta,
+and durable release reviews; derives the exact manifest; and records its
+normalized JSON and hash as `pending`. The system then atomically replaces the
+manifest file, verifies every exact release byte, and marks the same durable
+record and identity `completed` in a second immediate transaction. Only a
+completed record verifies as a release. An identical retry resumes the pending
+material after interruption; it cannot choose another manifest. A preliminary
+policy evaluation, standalone manifest object, or manifest-shaped approval has
+no authority.
+
+Publication operations acquire the project writer lock before any SQLite write
+transaction and release transactions before releasing the lock. Beta
+registration, Beta and Publish approval, and finalization use this order. They
+derive filesystem material under the lock and re-derive it immediately before
+commit; a mismatch rolls back. App-controlled receipt replacement must use a
+temporary file plus atomic rename under the same lock. The lock coordinates
+RTB Publishing operations, but it cannot prevent an external editor from
+writing directly; the pre-commit stability check detects such changes when
+they occur before the commit boundary.
+
+The app-controlled release build holds the same project lock through staging,
+candidate registration and promotion, finalization, and final byte
+verification, passing explicit held-lock authority rather than reacquiring it.
+Legacy reserved identities may be reconciled only from an exact deterministic
+identity, candidate, current real approval and policy, current Beta, and
+existing manifest match; mismatches require a new exact approval.
+
+A completed record proves historical integrity at its completion time. It
+stores the real approval facts independently of manifest JSON. Later Blueprint
+invalidation or revocation does not retroactively corrupt those immutable
+bytes; current release eligibility and distribution revocation remain separate
+mutable state.
 
 The final manifest required by ADR-012 derives from the approved envelope. It
 must preserve every material field exactly and may add only the Publish
@@ -267,7 +341,7 @@ Required shared tests cover:
 - Artifact and manifest checksum mismatch before staging, after transfer, and
   before access
 - A fixture of at least 512 MiB with streaming chunks no larger than 8 MiB and
-  a peak RSS (resident set size) increase no greater than 128 MiB above the
+  a peak RSS (resident set size) increase no greater than 384 MiB above the
   measured idle aggregate for the complete process tree during rendering,
   checksum, and transfer. It includes the orchestrator plus every renderer,
   adapter, and other child process, or uses an equivalent container or cgroup
@@ -275,6 +349,12 @@ Required shared tests cover:
   architecture, runtime and tool versions, process-tree or container boundary,
   memory-sampling method and interval, aggregate idle baseline, aggregate peak
   RSS or equivalent peak, and fixture composition.
+
+The 384 MiB aggregate ceiling supersedes the original 128 MiB aggregate target
+after the 2026-07-28 renderer reassessment. The original ceiling was retained
+for each disk-backed streaming stage; the aggregate boundary now includes the
+pinned Java-based veraPDF validator and uses a measured 313 MiB peak with
+headroom. Any later increase requires a new recorded architecture decision.
 
 Required HTML tests cover semantics, sanitization, navigation, keyboard use,
 WCAG 2.2 Level AA automated rules, links, responsive reflow, assistive
@@ -457,7 +537,7 @@ silently ignored or replaced by a broader hosted system.
   authorize activation, rollback, or unpublish.
 - A fixture of at least 512 MiB demonstrates disk-backed rendering, validation,
   checksum, and transfer with chunks no larger than 8 MiB and a peak
-  RSS (resident set size) increase no greater than 128 MiB above the idle
+  RSS (resident set size) increase no greater than 384 MiB above the idle
   aggregate for the complete process tree or equivalent container or cgroup.
   The boundary includes the orchestrator, renderer, and adapter children, and
   the measurement platform and method are recorded.

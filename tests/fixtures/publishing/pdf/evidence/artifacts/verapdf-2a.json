@@ -1,0 +1,63 @@
+{"report":{"buildInformation":{"releaseDetails":[{
+  "id" : "core",
+  "version" : "1.28.2",
+  "buildDate" : 1752566820000
+},{
+  "id" : "validation-model",
+  "version" : "1.28.2",
+  "buildDate" : 1752567120000
+},{
+  "id" : "gui",
+  "version" : "1.28.2",
+  "buildDate" : 1752569940000
+}]},"jobs":[{"itemDetails":{
+  "name" : "semantic-book.pdf",
+  "size" : 24587
+},"validationResult":[ {
+  "details" : {
+    "passedRules" : 153,
+    "failedRules" : 0,
+    "passedChecks" : 7201,
+    "failedChecks" : 0,
+    "ruleSummaries" : [ ]
+  },
+  "jobEndStatus" : "normal",
+  "profileName" : "PDF/A-2A validation profile",
+  "statement" : "PDF file is compliant with Validation Profile requirements.",
+  "compliant" : true
+} ],"processingTime":{
+  "start" : 1785207326523,
+  "finish" : 1785207327177,
+  "duration" : "00:00:00.654",
+  "difference" : 654
+}}],"batchSummary":{
+  "duration" : {
+    "start" : 1785207326454,
+    "finish" : 1785207327198,
+    "duration" : "00:00:00.744",
+    "difference" : 744
+  },
+  "totalJobs" : 1,
+  "outOfMemory" : 0,
+  "veraExceptions" : 0,
+  "failedEncryptedJobs" : 0,
+  "failedParsingJobs" : 0,
+  "validationSummary" : {
+    "compliantPdfaCount" : 1,
+    "nonCompliantPdfaCount" : 0,
+    "failedJobCount" : 0,
+    "totalJobCount" : 1,
+    "successfulJobCount" : 1
+  },
+  "featuresSummary" : {
+    "failedJobCount" : 0,
+    "totalJobCount" : 0,
+    "successfulJobCount" : 0
+  },
+  "repairSummary" : {
+    "failedJobCount" : 0,
+    "totalJobCount" : 0,
+    "successfulJobCount" : 0
+  },
+  "multiJob" : false
+}}}

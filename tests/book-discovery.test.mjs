@@ -1,0 +1,425 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import test from "node:test";
+import { chmodSync, cpSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, resolve } from "node:path";
+import { discoverBookProject, discoverBooks, resolveProjectRoot } from "../scripts/books/discovery.mjs";
+import { resolveCurrentGeneration } from "../scripts/books/generation.mjs";
+import { initializeSnapshots, materializeSnapshot, pointerPath, readPointer, snapshotRoot, writePointer } from "../scripts/state/snapshots.mjs";
+import { buildProject, outputDispatch } from "../scripts/build-book.mjs";
+import { readPreviewAsset } from "../scripts/preview.mjs";
+import { cleanOutputs } from "../scripts/clean.mjs";
+
+test("MIG-001/MIG-003: generic discovery finds versioned projects of different shapes", () => {
+  const projects = discoverBooks(resolve("tests/fixtures/books/discoverable"));
+  assert.deepEqual(projects.map((project) => project.id), ["english-field-guide", "guide-francais"]);
+  assert.notEqual(projects[0].chapters.length, projects[1].chapters.length);
+  assert.notEqual(projects[0].parts.length, projects[1].parts.length);
+});
+
+test("MIG-003: profile dispatch is data-driven for one, 23, and French PDF/EPUB projects", () => {
+  const one = discoverBookProject("tests/fixtures/books/one-chapter", { workspaceRoot: "tests/fixtures/books/one-chapter" });
+  const yc = discoverBookProject("books/volume-01-yc-playbook");
+  const french = discoverBookProject("tests/fixtures/books/discoverable/french", { workspaceRoot: "tests/fixtures/books/discoverable/french" });
+  assert.equal(one.chapters.length, 1); assert.equal(yc.chapters.length, 23); assert.ok(outputDispatch(french).every((profile) => ["epub", "pdf"].includes(profile.format)));
+});
+
+test("MIG-003: supported one-chapter build runs and unsupported PDF profile leaves no output", () => {
+  const output = mkdtempSync(resolve(tmpdir(), "rtb-book-build-"));
+  try {
+    const oneRoot = resolve(output, "one"), frenchRoot = resolve(output, "french"); cpSync("tests/fixtures/books/one-chapter", oneRoot, { recursive: true }); cpSync("tests/fixtures/books/discoverable/french", frenchRoot, { recursive: true });
+    const one = discoverBookProject(oneRoot, { workspaceRoot: oneRoot });
+    const result = buildProject(one, { outputRoot: resolve(output, "dist") });
+    assert.ok(existsSync(result.outputs[0].file));
+    const french = discoverBookProject(frenchRoot, { workspaceRoot: frenchRoot });
+    assert.throws(() => buildProject(french, { outputRoot: resolve(output, "dist") }), /no generic PDF renderer capability/);
+    assert.equal(existsSync(resolve(output, "dist", french.id)), false);
+  } finally { rmSync(output, { recursive: true, force: true }); }
+});
+
+test("MIG-002: a project cannot resolve outside its safe root", () => {
+  assert.throws(() => discoverBookProject("tests/fixtures/books/does-not-exist"), /does not exist/);
+  const root = resolveProjectRoot("books/volume-01-yc-playbook");
+  assert.equal(root.authority, "legacy-working-tree");
+});
+
+test("MIG-002: empty, duplicate, and cyclic/symlink workspaces fail safely", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-discovery-negative-"));
+  try {
+    assert.deepEqual(discoverBooks(root), []);
+    cpSync("tests/fixtures/books/one-chapter", resolve(root, "one"), { recursive: true });
+    cpSync("tests/fixtures/books/one-chapter", resolve(root, "two"), { recursive: true });
+    assert.throws(() => discoverBooks(root), /Duplicate Book Project ID/);
+    rmSync(resolve(root, "two"), { recursive: true, force: true });
+    symlinkSync(root, resolve(root, "one", "cycle"));
+    assert.throws(() => discoverBooks(root), /symbolic link/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MIG-002: inaccessible directories fail with confined repair guidance when permissions are enforceable", (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-discovery-eacces-")); const denied = resolve(root, "denied");
+  mkdirSync(denied);
+  try {
+    chmodSync(denied, 0o000);
+    let failure;
+    try { discoverBooks(root); } catch (error) { failure = error; }
+    if (!failure) return t.skip("platform or effective user can read chmod(000) directories; EACCES is not enforceable here");
+    assert.match(failure.message, /^problem: inaccessible directory; cause: EACCES; repair:/);
+    assert.doesNotMatch(failure.message, /\.\.(?:\/|$)/);
+  } finally { chmodSync(denied, 0o700); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MIG-002: discovery pins the current immutable root instead of mixing legacy files", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-discovery-snapshot-"));
+  cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+  try {
+    initializeSnapshots(root);
+    const before = discoverBookProject(root, { workspaceRoot: root });
+    writeFileSync(resolve(root, "chapters/start.md"), "# Changed legacy bytes\n");
+    const after = discoverBookProject(root, { workspaceRoot: root });
+    assert.equal(before.authority, "rtb-content-current");
+    assert.equal(after.authority, "rtb-content-current");
+    assert.equal(readFileSync(after.chapters[0].sourcePath, "utf8"), readFileSync(before.chapters[0].sourcePath, "utf8"));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generic build rejects symbolic output roots without touching their targets", () => {
+  for (const kind of ["dist"]) {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generic-${kind}-`)), external = mkdtempSync(resolve(tmpdir(), `rtb-generic-external-${kind}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); writeFileSync(resolve(external, "sentinel"), "untouched");
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist");
+      symlinkSync(external, outputRoot);
+      assert.throws(() => buildProject(project, { outputRoot, workspaceRoot: root }), /symbolic link|real directory/);
+      assert.equal(readFileSync(resolve(external, "sentinel"), "utf8"), "untouched"); assert.deepEqual(new Set(["sentinel"]), new Set(readdirSync(external)));
+    } finally { rmSync(root, { recursive: true, force: true }); rmSync(external, { recursive: true, force: true }); }
+  }
+});
+
+test("generic build rejects stale pointers and hard-linked canonical inputs", () => {
+  const make = (label) => { const root = mkdtempSync(resolve(tmpdir(), `rtb-generic-${label}-`)); cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); initializeSnapshots(root); return root; };
+  let root = make("stale");
+  try {
+    const stale = discoverBookProject(root, { workspaceRoot: root }), prior = readPointer(root), next = materializeSnapshot(root, { sourceRoot: snapshotRoot(root, prior.snapshotHash) }); writePointer(root, { expected: prior, nextSnapshotHash: next.hash, nextVersion: prior.version + 1 });
+    assert.throws(() => buildProject(stale, { outputRoot: resolve(root, "dist"), workspaceRoot: root }), /stale/);
+    const fresh = discoverBookProject(root, { workspaceRoot: root }), result = buildProject(fresh, { outputRoot: resolve(root, "dist"), workspaceRoot: root }); assert.ok(existsSync(result.outputs[0].file));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  root = make("pointer-link");
+  try {
+    const pointer = pointerPath(root), outside = resolve(root, "pointer-copy"); writeFileSync(outside, readFileSync(pointer)); unlinkSync(pointer); linkSync(outside, pointer);
+    assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /private regular file with one link/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  root = make("snapshot-link");
+  try {
+    const pointer = readPointer(root), manifest = resolve(snapshotRoot(root, pointer.snapshotHash), "book.project.yaml"), outside = resolve(root, "manifest-copy"); writeFileSync(outside, readFileSync(manifest)); unlinkSync(manifest); linkSync(outside, manifest);
+    assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /multiply linked|private regular file/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("canonical identity rejects hard-linked asset and research files", () => {
+  for (const relativePath of ["assets/figure.txt", "research/notes/source.txt"]) {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-canonical-hardlink-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const file = resolve(root, relativePath), outside = resolve(root, "outside-copy"); mkdirSync(resolve(file, ".."), { recursive: true }); writeFileSync(outside, "canonical"); linkSync(outside, file);
+      assert.throws(() => discoverBookProject(root, { workspaceRoot: root }), /multiply linked/);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+test("generic build atomically switches complete build/output generations", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generic-generation-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), options = { outputRoot: resolve(root, "dist"), workspaceRoot: root }, first = buildProject(project, options), initialPointer = readFileSync(first.generationPointer, "utf8");
+    for (const hook of ["beforeGenerationReady", "afterGenerationReady", "beforeGenerationSwitch"]) {
+      assert.throws(() => buildProject(project, { ...options, hooks: { [hook]: () => { throw new Error(`fault-${hook}`); } } }), new RegExp(`fault-${hook}`));
+      assert.equal(readFileSync(first.generationPointer, "utf8"), initialPointer); assert.ok(existsSync(first.combinedFile)); assert.ok(existsSync(first.outputs[0].file));
+    }
+    assert.throws(() => buildProject(project, { ...options, hooks: { afterGenerationSwitch: () => { throw new Error("fault-after-switch"); } } }), /fault-after-switch/);
+    const current = JSON.parse(readFileSync(first.generationPointer, "utf8")), generation = resolve(root, "dist", ".generations", project.id, current.generation); assert.ok(existsSync(resolve(generation, "build", "combined.md"))); assert.ok(existsSync(resolve(generation, "output-root", project.id, project.outputProfiles[0].filename)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("preview resolution serves only the complete generation selected by .current", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-preview-generation-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, first = buildProject(project, options);
+    const stale = resolve(outputRoot, project.id); mkdirSync(stale, { recursive: true }); writeFileSync(resolve(stale, "index.html"), "stale conventional output");
+    const current = resolveCurrentGeneration(project, { outputRoot }); assert.equal(current.generation, first.generation); assert.notEqual(current.outputDirectory, stale); assert.ok(existsSync(resolve(current.outputDirectory, project.outputProfiles[0].filename)));
+    const second = buildProject(project, options), refreshed = resolveCurrentGeneration(project, { outputRoot }); assert.equal(refreshed.generation, second.generation); assert.notEqual(refreshed.generationRoot, current.generationRoot);
+    assert.throws(() => resolveCurrentGeneration(project, { outputRoot, hooks: { beforePointerRecheck: ({ pointer, pointerBytes }) => { const changed = Buffer.from(pointerBytes); changed[changed.length - 2] = changed[changed.length - 2] === 32 ? 33 : 32; writeFileSync(pointer, changed); } } }), /pointer changed while resolving/);
+    writeFileSync(second.generationPointer, `${JSON.stringify({ schemaVersion: 1, projectId: project.id, generation: second.generation })}\n`, { mode: 0o600 });
+    const pointerBytes = readFileSync(second.generationPointer); unlinkSync(second.generationPointer); assert.throws(() => resolveCurrentGeneration(project, { outputRoot }), /No current build generation.*pnpm build/);
+    writeFileSync(second.generationPointer, "not-json\n", { mode: 0o600 }); assert.throws(() => resolveCurrentGeneration(project, { outputRoot }), /pointer is invalid.*pnpm build/);
+    writeFileSync(second.generationPointer, pointerBytes, { mode: 0o600 }); assert.equal(resolveCurrentGeneration(project, { outputRoot }).generation, second.generation);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generic generation durability barriers precede atomic visibility and preserve a switched generation", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generic-durability-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), original = readFileSync(baseline.generationPointer, "utf8"), events = [];
+    buildProject(project, { ...options, hooks: { durability: (event) => events.push(event), beforeGenerationSwitch: () => events.push("before-generation-switch"), afterGenerationSwitch: () => events.push("after-generation-switch") } });
+    const switchIndex = events.indexOf("before-generation-switch"), stagingParent = events.lastIndexOf("after-fsync-staging-parent"), generationParent = events.lastIndexOf("after-fsync-generation-parent"), firstFile = events.indexOf("after-fsync-file"), firstDirectory = events.indexOf("after-fsync-directory"), pointerFile = events.lastIndexOf("after-fsync-pointer-file"), pointerParent = events.lastIndexOf("after-fsync-pointer-parent");
+    assert.ok(firstFile >= 0 && firstFile < switchIndex); assert.ok(firstDirectory >= 0 && firstDirectory < switchIndex); assert.ok(stagingParent >= 0 && stagingParent < generationParent && generationParent < switchIndex); assert.ok(pointerFile >= 0 && pointerFile < switchIndex && pointerParent > switchIndex); assert.ok(events.indexOf("after-generation-switch") > pointerParent);
+    const stable = readFileSync(baseline.generationPointer, "utf8");
+    for (const barrier of ["before-fsync-file", "before-fsync-directory", "before-fsync-staging-parent", "before-fsync-generation-parent"]) {
+      assert.throws(() => buildProject(project, { ...options, hooks: { durability: (event) => { if (event === barrier) throw new Error(`crash-${barrier}`); } } }), new RegExp(`crash-${barrier}`)); assert.equal(readFileSync(baseline.generationPointer, "utf8"), stable);
+    }
+    assert.throws(() => buildProject(project, { ...options, hooks: { afterPointerRename: () => { throw new Error("crash-after-pointer-rename"); } } }), /crash-after-pointer-rename/);
+    const switched = JSON.parse(readFileSync(baseline.generationPointer, "utf8")); assert.notEqual(switched.generation, JSON.parse(stable).generation); assert.ok(existsSync(resolve(outputRoot, ".generations", project.id, switched.generation)));
+    assert.notEqual(original, readFileSync(baseline.generationPointer, "utf8"));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("pointer replacement after rename fails without trusting or deleting the successor", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-pointer-race-"));
+  try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, first = buildProject(project, options), priorBytes = readFileSync(first.generationPointer); let displaced;
+    assert.throws(() => buildProject(project, { ...options, hooks: { afterPointerRename: ({ pointer }) => { displaced = `${pointer}.owned`; renameSync(pointer, displaced); writeFileSync(pointer, priorBytes, { mode: 0o600 }); } } }), /pointer was replaced/);
+    assert.ok(existsSync(displaced)); assert.equal(readFileSync(first.generationPointer).equals(priorBytes), true); const owned = JSON.parse(readFileSync(displaced, "utf8")); assert.ok(existsSync(resolve(outputRoot, ".generations", project.id, owned.generation)));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("preview resolves each request and clean waits until response bytes are captured", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-preview-live-"));
+  try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist", "books"), options = { outputRoot, workspaceRoot: root }, first = buildProject(project, options), firstRead = await readPreviewAsset(project, "/", { workspaceRoot: root, outputRoot }); assert.equal(firstRead.generation, first.generation); const second = buildProject(project, options), secondRead = await readPreviewAsset(project, "/", { workspaceRoot: root, outputRoot }); assert.equal(secondRead.generation, second.generation);
+    let releaseRead; const reading = readPreviewAsset(project, "/", { workspaceRoot: root, outputRoot, hooks: { afterOpen: () => new Promise((done) => { releaseRead = done; }) } }); while (!releaseRead) await new Promise((done) => setTimeout(done, 1)); const cleaning = cleanOutputs({ root, buildDirectory: resolve(root, "build"), distributionDirectory: resolve(root, "dist") }); await new Promise((done) => setTimeout(done, 30)); assert.equal(existsSync(outputRoot), true); releaseRead(); const captured = await reading; assert.equal(captured.status, 200); await cleaning; assert.equal(existsSync(outputRoot), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("preview descriptor never serves replacement or symlink bytes", async (context) => {
+  for (const kind of ["after-open-symlink", "during-read-file"]) await context.test(kind, async () => { const root = mkdtempSync(resolve(tmpdir(), `rtb-preview-descriptor-${kind}-`)), outside = resolve(root, "outside.html"); try { cpSync("tests/fixtures/books/one-chapter", resolve(root, "book"), { recursive: true }); const projectRoot = resolve(root, "book"), project = discoverBookProject(projectRoot, { workspaceRoot: root }), outputRoot = resolve(root, "dist", "books"); buildProject(project, { outputRoot, workspaceRoot: root }); writeFileSync(outside, "OUTSIDE-SECRET"); const replace = ({ file }) => { const moved = `${file}.owned`; renameSync(file, moved); if (kind.includes("symlink")) symlinkSync(outside, file); else writeFileSync(file, "OUTSIDE-SECRET"); }; await assert.rejects(() => readPreviewAsset(project, "/", { workspaceRoot: root, outputRoot, hooks: kind.startsWith("after-open") ? { afterOpen: replace } : { duringRead: replace } }), /descriptor changed|path changed|symbolic link/); } finally { rmSync(root, { recursive: true, force: true }); } });
+});
+
+test("generation retention keeps current plus two complete predecessors", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-"));
+  try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }; let latest; for (let index = 0; index < 8; index += 1) latest = buildProject(project, options); const generationRoot = resolve(outputRoot, ".generations", project.id), retained = readdirSync(generationRoot), projectGc = resolve(outputRoot, ".gc", project.id); assert.equal(retained.length, 3); assert.equal(retained.includes(latest.generation), true); for (const token of retained) assert.ok(existsSync(resolve(generationRoot, token, "build", "combined.md"))); assert.equal(existsSync(projectGc) ? readdirSync(projectGc).length : 0, 0, "successful bounded reclaim must not accumulate quarantine transactions");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generic generation publication rejects staging drift and destination races", async (context) => {
+  for (const scenario of ["staging-file", "destination-before-check", "destination-before-rename", "reservation-replaced"]) await context.test(scenario, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-fence-${scenario}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), pointerBytes = readFileSync(baseline.generationPointer);
+      let collision;
+      const hooks = scenario === "staging-file"
+        ? { beforeGenerationReady: ({ staging }) => writeFileSync(resolve(staging, "late-file"), "replacement") }
+        : scenario === "destination-before-check"
+          ? { beforeGenerationReady: ({ generation }) => { collision = generation; mkdirSync(generation, { recursive: true }); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } }
+          : scenario === "destination-before-rename"
+            ? { beforeGenerationRename: ({ generation }) => { collision = generation; mkdirSync(generation, { recursive: true }); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } }
+            : { afterGenerationMaterialized: ({ generation }) => { collision = generation; renameSync(generation, `${generation}.owned`); mkdirSync(generation); writeFileSync(resolve(generation, "successor-proof"), "untouched"); } };
+      assert.throws(() => buildProject(project, { ...options, hooks }), /tree contents changed|tree identity changed|destination (already exists|changed before (rename|reservation))/);
+      assert.equal(readFileSync(baseline.generationPointer).equals(pointerBytes), true);
+      if (collision) assert.equal(readFileSync(resolve(collision, "successor-proof"), "utf8"), "untouched");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("owned unpublished generation reservations are removed after materialization and durability failures", async (context) => {
+  for (const scenario of ["mkdir", "copy-0", "copy-1", "file-fsync"]) await context.test(scenario, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-owned-generation-${scenario}-`));
+    try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id), before = new Set(readdirSync(generationRoot)), pointer = readFileSync(baseline.generationPointer); let mkdirCount = 0, copyCount = 0;
+      const hooks = scenario === "file-fsync" ? { durability: (event, path) => { if (event === "before-fsync-file" && path.includes(".generations")) throw new Error("owned-generation-fsync"); } } : { generationMaterialization: (event) => { if (event === "after-mkdir" && scenario === "mkdir" && mkdirCount++ === 0) throw new Error("owned-generation-mkdir"); if (event === "after-copy" && scenario === `copy-${copyCount++}`) throw new Error(`owned-generation-${scenario}`); } };
+      assert.throws(() => buildProject(project, { ...options, hooks }), /owned-generation/); assert.equal(readFileSync(baseline.generationPointer).equals(pointer), true); assert.deepEqual(new Set(readdirSync(generationRoot)), before);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation retention restores quarantined generations when the pointer changes", async (context) => {
+  for (const switchAt of [0, 1]) await context.test(switchAt === 0 ? "before first move" : "between moves", () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-race-${switchAt}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id);
+      for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+      const before = new Set(readdirSync(generationRoot)); let selected;
+      assert.throws(() => buildProject(project, { ...options, hooks: { beforeGenerationGc: ({ generation, moved }) => { if (moved === 0) selected = generation; if (moved === switchAt) writeFileSync(baseline.generationPointer, `${JSON.stringify({ schemaVersion: 1, projectId: project.id, generation: selected })}\n`, { mode: 0o600 }); } } }), /pointer changed during retention/);
+      assert.equal(JSON.parse(readFileSync(baseline.generationPointer, "utf8")).generation, selected);
+      assert.ok(existsSync(resolve(generationRoot, selected)), "the generation selected by the changed pointer must be restored");
+      for (const generation of before) assert.ok(existsSync(resolve(generationRoot, generation)), `preexisting generation ${generation} must not be deleted`);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation retention recovers only its scoped durable transaction and preserves other evidence", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-recovery-"));
+  try {
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+    const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id);
+    for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+    const other = resolve(outputRoot, ".gc", "other-project", randomUUID()); mkdirSync(other, { recursive: true }); writeFileSync(resolve(other, "proof"), "untouched"); let injected = false;
+    assert.throws(() => buildProject(project, { ...options, hooks: { afterGenerationGcRename: () => { if (!injected) { injected = true; throw new Error("gc-after-rename-crash"); } } } }), /gc-after-rename-crash/);
+    const projectGc = resolve(outputRoot, ".gc", project.id), transactionRoot = resolve(projectGc, readdirSync(projectGc)[0]), transactionFile = resolve(transactionRoot, "transaction.json"); assert.equal(JSON.parse(readFileSync(transactionFile, "utf8")).generations.some((item) => item.state === "move_pending"), true);
+    buildProject(project, options); assert.equal(existsSync(transactionRoot), false); assert.equal(readFileSync(resolve(other, "proof"), "utf8"), "untouched"); assert.equal(existsSync(other), true);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generation retention resumes bounded deletion without touching another project", () => {
+  const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-delete-"));
+  try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); const other = resolve(outputRoot, ".gc", "other-project", randomUUID()); mkdirSync(other, { recursive: true }); writeFileSync(resolve(other, "proof"), "untouched"); let failed = false;
+    assert.throws(() => buildProject(project, { ...options, hooks: { beforeGenerationGcDelete: () => { if (!failed) { failed = true; throw new Error("gc-delete-crash"); } } } }), /gc-delete-crash/); const projectGc = resolve(outputRoot, ".gc", project.id); assert.ok(readdirSync(projectGc).length > 0); buildProject(project, options); assert.equal(readdirSync(projectGc).length, 0); assert.equal(readFileSync(resolve(other, "proof"), "utf8"), "untouched"); assert.equal(readdirSync(generationRoot).length, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("generation GC journal temp and terminal-tombstone crashes recover without permanent blockage", async (context) => {
+  const cases = [
+    ...["after-initial-db-pending", "after-db-pending", "after-temp-create", "after-temp-fsync", "before-temp-rename", "after-temp-rename", "before-db-pending-clear", "after-db-pending-clear"].map((event) => ["record", event]),
+    ...["afterGenerationGcClaimIntent", "afterGenerationGcClaimRename", "afterGenerationGcClaimJournal"].map((event) => ["item", event]),
+    ...["after-terminal-journal", "before-terminal-rename", "after-terminal-rename", "after-terminal-parent-fsync", "before-terminal-remove", "after-terminal-claim-intent", "after-terminal-claim-rename", "after-terminal-claim-journal", "before-terminal-claim-remove", "after-terminal-remove"].map((event) => ["terminal", event]),
+  ];
+  for (const [kind, event] of cases) await context.test(`${kind}:${event}`, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-${kind}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id);
+      for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+      let fired = false; const crash = (seen) => { if (seen === event && !fired) { fired = true; throw new Error(`gc-${kind}-${event}`); } };
+      const faultHooks = kind === "record" ? { gcRecord: crash } : kind === "terminal" ? { gcTerminal: crash } : { [event]: () => crash(event) };
+      assert.throws(() => buildProject(project, { ...options, hooks: faultHooks }), new RegExp(`gc-${kind}-${event}`));
+      assert.equal(fired, true); const completed = buildProject(project, options); assert.ok(existsSync(resolve(generationRoot, completed.generation))); const projectGc = resolve(outputRoot, ".gc", project.id); assert.equal(existsSync(projectGc) ? readdirSync(projectGc).length : 0, 0);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC rechecks the exact pointer before delete-pending and every removal", async (context) => {
+  for (const scenario of ["pending-0", "delete-0", "delete-1", "claim-0", "remove-0"]) await context.test(scenario, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-pointer-${scenario}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+      const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id), pointer = baseline.generationPointer;
+      for (let index = 0; index < 5; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+      let selected, seen = 0; const switchPointer = ({ generation }) => { const target = Number(scenario.split("-")[1]); if (seen++ !== target) return; selected = generation; writeFileSync(pointer, `${JSON.stringify({ schemaVersion: 1, projectId: project.id, generation })}\n`, { mode: 0o600 }); };
+      const hooks = scenario.startsWith("pending") ? { beforeGenerationGcDeletePending: switchPointer } : scenario.startsWith("claim") ? { beforeGenerationGcClaimDelete: switchPointer } : scenario.startsWith("remove") ? { beforeGenerationGcClaimRemove: switchPointer } : { beforeGenerationGcDelete: switchPointer };
+      assert.throws(() => buildProject(project, { ...options, hooks }), /pointer changed during bounded retention deletion/);
+      assert.equal(JSON.parse(readFileSync(pointer, "utf8")).generation, selected); assert.ok(existsSync(resolve(generationRoot, selected)), "the newly selected quarantined generation must be restored before returning");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC rejects forged cross-project journals and symlinked authority without touching external evidence", async (context) => {
+  await context.test("forged temp beside canonical journal", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-forged-main-temp-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+      assert.throws(() => buildProject(project, { ...options, hooks: { gcRecord: (event) => { if (event === "after-temp-rename") throw new Error("preserve-canonical-gc"); } } }), /preserve-canonical-gc/); const projectGc = resolve(outputRoot, ".gc", project.id), transactionRoot = resolve(projectGc, readdirSync(projectGc)[0]), transaction = JSON.parse(readFileSync(resolve(transactionRoot, "transaction.json"), "utf8")), forged = resolve(transactionRoot, `transaction.json.${transaction.token}.${randomUUID()}.tmp`); writeFileSync(forged, "forged");
+      assert.throws(() => buildProject(project, options), /unbound journal temporary/); assert.equal(readFileSync(forged, "utf8"), "forged");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("forged nonempty journal temp", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-forged-temp-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); let temporary;
+      assert.throws(() => buildProject(project, { ...options, hooks: { gcRecord: (event, path) => { if (event === "after-temp-create" && !temporary) { temporary = path; throw new Error("preserve-empty-gc-temp"); } } } }), /preserve-empty-gc-temp/); writeFileSync(temporary, "forged-nonempty");
+      assert.throws(() => buildProject(project, options), /unbound journal temporary|temporary evidence is malformed/); assert.equal(readFileSync(temporary, "utf8"), "forged-nonempty");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("forged journal path", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-forged-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", resolve(root, "book"), { recursive: true }); const projectRoot = resolve(root, "book"), project = discoverBookProject(projectRoot, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id), outside = resolve(root, "outside-proof"); writeFileSync(outside, "untouched");
+      for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); let fired = false;
+      assert.throws(() => buildProject(project, { ...options, hooks: { afterGenerationGcRename: () => { if (!fired) { fired = true; throw new Error("preserve-gc-journal"); } } } }), /preserve-gc-journal/);
+      const projectGc = resolve(outputRoot, ".gc", project.id), transactionRoot = resolve(projectGc, readdirSync(projectGc)[0]), journalFile = resolve(transactionRoot, "transaction.json"), journal = JSON.parse(readFileSync(journalFile, "utf8")); journal.generations[0].record.path = outside; writeFileSync(journalFile, `${JSON.stringify(journal)}\n`);
+      assert.throws(() => buildProject(project, options), /journal.*(unsafe|malformed|invalid tree authority)|path/i); assert.equal(readFileSync(outside, "utf8"), "untouched");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("symlinked project authority", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-symlink-"));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", resolve(root, "book"), { recursive: true }); const projectRoot = resolve(root, "book"), project = discoverBookProject(projectRoot, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id), outside = resolve(root, "outside"); mkdirSync(outside); writeFileSync(resolve(outside, "proof"), "untouched");
+      for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); mkdirSync(resolve(outputRoot, ".gc"), { recursive: true }); symlinkSync(outside, resolve(outputRoot, ".gc", project.id));
+      assert.throws(() => buildProject(project, options), /symbolic link|unsafe|physical directory/); assert.equal(readFileSync(resolve(outside, "proof"), "utf8"), "untouched");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC terminal removal preserves replaced successors and UUID-named extras", async (context) => {
+  for (const recovery of [false, true]) await context.test(recovery ? "recovery tombstone" : "live tombstone", () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-terminal-${recovery}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true });
+      if (recovery) assert.throws(() => buildProject(project, { ...options, hooks: { gcTerminal: (event) => { if (event === "after-terminal-rename") throw new Error("leave-terminal-tombstone"); } } }), /leave-terminal-tombstone/);
+      let successor, displaced, fired = false; const replace = (event, path) => { if (event !== "before-terminal-remove" || fired) return; fired = true; successor = path; displaced = `${path}.owned`; renameSync(path, displaced); mkdirSync(path); writeFileSync(resolve(path, "successor-proof"), "untouched"); };
+      assert.throws(() => buildProject(project, { ...options, hooks: { gcTerminal: replace } }), /identity changed|contents changed/); assert.equal(fired, true); assert.equal(readFileSync(resolve(successor, "successor-proof"), "utf8"), "untouched"); assert.ok(existsSync(displaced));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  await context.test("UUID extra", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-terminal-extra-"));
+    try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), generationRoot = resolve(outputRoot, ".generations", project.id); for (let index = 0; index < 4; index += 1) cpSync(resolve(generationRoot, baseline.generation), resolve(generationRoot, randomUUID()), { recursive: true }); let extra;
+      assert.throws(() => buildProject(project, { ...options, hooks: { gcTerminal: (event, transactionRoot) => { if (event === "after-terminal-journal") { extra = resolve(transactionRoot, randomUUID()); mkdirSync(extra); writeFileSync(resolve(extra, "proof"), "untouched"); } } } }), /unjournaled evidence/); const completedRoot = resolve(outputRoot, ".gc", project.id, readdirSync(resolve(outputRoot, ".gc", project.id)).find((name) => name.startsWith(".completed-"))), movedExtra = resolve(completedRoot, basename(extra)); assert.equal(readFileSync(resolve(movedExtra, "proof"), "utf8"), "untouched");
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC completed empty recovery preserves raced evidence and retries cleanly", async (context) => {
+  const setup = () => {
+    const root = mkdtempSync(resolve(tmpdir(), "rtb-generation-gc-completed-empty-"));
+    cpSync("tests/fixtures/books/one-chapter", root, { recursive: true });
+    const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root };
+    buildProject(project, options);
+    const token = randomUUID(), completed = resolve(outputRoot, ".gc", project.id, `.completed-${token}`), temporary = resolve(completed, `transaction.json.${token}.${randomUUID()}.tmp`);
+    mkdirSync(completed, { recursive: true }); writeFileSync(temporary, "");
+    return { root, project, outputRoot, options, completed, temporary };
+  };
+  await context.test("positive empty recovery", () => {
+    const item = setup();
+    try { buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); }
+    finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
+  await context.test("positive exactly empty tombstone recovery", () => {
+    const item = setup();
+    try { unlinkSync(item.temporary); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false); }
+    finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
+  await context.test("foreign file after empty check", () => {
+    const item = setup(), proof = resolve(item.completed, "foreign-proof");
+    try {
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks: { beforeGenerationGcCompletedEmptyRemove: ({ path }) => writeFileSync(resolve(path, "foreign-proof"), "untouched") } }), /not empty|incomplete/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); unlinkSync(proof); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); }
+  });
+  await context.test("replacement of completed transaction directory", () => {
+    const item = setup(), displaced = resolve(dirname(item.root), `${basename(item.root)}-displaced-completed`), proof = resolve(item.completed, "successor-proof");
+    try {
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks: { beforeGenerationGcCompletedEmptyRemove: ({ path }) => { renameSync(path, displaced); mkdirSync(path); writeFileSync(resolve(path, "successor-proof"), "untouched"); } } }), /identity changed/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); assert.ok(existsSync(displaced)); unlinkSync(proof); buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); rmSync(displaced, { recursive: true, force: true }); }
+  });
+  for (const scenario of ["replacement of unbound temporary", "content added to unbound temporary"]) await context.test(scenario, () => {
+    const item = setup(), displaced = resolve(dirname(item.root), `${basename(item.root)}-displaced-temporary`);
+    try {
+      const hooks = { beforeGenerationGcOrphanTempRemove: ({ path }) => {
+        if (scenario === "replacement of unbound temporary") { renameSync(path, displaced); writeFileSync(path, "successor"); }
+        else writeFileSync(path, "added-content");
+      } };
+      assert.throws(() => buildProject(item.project, { ...item.options, hooks }), /identity changed|temporary.*changed|unbound journal temporary/i);
+      if (scenario === "replacement of unbound temporary") { assert.equal(readFileSync(item.temporary, "utf8"), "successor"); assert.equal(readFileSync(displaced, "utf8"), ""); unlinkSync(item.temporary); }
+      else { assert.equal(readFileSync(item.temporary, "utf8"), "added-content"); writeFileSync(item.temporary, ""); }
+      buildProject(item.project, item.options); assert.equal(existsSync(item.completed), false);
+    } finally { rmSync(item.root, { recursive: true, force: true }); rmSync(displaced, { force: true }); }
+  });
+});
+
+test("generation GC removes only an exact empty legacy orphan directory", async (context) => {
+  for (const nonempty of [false, true]) await context.test(nonempty ? "nonempty-preserved" : "empty-recovered", () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-orphan-${nonempty}-`));
+    try { cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }, baseline = buildProject(project, options), orphan = resolve(outputRoot, ".gc", project.id, randomUUID()); mkdirSync(orphan, { recursive: true }); if (nonempty) writeFileSync(resolve(orphan, "forged-proof"), "untouched");
+      if (nonempty) { assert.throws(() => buildProject(project, options), /nonempty orphan transaction directory/); assert.equal(readFileSync(resolve(orphan, "forged-proof"), "utf8"), "untouched"); }
+      else { buildProject(project, options); assert.equal(existsSync(orphan), false); }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});
+
+test("generation GC orphan cleanup preserves content and replacement successors added before removal", async (context) => {
+  for (const scenario of ["foreign-content", "replacement-successor"]) await context.test(scenario, () => {
+    const root = mkdtempSync(resolve(tmpdir(), `rtb-generation-gc-orphan-race-${scenario}-`));
+    try {
+      cpSync("tests/fixtures/books/one-chapter", root, { recursive: true }); const project = discoverBookProject(root, { workspaceRoot: root }), outputRoot = resolve(root, "dist"), options = { outputRoot, workspaceRoot: root }; buildProject(project, options); const orphan = resolve(outputRoot, ".gc", project.id, randomUUID()), proof = resolve(orphan, "successor-proof"), displaced = resolve(outputRoot, "displaced-orphan"); mkdirSync(orphan, { recursive: true });
+      assert.throws(() => buildProject(project, { ...options, hooks: { beforeGenerationGcOrphanRemove: ({ path }) => { if (scenario === "replacement-successor") { renameSync(path, displaced); mkdirSync(path); } writeFileSync(resolve(path, "successor-proof"), "untouched"); } } }), /not empty|identity changed/i);
+      assert.equal(readFileSync(proof, "utf8"), "untouched"); if (scenario === "replacement-successor") assert.ok(existsSync(displaced)); unlinkSync(proof); buildProject(project, options); assert.equal(existsSync(orphan), false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+});

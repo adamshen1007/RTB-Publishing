@@ -1,4 +1,4 @@
-const state = { csrfToken: "", data: null };
+const state = { csrfToken: "", mutationCapability: "", operator: null, data: null };
 const $ = (selector) => document.querySelector(selector);
 const node = (tag, className, text) => { const element = document.createElement(tag); if (className) element.className = className; if (text != null) element.textContent = text; return element; };
 
@@ -19,7 +19,68 @@ function projectCard(project, index) {
   project.workflows.forEach((workflow) => { const button = node("button", "action", workflowLabel(workflow)); button.type = "button"; button.addEventListener("click", () => runWorkflow(project, workflow, button)); actions.append(button); });
   if (!project.workflows.length) actions.append(node("span", "read-only", "Read-only · workflows disabled"));
   card.append(actions);
+  const lifecycle = state.data?.lifecycle?.[project.id];
+  if (lifecycle) card.append(lifecyclePanel(project, lifecycle));
   return card;
+}
+
+function lifecyclePanel(project, lifecycle) {
+  const section = node("section", "lifecycle-review"); section.setAttribute("aria-label", "Lifecycle review");
+  const current = lifecycle.lifecycle;
+  section.append(node("h4", "", "Guided release review"), node("p", "muted", current ? `Lifecycle ${current.version} · ${current.state.replaceAll("_", " ")}` : lifecycle.unavailable));
+  const reviewStatus = state.data?.releaseReviews?.[project.id];
+  if (reviewStatus) section.append(releaseReviewControls(project, reviewStatus));
+  const betaPreparation = state.data?.betaPreparation?.[project.id];
+  if (betaPreparation) section.append(betaPreparationControl(project, betaPreparation));
+  ["blueprint", "beta", "publish"].forEach((gate) => {
+    const result = lifecycle.gates?.[gate], label = gate[0].toUpperCase() + gate.slice(1), row = node("div", "gate-row"), detailId = `${project.id}-${gate}-guard`;
+    row.append(node("strong", "", `${label} Gate`), node("span", result?.ok ? "gate-ready" : "gate-unavailable", result?.ok ? "Ready for review" : "Unavailable"));
+    const detail = node("p", "muted", result?.message ?? "This gate is unavailable for this project."); detail.id = detailId; row.append(detail);
+    const action = node("button", "quiet-button", `Approve ${label}`); action.type = "button"; action.disabled = !result?.ok || !state.operator || !result.intent; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => confirmGate(project, gate, result.intent)); row.append(action); section.append(row);
+    const approval = lifecycle.approvals?.filter((item) => item.gate === gate && !item.invalidated).sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    if (gate === "publish" && approval) {
+      const handoff = node("p", "muted", `Stored Publish approval ${approval.id}. Create the immutable manifest with:`);
+      const command = node("code", "", lifecycle.commands?.build ?? "Refresh to load the server-authored build command.");
+      row.append(handoff, command);
+      if (lifecycle.commands?.verify) row.append(node("p", "muted", `Completed immutable release ${lifecycle.commands.releaseId}. Verify it with:`), node("code", "", lifecycle.commands.verify));
+      else row.append(node("p", "muted", "After the build completes, refresh Creator Studio to receive the exact server-authored verification command."));
+    }
+  });
+  return section;
+}
+
+const reviewLabels = {
+  "migration-visual-review": "Migration visual review",
+  "pdf-screen-reader-visual-review": "PDF and screen-reader visual review",
+  "rights-and-brand-review": "Rights and brand review",
+};
+
+function releaseReviewControls(project, status) {
+  const group = node("div", "review-group");
+  const heading = node("h5", "", "Candidate-bound release reviews"); group.append(heading, node("p", "candidate-identity", status.candidateIdentity ? `Displayed candidate ${status.candidateIdentity}` : "No release candidate displayed"), node("p", "muted", status.message));
+  Object.entries(reviewLabels).forEach(([kind, label]) => {
+    const review = status.reviews[kind], row = node("div", "review-row"), detailId = `${project.id}-${kind}-status`;
+    const title = node("strong", "", label), durable = node("span", `review-decision ${review.decision}`, review.decision); row.append(title, durable);
+    const detail = node("p", "muted", review.message); detail.id = detailId; row.append(detail);
+    let roleInput = null;
+    if (kind === "rights-and-brand-review") {
+      const inputId = `${project.id}-rights-role`, labelNode = node("label", "declaration-label", "Declaration: my qualified rights-review role"); labelNode.htmlFor = inputId;
+      roleInput = node("input", "declaration-input"); roleInput.id = inputId; roleInput.type = "text"; roleInput.maxLength = 200; roleInput.autocomplete = "organization-title"; roleInput.placeholder = "For example: publishing rights owner"; roleInput.setAttribute("aria-describedby", `${detailId} ${inputId}-help`);
+      const help = node("small", "muted", "Required only for approval. This is your human declaration, not a server-verified credential."); help.id = `${inputId}-help`; row.append(labelNode, roleInput, help);
+    }
+    const actions = node("div", "review-actions");
+    ["approved", "rejected"].forEach((decision) => { const button = node("button", decision === "approved" ? "action" : "quiet-button", decision === "approved" ? "Record approval" : "Record rejection"); button.type = "button"; button.disabled = !state.operator || !status.intent; button.setAttribute("aria-describedby", detailId); button.addEventListener("click", () => recordReleaseReview(project, kind, decision, roleInput, status.intent)); actions.append(button); });
+    row.append(actions); group.append(row);
+  });
+  return group;
+}
+
+function betaPreparationControl(project, status) {
+  const row = node("div", "gate-row beta-preparation"), detailId = `${project.id}-beta-preparation-status`;
+  row.append(node("strong", "", "Prepare exact Beta material"), node("span", status.state === "ready" ? "gate-ready" : "gate-unavailable", status.state === "ready" ? "Receipt current" : "Blocked"));
+  const detail = node("p", "muted", status.message); detail.id = detailId; row.append(detail);
+  const action = node("button", "action", "Prepare Beta"); action.type = "button"; action.disabled = status.state !== "ready" || !state.operator; action.setAttribute("aria-describedby", detailId); action.addEventListener("click", () => prepareBeta(project)); row.append(action);
+  return row;
 }
 
 function renderJobs(jobs) {
@@ -47,10 +108,11 @@ function render(data) {
   state.data = data; $("#workspace-title").textContent = data.workspace.name; $("#project-count").textContent = `${data.projects.length} projects / local`;
   const indexStatus = $("#index-status"); indexStatus.textContent = data.index?.stale ? `Showing last valid index: ${data.index.error}` : `Live index generation ${data.index?.generation ?? 1}`; indexStatus.classList.toggle("warning", Boolean(data.index?.stale));
   $("#pilot-status").textContent = data.pilot ? `Pilot evidence ${data.pilot.sessions.observed}/${data.pilot.sessions.required} · ${data.pilot.decision}` : "Pilot evidence unavailable";
-  const projects = $("#projects"); projects.replaceChildren(...data.projects.map(projectCard)); renderJobs(data.jobs ?? []);
+  const visibleProjects = [...data.projects, ...(data.publicationProjects ?? [])]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard)); renderJobs(data.jobs ?? []);
 }
 
 function showNotice(message) { const notice = $("#notice"); notice.textContent = message; notice.hidden = !message; }
+function captureRotation(response) { state.csrfToken = response.headers.get("x-rtb-publishing-next-csrf") ?? state.csrfToken; state.mutationCapability = response.headers.get("x-rtb-publishing-next-capability") ?? state.mutationCapability; }
 
 function metric(label, value) { const item = node("div", "dossier-metric"); item.append(node("strong", "", value), node("span", "", label)); return item; }
 async function openDossier(project) {
@@ -74,6 +136,43 @@ async function jobAction(job, action) {
   const result = await response.json(); if (!response.ok) return showNotice(result.message); showNotice(""); await refresh();
 }
 
+async function confirmGate(project, gate, intent) {
+  if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
+  const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, intent };
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
+  const result = await response.json();
+  captureRotation(response); if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
+}
+
+async function prepareBeta(project) {
+  if (!window.confirm("Prepare Beta from every current canonical chapter and the fixed private Notion sync receipt?")) return;
+  const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-preparation`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+  const result = await response.json(); captureRotation(response);
+  if (!response.ok) return showNotice(result.message); await refresh(); showNotice("Exact Beta material prepared on the server. Review the now-ready Beta gate before approving it.");
+}
+
+async function recordReleaseReview(project, kind, decision, roleInput, intent) {
+  const qualifiedRole = roleInput?.value.trim() ?? "";
+  if (kind === "rights-and-brand-review" && decision === "approved" && !qualifiedRole) { roleInput.focus(); return showNotice("Declare your non-empty qualified rights-review role before recording approval."); }
+  if (!window.confirm(`Record a durable ${decision} decision for ${reviewLabels[kind]} on the latest exact candidate?`)) return;
+  const payload = { confirm: true, intent, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
+  const response = await fetch(`/api/projects/${project.id}/release-reviews/${kind}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
+  const result = await response.json(); captureRotation(response);
+  if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the displayed exact candidate.`);
+}
+
+async function bootstrapOperator() {
+  if (!window.confirm("Confirm that a human is present and taking responsibility for review decisions in this local session?")) return;
+  const submit = () => fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+  let response = await submit();
+  if (response.status === 403) { await issueSession(); response = await submit(); }
+  const result = await response.json();
+  if (!response.ok) return showNotice(result.message);
+  state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; $("#human-session-status").textContent = "Confirmed human review session"; $("#confirm-human-session").textContent = "Renew human review session"; await refresh();
+}
+
+async function issueSession() { const session = await (await fetch("/api/session")).json(); state.operator = null; state.csrfToken = session.csrfToken; state.mutationCapability = session.mutationCapability; $("#human-session-status").textContent = "Human review session not confirmed"; }
+
 async function refresh() {
   const response = await fetch("/api/workspace"); if (!response.ok) throw new Error("Workspace state could not be loaded. Run platform doctor in the terminal."); render(await response.json()); showNotice("");
 }
@@ -82,13 +181,14 @@ async function runWorkflow(project, workflow, button) {
   if (!window.confirm(`Start “${workflowLabel(workflow)}” for ${project.name}? The result will be recorded locally.`)) return;
   button.disabled = true;
   try {
-    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true }) });
+    const response = await fetch(`/api/projects/${project.id}/workflows/${workflow}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken }, body: JSON.stringify({ confirm: true, idempotencyKey: crypto.randomUUID() }) });
     const result = await response.json(); if (!response.ok) throw new Error(result.message); showNotice(""); await refresh();
   } catch (error) { showNotice(error.message); } finally { button.disabled = false; }
 }
 
 $("#refresh").addEventListener("click", refresh);
+$("#confirm-human-session").addEventListener("click", bootstrapOperator);
 $("#close-dossier").addEventListener("click", () => $("#dossier").close());
 $("#open-onboarding").addEventListener("click", () => $("#onboarding").showModal());
 $("#close-onboarding").addEventListener("click", () => $("#onboarding").close());
-try { state.csrfToken = (await (await fetch("/api/session")).json()).csrfToken; await refresh(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }
+try { await issueSession(); await refresh(); setInterval(() => refresh().catch((error) => showNotice(error.message)), 5000); } catch (error) { showNotice(error.message); }

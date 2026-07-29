@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "renderer": "mermaid-cli@11.16 accepted raster",
+  "entries": [
+    { "chapterId": "yc-chapter-01", "index": 1, "sourceSha256": "9a882f7240f0e6040b3f7033cf7db23fe8f62ad4d23c67e6e711a3e57c6c0fb1", "image": "assets/diagrams/yc-chapter-01-diagram-1.png", "imageSha256": "17a731a5cf330e6c4b43c977110880a267c681c18a4acf3db22eb11c7e5bcad9" },
+    { "chapterId": "yc-chapter-02", "index": 1, "sourceSha256": "81ae9f3c4ff39284c1bb48492e3ffa495a202e55498c3689921fbf75cc608ee1", "image": "assets/diagrams/yc-chapter-02-diagram-1.png", "imageSha256": "3c7243a79f2c91bd7519575a52314bec4f241788447e7d46b5c888f978872df7" },
+    { "chapterId": "yc-chapter-03", "index": 1, "sourceSha256": "0d10d2cd17d9368e1f8d8e6856fb253f993f8f8842f3ef40bb01a551a2291402", "image": "assets/diagrams/yc-chapter-03-diagram-1.png", "imageSha256": "a4a4258b996d173a8305b1a5e900d9e78eb07434c1f217c0ded6c3918b4ccb83" },
+    { "chapterId": "yc-chapter-04", "index": 1, "sourceSha256": "d26260da1b18660f8269800d02b91897740b96819b0c39ad74bd594d31e4de33", "image": "assets/diagrams/yc-chapter-04-diagram-1.png", "imageSha256": "7be8ebace86e7cadc200d6530f22eaa307bfbebcfde5224c415eef50b3ba6454" },
+    { "chapterId": "yc-chapter-08", "index": 1, "sourceSha256": "813fdbb1404768dc9a593d4700bac88969ca34a949ac6ce7537cd978f2488708", "image": "assets/diagrams/yc-chapter-08-diagram-1.png", "imageSha256": "526f8571554c7bcdf7ef5965d3bc287d88b825b20f6ee63a3cf3d3fe720ec3a8" },
+    { "chapterId": "yc-chapter-10", "index": 1, "sourceSha256": "79eb4ef8c0714e3c1724ed756ca01e6538a8dde567f8426a20f8c8527f12abb2", "image": "assets/diagrams/yc-chapter-10-diagram-1.png", "imageSha256": "8eea0c2ededd23a70bc60f2577b6320384b777bfcfb39191052dae6bd279ee97" },
+    { "chapterId": "yc-chapter-12", "index": 1, "sourceSha256": "bf1286152e495c2f020eb5e8a11f48fac45894234fe83c0464a94d04ca77fe18", "image": "assets/diagrams/yc-chapter-12-diagram-1.png", "imageSha256": "27b9326732352f9b64464e2e9b7c71b47fe719f83e3f38882fd07a38c7c4fcbb" },
+    { "chapterId": "yc-chapter-15", "index": 1, "sourceSha256": "5d3e14d14edfb3b92c59c05c41794a9db6c2512ef75b91fd88aabe3c359e67a9", "image": "assets/diagrams/yc-chapter-15-diagram-1.png", "imageSha256": "abc9aa24b7338b6c32222c6923b97004c2b7c287fb745ec282d72ce6ebe0e501" },
+    { "chapterId": "yc-chapter-17", "index": 1, "sourceSha256": "b3ca335b4bf84e8a31f92ccb864d7d0c37834e58bc1acaf6f5c612298435884d", "image": "assets/diagrams/yc-chapter-17-diagram-1.png", "imageSha256": "81bcaa29ae03362dd9ccced31843dc97927ecba9ad3457fbcd9e0d316a21d508" },
+    { "chapterId": "yc-chapter-18", "index": 1, "sourceSha256": "a845b64fb2715b2a4c79f795b30f70a38ea4a19b0c7af9d592581ff95ac69f8e", "image": "assets/diagrams/yc-chapter-18-diagram-1.png", "imageSha256": "cc75c3cc809cdd3855a328dcd5c83b4313099075c1a984951fff4874add16904" },
+    { "chapterId": "yc-chapter-21", "index": 1, "sourceSha256": "51597c7443e28b94e121f752246217deac862fa0baf57e84cf404dfcf0d30782", "image": "assets/diagrams/yc-chapter-21-diagram-1.png", "imageSha256": "dd678bbd36f56f51a6c7f611d46a378816b4bb15b384aa069f5095bd18050407" },
+    { "chapterId": "yc-chapter-22", "index": 1, "sourceSha256": "1792095d8e996c9ecd176a3be22ae90bcacce025df7ad40691aea1ef2cfc2fae", "image": "assets/diagrams/yc-chapter-22-diagram-1.png", "imageSha256": "60e8ab8fc010600445c9e6f468821f4c312d13343e2933bfc8edd2c6cfad0295" },
+    { "chapterId": "yc-chapter-23", "index": 1, "sourceSha256": "48ec1f63dca423ee1187ae5374ef41cdc9cc927e0196dc7085f090aeb1898d02", "image": "assets/diagrams/yc-chapter-23-diagram-1.png", "imageSha256": "358f7c127beb14fd8d685666e7495e3e959fbd6e0d6414a90928f3755a2e9757" }
+  ]
+}

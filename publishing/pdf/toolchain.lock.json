@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 2,
+  "acceptedRfc": "RFC-008",
+  "generatedAt": "2026-07-28",
+  "profile": {
+    "renderer": "PDF/A-2a+PDF/UA-1",
+    "rendererArgument": "--pdf-standard=a-2a,ua-1",
+    "validatorFlavours": ["2a", "ua1"],
+    "documentLanguage": "en-US",
+    "sourceDateEpoch": 1785196800,
+    "byteIdentityRequiredAcrossPlatforms": false
+  },
+  "supportedPlatforms": [
+    {
+      "id": "macos-x86_64",
+      "role": "local-creator-and-current-compatibility-evidence",
+      "architectures": ["x86_64"],
+      "fixture": "tests/fixtures/publishing/pdf/compatibility-matrix.json#macos-x86_64"
+    }
+  ],
+  "ciBoundary": {
+    "workflowLabel": "macos-15-intel",
+    "architecture": "x86_64",
+    "rendererArtifact": "tools.renderer.artifacts#macos-x86_64",
+    "releaseStatus": "remote evidence passed in GitHub Actions run 30323970497 for implementation SHA 67d60df66e9b45fe7a0ea326a86f5d96e14354fe",
+    "remoteEvidence": "tests/fixtures/publishing/pdf/remote-run-evidence.json"
+  },
+  "tools": {
+    "renderer": {
+      "name": "Typst",
+      "vendor": "Typst Contributors",
+      "version": "0.15.0",
+      "releaseCommit": "3ae52774",
+      "license": "Apache-2.0",
+      "profile": "PDF/A-2a+PDF/UA-1",
+      "repositoryLock": "https://github.com/typst/typst/tree/v0.15.0",
+      "artifacts": [
+        {
+          "platform": "macos-x86_64",
+          "architecture": "x86_64",
+          "url": "https://github.com/typst/typst/releases/download/v0.15.0/typst-x86_64-apple-darwin.tar.xz",
+          "sha256": "30210c7c539c7954db94c063cd98b43fd0a0cad285d656dbbce2a40aee2e79be",
+          "executableSha256": "472955622cf3cd10dd89dcf7c3cd9a6c0d2c100ab2f6ea9804a0f1256ad08705"
+        }
+      ],
+      "licenceHandling": "Apache-2.0 upstream licence; no paid renderer licence or secret licence file is used"
+    },
+    "structuralValidator": {
+      "name": "veraPDF Greenfield",
+      "version": "1.28.2",
+      "flavour": "ua1",
+      "url": "https://software.verapdf.org/releases/1.28/verapdf-greenfield-1.28.2-installer.zip",
+      "sha256": "d1693a5f0bf0997180f6d97e8a5568b0cf39e27eee338d439c8adb58435c1e89",
+      "gpgFingerprint": "13DD102B4DD69354D12DE5A83184863278B17FE7",
+      "executableSha256": "820b9acccdd46c9cffad65150668a3c4d3446770e4d3b055ff681eedfcf6abb6",
+      "mainJarSha256": "442bf0d7f53f9ce30caa7b4d350ca9b0d86084b8cafe60ed4e6d67778a597c22"
+    },
+    "profileValidator": {
+      "name": "veraPDF Greenfield",
+      "version": "1.28.2",
+      "flavour": "2a",
+      "artifactReference": "tools.structuralValidator"
+    },
+    "javaRuntime": {
+      "name": "Eclipse Temurin JRE",
+      "version": "21.0.11+10",
+      "majorVersion": 21,
+      "vendor": "Eclipse Adoptium",
+      "purpose": "runs the pinned veraPDF Greenfield CLI; an ambient Java runtime is not permitted",
+      "artifacts": [
+        {
+          "platform": "macos-x86_64",
+          "architecture": "x86_64",
+          "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.11%2B10/OpenJDK21U-jre_x64_mac_hotspot_21.0.11_10.tar.gz",
+          "sha256": "b341fb8ed5b70d49066b98176bc98e30f55082192403deb60e0cd5948b6e7923",
+          "executableSha256": "3e67ca9ecc78e5b4694008c330beecd9588df5ef3da320d674a77fe2b6c3eada"
+        }
+      ]
+    },
+    "pdfParser": {
+      "name": "pdfjs-dist",
+      "version": "5.4.624",
+      "license": "Apache-2.0",
+      "packageManager": "pnpm",
+      "lockfile": "pnpm-lock.yaml",
+      "packageIntegrity": "sha512-sm6TxKTtWv1Oh6n3C6J6a8odejb5uO4A4zo/2dgkHuC0iu8ZMAXOezEODkVaoVp8nX1Xzr+0WxFJJmUr45hQzg==",
+      "provenance": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-5.4.624.tgz",
+      "installation": "pnpm install --frozen-lockfile installs the exact lockfile package; the retained manifest records the full lockfile SHA-256."
+    },
+    "visualRegression": {
+      "name": "Typst native PNG raster",
+      "rendererArtifactReference": "tools.renderer.artifacts#macos-x86_64",
+      "version": "0.15.0",
+      "arguments": ["compile", "--format", "png", "--ppi", "144"],
+      "baseline": "tests/fixtures/publishing/pdf/visual-baseline/semantic-book-1.png",
+      "method": "SHA-256 equality of the deterministic 144-PPI raster; check raster dimensions, one-page sample, 40x20 fixture image declaration, and a retained visual-regression report."
+    }
+  },
+  "fonts": [
+    {
+      "family": "Noto Serif",
+      "style": "variable normal",
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf",
+      "sha256": "4d8e6761424656867019081a1a01336f3cb086982682698714054fc33f782713",
+      "usage": "only body, heading, and table face until another face is separately accepted",
+      "licenceEvidence": "https://github.com/google/fonts/tree/main/ofl/notoserif",
+      "fallback": "forbidden: --font-path points only to lock-owned fonts, --ignore-system-fonts, and --ignore-embedded-fonts are required"
+    }
+  ],
+  "requiredRendererArguments": [
+    "compile",
+    "--root=<disk-backed-staging-root>",
+    "--font-path=<lock-owned-font-directory>",
+    "--ignore-system-fonts",
+    "--ignore-embedded-fonts",
+    "--creation-timestamp=1785196800",
+    "--pdf-standard=a-2a,ua-1",
+    "--diagnostic-format=short"
+  ],
+  "verification": {
+    "sha256Method": "SHA-256 calculated from the exact downloaded artifact on 2026-07-28; installation must recalculate before use.",
+    "network": "render and validation runs are offline; downloads occur only in an explicit setup step.",
+    "license": "The renderer is Apache-2.0. This lock is not a conclusion about third-party font rights."
+  }
+}

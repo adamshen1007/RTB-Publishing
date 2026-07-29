@@ -1,0 +1,51 @@
+{
+  "fixtureVersion": 1,
+  "classification": "synthetic-only",
+  "site": "synthetic-ghost.invalid",
+  "members": [
+    {
+      "id": "member-ada",
+      "email": "ada@example.test",
+      "allowlisted": true,
+      "tier": "reader"
+    },
+    {
+      "id": "member-bob",
+      "email": "bob@example.test",
+      "allowlisted": true,
+      "tier": "reader"
+    }
+  ],
+  "release": {
+    "releaseId": "rel-synthetic-20260728-a",
+    "manifestChecksum": "sha256:1c8fa86109f08628e6d4e05018d43df3d7a6e12a70f32bccfde2202f9ffb11b0",
+    "artifacts": [
+      {
+        "path": "book.html",
+        "mediaType": "text/html",
+        "bytes": 27,
+        "checksum": "sha256:9f5c121311b7f5f5d14a728a3323ec089d7a9e78b122a0e6abf377d06c296a40",
+        "content": "<main>Synthetic book</main>"
+      },
+      {
+        "path": "book.pdf",
+        "mediaType": "application/pdf",
+        "bytes": 19,
+        "checksum": "sha256:cffc0235b7d5842fd71ffdb6da6c0a1ce91a8db69671d3c07c71116fbbca5e40",
+        "content": "synthetic-pdf-bytes"
+      },
+      {
+        "path": "book.epub",
+        "mediaType": "application/epub+zip",
+        "bytes": 20,
+        "checksum": "sha256:7038d580f0a609dfdc150da91f3d9f53c9729c79af653519483ccc7aa1695268",
+        "content": "synthetic-epub-bytes"
+      }
+    ]
+  },
+  "limits": {
+    "maxUploadBytes": 1048576,
+    "requestsPerWindow": 2,
+    "windowSeconds": 60
+  }
+}

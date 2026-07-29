@@ -1,0 +1,33 @@
+id: rtb-yc-playbook
+schema_version: "1"
+created_at: "2026-07-23T00:00:00.000Z"
+updated_at: "2026-07-28T00:00:00.000Z"
+producer: rtb-publishing
+validation_rules: [book-project-v1, path-safety-v1]
+content_hash: sha256:64bc67e6ee49414e70d12615ab68f875de1b075d731f554df228ad7bcb6681d5
+locale: en-US
+paths:
+  root: assets
+  metadata: book.md
+  chapters: chapters
+  assets: assets
+  research: references
+  reviews: reviews
+output_profiles:
+  - id: web-edition
+    format: html
+    path: outputs/index.html
+  - id: epub-edition
+    format: epub
+    path: outputs/rtb-publishing-playbook.epub
+  - id: pdf-edition
+    format: pdf
+    path: outputs/rtb-publishing-playbook.pdf
+blueprint:
+  id: rtb-yc-playbook-blueprint
+  path: blueprint.yaml
+  content_hash: sha256:39d1966e9e0b645bc75594c3bdbb48fe91c11f8d9d46007b154558b8bb9f875b
+lifecycle:
+  id: rtb-yc-playbook-lifecycle
+  path: lifecycle.yaml
+  content_hash: sha256:714524c049f957713a94354cbd7726ab84119cf55214513f6d2e0018c0b43da3

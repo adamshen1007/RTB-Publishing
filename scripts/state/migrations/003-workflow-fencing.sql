@@ -1,0 +1,10 @@
+ALTER TABLE workflow_attempts ADD COLUMN fencing_token INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workflow_attempts ADD COLUMN retry_limit INTEGER NOT NULL DEFAULT 2;
+ALTER TABLE workflow_attempts ADD COLUMN progress_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE workflow_attempts ADD COLUMN recovery_action TEXT;
+ALTER TABLE workflow_attempts ADD COLUMN provider_version TEXT;
+ALTER TABLE workflow_attempts ADD COLUMN model_version TEXT;
+ALTER TABLE workflow_attempts ADD COLUMN prompt_version TEXT;
+ALTER TABLE workflow_attempts ADD COLUMN capability_version TEXT;
+ALTER TABLE workflow_dispatches ADD COLUMN owner_id TEXT;
+ALTER TABLE workflow_dispatches ADD COLUMN fencing_token INTEGER;

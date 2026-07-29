@@ -43,6 +43,7 @@ h1 { max-width: 900px; margin: 0; font-size: clamp(3rem, 8vw, 7.5rem); font-weig
 .desk { min-width: 0; padding: 2rem clamp(1rem, 4vw, 3rem) 4rem; }
 .index-status { margin-bottom: 1.4rem; color: var(--muted); font: .68rem var(--mono); text-transform: uppercase; }
 .status-row { display: flex; justify-content: space-between; gap: 1rem; }
+.session-action { display: flex; flex-direction: column; align-items: flex-end; gap: .25rem; }
 .index-status.warning { padding: .75rem; color: var(--red); border: 1px solid var(--red); }
 .notice { margin: 0 0 1.2rem; padding: .9rem 1rem; color: var(--red); background: #fff5f3; border: 1px solid var(--red); }
 .section-heading { margin-bottom: 1.2rem; display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
@@ -104,6 +105,23 @@ dialog::backdrop { background: rgba(17,24,32,.42); }
 .dossier-metric strong, .dossier-metric span { display: block; }
 .dossier-metric span { color: var(--muted); font: .58rem var(--mono); text-transform: uppercase; }
 .error { color: var(--red); }
+.lifecycle-review { margin-top: 1.2rem; padding-top: 1.2rem; border-top: 1px solid var(--rule); }
+.lifecycle-review h4 { margin: 0 0 .35rem; font: 700 1rem var(--display); }
+.review-group h5 { margin: 1.1rem 0 .3rem; font: 700 .78rem var(--mono); text-transform: uppercase; }
+.candidate-identity { margin: .4rem 0; font: 700 .65rem var(--mono); text-transform: uppercase; }
+.review-row, .gate-row { margin-top: .75rem; padding: .85rem; display: grid; grid-template-columns: 1fr auto; gap: .45rem .8rem; border: 1px solid var(--rule); }
+.review-row p, .gate-row p { margin: 0; grid-column: 1 / -1; font-size: .76rem; line-height: 1.45; }
+.review-decision, .gate-ready, .gate-unavailable { align-self: start; font: 700 .61rem var(--mono); text-transform: uppercase; }
+.review-decision.approved, .gate-ready { color: var(--jade); }
+.review-decision.rejected, .gate-unavailable { color: var(--red); }
+.review-decision.pending { color: var(--amber); }
+.review-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; }
+.declaration-label, .declaration-input, .review-row small { grid-column: 1 / -1; }
+.declaration-label { margin-top: .35rem; font: 700 .67rem var(--mono); text-transform: uppercase; }
+.declaration-input { width: 100%; min-height: 42px; padding: .65rem; border: 1px solid var(--ink); background: white; color: var(--ink); font: .82rem var(--body); }
+.gate-row button { grid-column: 1 / -1; justify-self: start; }
+.beta-preparation { border-left: 4px solid var(--blue); }
+button:disabled { cursor: not-allowed; opacity: .48; }
 @media (max-width: 800px) {
   .briefing { grid-template-columns: 1fr; }
   .shell { grid-template-columns: 1fr; }
@@ -116,6 +134,7 @@ dialog::backdrop { background: rgba(17,24,32,.42); }
   .spine li small { font-size: .58rem; }
   .project-grid { grid-template-columns: 1fr; }
   .status-row { flex-direction: column; gap: 0; }
+  .session-action { align-items: flex-start; }
   .section-heading, .heading-actions { align-items: flex-start; flex-direction: column; }
   .dossier-metrics { grid-template-columns: repeat(2, 1fr); }
 }

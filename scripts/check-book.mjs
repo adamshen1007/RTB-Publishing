@@ -1,11 +1,8 @@
-import { readdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { BOOK_DIR } from "./lib.mjs";
 import { validateBook } from "./book-contract.mjs";
+import { resolveBookProject } from "./books/discovery.mjs";
 
-const chapterDirectory = resolve(BOOK_DIR, "chapters");
-const chapterFiles = readdirSync(chapterDirectory).filter((file) => file.endsWith(".md"));
-const result = validateBook({ bookDirectory: BOOK_DIR, chapterFiles });
+const project = resolveBookProject(process.argv[2]);
+const result = validateBook({ project });
 
 if (result.failures.length) {
   for (const failure of result.failures) console.error(`✗ ${failure}`);

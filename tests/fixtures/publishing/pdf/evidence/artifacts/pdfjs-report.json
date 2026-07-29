@@ -1,0 +1,415 @@
+{
+  "schemaVersion": 1,
+  "parser": {
+    "name": "pdfjs-dist",
+    "version": "5.4.624"
+  },
+  "pageCount": 1,
+  "metadata": {
+    "info": {
+      "PDFFormatVersion": "1.7",
+      "Language": "en-US",
+      "EncryptFilterName": null,
+      "IsLinearized": false,
+      "IsAcroFormPresent": false,
+      "IsXFAPresent": false,
+      "IsCollectionPresent": false,
+      "IsSignaturesPresent": false,
+      "Title": "PDF Toolchain Compatibility Fixture",
+      "Keywords": "fixture, PDF, accessibility",
+      "Author": "Fixture Author",
+      "Creator": "Typst 0.15.0",
+      "ModDate": "D:20260728000000Z",
+      "CreationDate": "D:20260728000000Z"
+    },
+    "hasStructTree": true
+  },
+  "markInfo": {
+    "Marked": true,
+    "UserProperties": false,
+    "Suspects": false
+  },
+  "outlines": [
+    {
+      "action": null,
+      "dest": [
+        {
+          "num": 59,
+          "gen": 0
+        },
+        {
+          "name": "XYZ"
+        },
+        70.86614,
+        724.7476,
+        0
+      ],
+      "url": null,
+      "title": "Chapter one",
+      "color": {
+        "0": 0,
+        "1": 0,
+        "2": 0
+      },
+      "count": -1,
+      "bold": false,
+      "italic": false,
+      "items": [
+        {
+          "action": null,
+          "dest": [
+            {
+              "num": 59,
+              "gen": 0
+            },
+            {
+              "name": "XYZ"
+            },
+            70.86614,
+            612.2916,
+            0
+          ],
+          "url": null,
+          "title": "Fixture values",
+          "color": {
+            "0": 0,
+            "1": 0,
+            "2": 0
+          },
+          "bold": false,
+          "italic": false,
+          "items": []
+        }
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "pageNumber": 1,
+      "view": [
+        0,
+        0,
+        595.2756,
+        841.8898
+      ],
+      "annotations": [
+        {
+          "subtype": "Link",
+          "dest": "chapter-one",
+          "overlaidText": ""
+        },
+        {
+          "subtype": "Link",
+          "dest": "table-one",
+          "overlaidText": ""
+        },
+        {
+          "subtype": "Link",
+          "dest": "chapter-one",
+          "overlaidText": "internal link"
+        },
+        {
+          "subtype": "Link",
+          "url": "https://example.com/",
+          "unsafeUrl": "https://example.com/",
+          "overlaidText": "external link"
+        }
+      ],
+      "structTree": {
+        "children": [
+          {
+            "role": "Document",
+            "children": [
+              {
+                "role": "H1",
+                "children": [
+                  {
+                    "type": "content",
+                    "id": "p59R_mc0"
+                  }
+                ]
+              },
+              {
+                "role": "TOC",
+                "children": [
+                  {
+                    "role": "TOCI",
+                    "children": [
+                      {
+                        "role": "Reference",
+                        "children": [
+                          {
+                            "role": "Link",
+                            "children": [
+                              {
+                                "type": "content",
+                                "id": "p59R_mc1"
+                              },
+                              {
+                                "type": "content",
+                                "id": "p59R_mc2"
+                              },
+                              {
+                                "type": "object",
+                                "id": "44R"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "TOC",
+                    "children": [
+                      {
+                        "role": "TOCI",
+                        "children": [
+                          {
+                            "role": "Reference",
+                            "children": [
+                              {
+                                "role": "Link",
+                                "children": [
+                                  {
+                                    "type": "content",
+                                    "id": "p59R_mc3"
+                                  },
+                                  {
+                                    "type": "content",
+                                    "id": "p59R_mc4"
+                                  },
+                                  {
+                                    "type": "object",
+                                    "id": "45R"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "role": "H1",
+                "children": [
+                  {
+                    "type": "content",
+                    "id": "p59R_mc5"
+                  }
+                ]
+              },
+              {
+                "role": "P",
+                "children": [
+                  {
+                    "type": "content",
+                    "id": "p59R_mc6"
+                  },
+                  {
+                    "role": "Link",
+                    "children": [
+                      {
+                        "type": "content",
+                        "id": "p59R_mc7"
+                      },
+                      {
+                        "type": "object",
+                        "id": "46R"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "content",
+                    "id": "p59R_mc8"
+                  },
+                  {
+                    "role": "Link",
+                    "children": [
+                      {
+                        "type": "content",
+                        "id": "p59R_mc9"
+                      },
+                      {
+                        "type": "object",
+                        "id": "47R"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "content",
+                    "id": "p59R_mc10"
+                  }
+                ]
+              },
+              {
+                "role": "L",
+                "children": [
+                  {
+                    "role": "LI",
+                    "children": [
+                      {
+                        "role": "Lbl",
+                        "children": [
+                          {
+                            "type": "content",
+                            "id": "p59R_mc11"
+                          }
+                        ]
+                      },
+                      {
+                        "role": "LBody",
+                        "children": [
+                          {
+                            "type": "content",
+                            "id": "p59R_mc12"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "LI",
+                    "children": [
+                      {
+                        "role": "Lbl",
+                        "children": [
+                          {
+                            "type": "content",
+                            "id": "p59R_mc13"
+                          }
+                        ]
+                      },
+                      {
+                        "role": "LBody",
+                        "children": [
+                          {
+                            "type": "content",
+                            "id": "p59R_mc14"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "role": "Div",
+                "children": [
+                  {
+                    "role": "Caption",
+                    "children": [
+                      {
+                        "role": "Span",
+                        "children": [
+                          {
+                            "type": "content",
+                            "id": "p59R_mc16"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "Figure",
+                    "children": [
+                      {
+                        "type": "content",
+                        "id": "p59R_mc15"
+                      }
+                    ],
+                    "alt": "A navy rectangle used by the compatibility fixture."
+                  }
+                ]
+              },
+              {
+                "role": "H2",
+                "children": [
+                  {
+                    "type": "content",
+                    "id": "p59R_mc17"
+                  }
+                ]
+              },
+              {
+                "role": "Table",
+                "children": [
+                  {
+                    "role": "THead",
+                    "children": [
+                      {
+                        "role": "TR",
+                        "children": [
+                          {
+                            "role": "TH",
+                            "children": [
+                              {
+                                "type": "content",
+                                "id": "p59R_mc18"
+                              }
+                            ]
+                          },
+                          {
+                            "role": "TH",
+                            "children": [
+                              {
+                                "type": "content",
+                                "id": "p59R_mc19"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "role": "TBody",
+                    "children": [
+                      {
+                        "role": "TR",
+                        "children": [
+                          {
+                            "role": "TD",
+                            "children": [
+                              {
+                                "type": "content",
+                                "id": "p59R_mc20"
+                              }
+                            ]
+                          },
+                          {
+                            "role": "TD",
+                            "children": [
+                              {
+                                "type": "content",
+                                "id": "p59R_mc21"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "role": "Root"
+      },
+      "text": {
+        "language": "en-US",
+        "fontNames": [
+          "g_d0_f1",
+          "g_d0_f2"
+        ],
+        "fontFamilies": [
+          "serif"
+        ]
+      }
+    }
+  ]
+}

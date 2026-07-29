@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "fixture": "semantic-book.md",
+  "purpose": "Run this exact canonical Markdown snapshot through the locked derived-Typst command on each release-producing platform before release use.",
+  "expected": {
+    "profiles": ["PDF/A-2a+PDF/UA-1", "2a", "ua1"],
+    "language": "en-US",
+    "semanticElements": ["heading", "list", "figure", "figure-alt", "table", "table-header", "internal-link", "external-link"],
+    "metadata": ["title", "author", "keywords", "date"],
+    "navigation": ["outline-bookmark", "internal-link", "external-link"],
+    "fonts": ["Noto Serif only"]
+  },
+  "platforms": [
+    {
+      "id": "macos-x86_64",
+      "status": "passed-2026-07-28",
+      "rendererArtifact": "Typst 0.15.0 macOS x86_64 with lockfile-pinned pdfjs-dist, Temurin, veraPDF, and Noto Serif",
+      "command": ["node", "scripts/pdf-compatibility.mjs"],
+      "evidence": "tests/fixtures/publishing/pdf/evidence/artifacts/manifest.json"
+    }
+  ],
+  "ciBoundary": {
+    "workflowLabel": "macos-15-intel",
+    "architecture": "x86_64",
+    "status": "passed-2026-07-28",
+    "remoteEvidence": "tests/fixtures/publishing/pdf/remote-run-evidence.json",
+    "requiredBeforePromotion": "The identical node scripts/pdf-compatibility.mjs command passed in GitHub Actions; retained artifact metadata is bound in the remote evidence record."
+  }
+}

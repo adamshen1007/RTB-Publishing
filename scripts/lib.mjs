@@ -6,12 +6,8 @@ import { spawnSync } from "node:child_process";
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const BUILD_DIR = resolve(ROOT, "build");
 export const DIST_DIR = resolve(ROOT, "dist");
-export const BOOK_SLUG = "volume-01-yc-playbook";
-export const BOOK_DIR = resolve(ROOT, "books", BOOK_SLUG);
-export const BOOK_OUTPUT_NAME = "rtb-publishing-playbook";
-export const BOOK_DIST_DIR = resolve(DIST_DIR, "books", BOOK_SLUG);
 
-const EXCLUDED_DIRECTORIES = new Set([".git", "build", "dist", "node_modules"]);
+const EXCLUDED_DIRECTORIES = new Set([".git", ".superpowers", "build", "dist", "node_modules"]);
 
 export function listFiles(directory, predicate = () => true) {
   if (!existsSync(directory)) return [];

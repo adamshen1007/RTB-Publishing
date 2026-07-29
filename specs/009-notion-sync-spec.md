@@ -67,3 +67,34 @@ diagrams remain owned by the publishing build.
 - Never store private Notion URLs or page IDs in committed files.
 - `pnpm notion:check` must cover exactly the canonical 23 chapters and report
   missing worksheet, source, or release records before a sync is accepted.
+
+## Guided Beta Preparation
+
+Creator Studio prepares Beta material only from the fixed private receipt at
+`.rtb-publishing/notion/sync-state.json`. The server compares every discovered
+canonical chapter ID and source hash with that receipt. A missing record, stale
+hash, malformed receipt, or missing receipt blocks preparation with repair
+guidance.
+
+The server hashes a normalized snapshot containing canonical chapter identity,
+path, and source hashes; private Notion page and workspace IDs are excluded. It
+also hashes the deterministic passed policy result and creates the reviewer
+identity from the confirmed local human session. The browser sends none of
+those hashes or identity fields.
+
+Registration re-derives that material inside the durable binding transaction
+and rejects an earlier inspection if canonical Markdown or the receipt changed.
+The Beta gate then re-derives the complete current snapshot again while the
+lifecycle approval transaction is held. A missing or stale receipt, or hashes
+that differ from the registered binding, makes the gate unavailable and cannot
+create an approval. A prepared Beta binding is therefore evidence for one exact
+canonical/Notion state, not a standing authorization.
+
+Beta registration and lifecycle approval share the project writer lock with
+canonical mutations and publication finalization. The required lock order is
+project lock before SQLite transaction. Registration rechecks the same
+canonical/receipt hashes immediately before commit and rolls back on mismatch.
+Any future app-controlled receipt writer must write a complete temporary file,
+flush it, and atomically rename it under this lock. Direct edits by an external
+editor are not prevented by SQLite; a change visible to the stability recheck
+is rejected rather than approved.

@@ -45,7 +45,7 @@ Trade-offs:
 
 - Contributors must install Pandoc and Vale in addition to Node and pnpm.
 - Mermaid rendering installs a browser runtime through its CLI dependency.
-- DOCX and EPUB archives may contain timestamp metadata, so M1 reproducibility
+- Download archives may contain timestamp metadata, so M1 reproducibility
   is functional rather than byte-for-byte.
 - A later publishing engine may replace individual tools while preserving the
   command and artifact contracts.
@@ -53,5 +53,5 @@ Trade-offs:
 ## Verification
 
 This decision is validated when a clean clone can run `pnpm check`,
-`pnpm build`, and `pnpm preview`, and CI uploads verified HTML, EPUB, and DOCX
-artifacts.
+`pnpm build`, and `pnpm preview`, and CI uploads the verified formats declared
+by each Book Project.

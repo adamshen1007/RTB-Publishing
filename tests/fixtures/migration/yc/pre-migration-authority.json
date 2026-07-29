@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "authority": "git-commit",
+  "commit": "2938d43",
+  "project_path": "books/volume-01-yc-playbook",
+  "purpose": "Immutable pre-WP96 authority. The oracle independently reads this commit's declared manifest, Blueprint, metadata, and chapter bytes through git show."
+}

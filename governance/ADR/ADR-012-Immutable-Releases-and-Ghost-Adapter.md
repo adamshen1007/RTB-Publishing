@@ -42,8 +42,8 @@ release-candidate envelope and calculates its SHA-256 hash. The envelope binds:
 - Required HTML, PDF, and EPUB formats
 - Validator profiles, versions, configurations, and results
 - Renderer, template, policy, configuration, and dependency-lock hashes
-- Rights, accessibility, citation, link, quality-policy, and release-integrity
-  results
+- Machine-derived rights, accessibility, citation, link, quality-policy, and
+  release-integrity results
 - Lifecycle version, versioned hosted-access policy, build run, and creation
   evidence
 
@@ -57,6 +57,263 @@ staging-attempt ID, reservation, idempotency key, expected pointer revision, or
 evidence authority. A changed artifact, checksum, source, format, validator
 result, rights or quality result, lifecycle version, or access policy requires
 a new candidate envelope, hash, and Publish decision.
+
+The three human release-review decisions are the deliberate exception to
+candidate-envelope storage. They are append-only local SQLite evidence linked
+to an already registered candidate, not canonical manuscript input and not
+fields hashed into that candidate. Each record redundantly binds the exact
+candidate hash, source fingerprint, and HTML, PDF, and EPUB artifact hashes;
+the service resolves those values from the registered candidate and resolves
+the human reviewer from the authenticated server session. A browser cannot
+author any binding or reviewer identity. For an approved rights and brand
+review, the human reviewer must declare a non-empty qualified role. This is a
+recorded human assertion, not independent credential or attestation proof.
+
+Release eligibility is a server-side join of the exact current candidate and
+the latest valid record for each fixed review kind. Wrong-candidate, stale,
+rejected, incomplete, or corrupt evidence fails closed. The Publish approval
+binds the candidate, zero-blocking-findings decision, and exact release-policy
+result hash in the durable lifecycle ledger. Manifest creation re-reads the
+current evidence and requires it to remain eligible with that identical policy
+hash; a later rejection or replacement review cannot reuse the historical
+approval. This separation prevents a review record from changing the source
+fingerprint or candidate it is intended to approve while retaining an exact
+auditable binding at Publish.
+
+Manifest authority uses a recoverable pending-to-completed protocol under the
+project writer lock. The first immediate SQLite transaction reloads the latest
+candidate, current unexpired and non-invalidated Publish approval, current
+unexpired exact Beta approval, and exact durable reviews, then persists the
+normalized manifest JSON and hash with a pending identity. The system writes
+staging, promotes and verifies the exact immutable target, and durably records
+the filesystem `material-verified` phase. Only a module-private, one-time
+capability bound to that exact live promotion may enter the SQLite transaction
+that marks the finalization, identity, and promotion transaction
+`ledger_completed` together. The backup is deleted only after that shared
+commit.
+Recovery at `material-verified` rechecks current authority before resuming; it
+rolls back when completion cannot still be authorized. A crash after SQLite
+completion but before the ledger marker preserves the target and reconciles
+the marker on retry. Earlier promotion failure leaves both ledger rows
+pending. Only completed records verify as releases. Identical retries resume
+pending material after write, promotion, verification, or process
+interruption; they cannot consume a different identity. No separate
+reservation API accepts a caller-created manifest.
+
+The lock order is workspace output lock, project writer lock, then SQLite
+immediate transaction. Every command that can change shared `build/` or
+`dist/` material takes the workspace lock first, including builds,
+finalization, and clean. A nested project lock may then protect that project's
+canonical and ledger boundaries. Held project authority is rejected unless
+the caller also proves the enclosing live workspace authority. No code waits
+for either filesystem lock while holding a database transaction. Relevant
+filesystem material is derived and re-confirmed under that lock immediately
+before commit. Direct external editor writes cannot be prevented by SQLite or
+the cooperative lock, so any mismatch observed by the stability recheck causes
+rollback.
+
+The promotion boundary accepts no caller-selected output root. Before reading
+or recovering any promotion marker it validates both unforgeable live lock
+handles, proves the discovered project path belongs to that exact workspace,
+and derives `dist/releases/immutable/<project-id>/<release-id>` from those
+trusted identities. The one-time completion capability binds that workspace,
+every physical output directory from `dist/` through the exact target, every
+expected artifact and retained-source file, the project root, manifest, and
+live promotion transaction. Each directory and file identity is revalidated
+before the final database commit and before promotion cleanup. Released,
+forged, wrong-root, replaced, non-canonical, and replayed authority cannot
+complete a ledger row.
+
+The release tree is an exact recursive inventory, not a top-level allowlist.
+Every directory and private regular file—including dotfiles and nested retained
+sources—must match the candidate-declared source inventory and the fixed
+candidate, verification, manifest, and artifact set. Extra or missing paths,
+unexpected directories, type changes, links, and hash drift fail closed. The
+completion capability binds the inventory, hashes, and physical identities.
+
+Held-lock authority is a process-private live handle, not a caller-supplied
+path or owner string. It is accepted only for the exact project root that
+created it. The handle pins the lock parent and lock file, retains an open file
+descriptor, and rechecks descriptor/path device and inode, one-link status, and
+exact owner bytes. Release is idempotent and removes the lock only while all of
+those facts still match, so parent replacement, file replacement, unlinking,
+hard-linking, or repeated release cannot unlink a successor writer's lock. This
+hierarchy ensures a workspace clean cannot race a build or finalization whose
+project root is nested below it.
+
+Dead-lock reclamation fails closed. RTB cannot prove a safe, atomic ownership
+transfer among a stale owner and two or more contenders using pathname
+operations alone, so a waiter never renames or removes an apparently stale
+lock. Operators must stop every writer, preserve the lock as evidence outside
+`.rtb-state`, and then allow exactly one command to create a new lock.
+
+Workspace and project locks pin physical directory identity: canonical
+path plus device and inode. Lock acquisition rejects a symbolic-link lock
+directory and creates each missing directory segment only after checking its
+ancestors. Every later authority check revalidates that physical identity, so
+renaming and replacing a root invalidates the handle. Publishing, verification,
+and clean similarly reject symbolic links in existing project, `build`, `dist`,
+candidate, immutable, staging, and promotion path segments before touching
+their contents. A symlink is never followed to establish a trusted output root.
+
+After both physical locks are held, publication discards the caller's material
+view and re-discovers the canonical Book Project. It requires the caller view
+to match the fresh ID, physical roots, workspace path, authority, snapshot hash,
+pointer version, manifest, Blueprint, metadata, and chapter-byte identity.
+That identity is checked again after rendering, before finalization, after the
+last completion hook, and immediately before promotion capability consumption.
+Capability consumption occurs only after these final checks. A changed
+`.rtb-content/current.json` pointer or canonical byte causes rollback and leaves
+the release ledger pending; only a newly discovered build may retry.
+
+The generic non-release book builder follows the same physical-lock and fresh
+discovery rules. It renders only into unique, physically validated staging
+directories and moves verified outputs into validated final namespaces. It
+rejects stale project views, symbolic output roots, multiply linked snapshot
+files, and multiply linked canonical pointer files.
+
+Canonical identity inventories every non-state directory and private regular
+file recursively, including assets and research inputs, with relative path,
+type, and hash. Discovery stores that identity rather than recomputing the
+caller's side from live bytes. The final completion boundary rechecks current
+Publish and Beta validity and expiry using a fresh time after the last hook.
+
+Generic builds publish one complete generation containing both build material
+and rendered output. They exclusively reserve a new UUID directory, create
+every child with no-replace semantics, verify the exact material and owned
+directory identities, then atomically switch a private, symlink-free metadata
+pointer. Failures before the switch leave the prior pair current; failures
+after it preserve the complete new pair. No path deletes the prior good
+generation while activating a replacement.
+Before visibility changes, every generation file is flushed and every
+generation directory is flushed bottom-up; after materialization the staging
+and destination generation parents are flushed. RTB
+flushes and pins the owned temporary pointer bytes and inode, renames it,
+flushes the pointer parent, then proves `.current` is still that exact inode and
+bytes before declaring the switch complete. The complete recursive staging
+identity and bytes are checked before and after flush, immediately before
+reservation, and at the destination; a last-gap collision or replaced
+reservation is preserved rather than adopted or deleted. Preview opens the
+selected file without following symbolic links,
+reads only from the pinned descriptor, then rechecks descriptor, path, and
+pointer while holding the workspace output lock, so build, retention, and clean
+cannot replace or delete served bytes midway. A successful build retains current
+plus two complete predecessors under both build locks. Retention is a
+pointer-aware quarantine transaction: it writes project-and-token-scoped
+closed-schema version 3 evidence bound to the exact pointer bytes and hash,
+rechecks the pointer before every recursive move, before `delete_pending`, and
+immediately before every removal, restores still-owned quarantine if the
+pointer changes, and never removes shared or other-project evidence. Atomic
+journal-temp authority and per-entry `move_pending`/`delete_pending` states
+close journal-write, rename, and removal crash windows. Each destructive step
+first claims an exact owned inode and rereads the bound pointer immediately
+before removal. Bounded reclaim durably renames the completed transaction to a
+terminal tombstone, validates its exact recursive inventory, and claims that
+inode before removal. Replacements and unrecorded extras are preserved;
+recovery completes either side of that terminal boundary. These
+durability guarantees depend on the local filesystem
+honoring file and directory `fsync`; unsupported network or virtual filesystems
+are outside the release guarantee.
+
+The release build holds that lock while it renders in unique staging,
+registers the candidate, finalizes approved material, and performs the last
+verification. Candidate-only builds move to
+`dist/candidates/<project>/<candidate-hash>` and never enter the release
+namespace. Only exact approved finalization may enter
+`dist/releases/immutable/<project>/<release-id>`. Existing immutable targets
+are reused only after exact path, real-path containment, symbolic-link-free
+tree, material, and ledger verification; no different material can overwrite
+a release ID. The old `dist/releases/<project>` location remains read-only
+legacy reconciliation evidence.
+
+Promotion uses a same-filesystem directory rename with an explicit durable
+state machine. Atomic, file-fsynced and directory-fsynced markers bracket every
+old-to-backup, staging-to-target, target-to-quarantine, backup-to-target, and
+cleanup operation with intent and completion phases. The backup remains until
+the promoted directory passes exact post-rename verification. Recovery before
+the durable `verified` phase restores the prior release; recovery at or after
+that phase completes the exact new release. Each rollback phase is idempotent,
+so a second crash cannot activate unverified bytes or delete a restored prior
+release.
+
+Every promotion mutation is private to a coordinator constructed only inside
+the sole exported high-level operation after it validates both still-live lock
+handles, canonical project
+identity, and exact durable candidate, manifest, identity, and finalization
+rows. Every durable marker phase is also transactionally bound in SQLite to its
+token, candidate, manifest, phase, marker hash, evidence hash, and active or
+terminal status. Before marker replacement, a `binding_pending` record binds
+the exact next marker bytes, evidence, phase, and owned temporary token before
+the temporary file is created. Recovery can reconstruct that exact missing
+temp, retry only an exact old-marker-plus-temporary state, or activate an
+exact new-marker state. Recovery reads that trusted binding before marker bytes and
+validates the closed schema and exact recursive transaction evidence before
+reconstructing coordinator state. Direct helper
+calls, copied objects, unsafe re-exports, and
+marker, backup, quarantine, target, or parent replacement fail before any
+rename, removal, directory creation, or marker write.
+
+Markers use closed schema version 2, a fixed phase enum, exact project and
+release identities, a cryptographically random UUID token, a prior-target flag,
+and exact recursive device, inode, size, and byte-hash evidence for every
+transaction path except the marker. Recovery accepts only that recorded
+pre-state or the single exact post-state allowed by an interrupted intent; it
+never snapshots and adopts live state. Paths are derived internally from the
+trusted output root and those validated identities. Marker-owned paths,
+symbolic links, malformed JSON, unknown fields, and mismatched identities are
+rejected without filesystem mutation. The build passes explicit held-lock
+authority into finalization; the finalization
+operation never recursively acquires the lock. A legacy `reserved` identity
+without a finalization record may be adopted only when its deterministic
+release ID, candidate, real current approval and policy, current Beta, and
+existing manifest bytes exactly reproduce. Otherwise recovery requires a new
+exact Publish approval and never silently blesses the legacy row.
+Migration 010 moves unbound legacy promotion evidence into a durable migration
+quarantine under the held locks. Before the first marker, marker-temp, backup,
+quarantine, or staging move, SQLite binds the journal's immutable authority hash
+to the exact project, release, token, candidate, manifest, disposition,
+invalidation, and action inventory. Each journal temp is anticipated by exact
+token, hash, and canonical JSON. Every resume revalidates both live locks,
+pinned state roots, the absence of canonical promotion-token authority, the
+candidate/identity/finalization/manifest status pair, completed target, and
+pending approval invalidation. It records a checkpoint for each move and
+receipt, and safely resumes that journal after interruption. Completed
+evidence requires exact ledger and target verification; pending or malformed
+evidence invalidates the old Publish approval before any evidence move and
+requires a fresh exact approval and rebuild. The draft-v9 table conversion
+preserves active, committed, and rolled-back rows exactly; malformed rows roll
+back the conversion rather than dropping evidence. Strict orphan marker temps
+are included in the migration receipt. Malformed or unknown temp names are
+preserved and never auto-blessed.
+
+Completed verification is not a shortcut around authority reconstruction. It
+always proves exact finalization, identity, candidate registry JSON and row,
+manifest and artifact/source hashes, preserved Publish facts, Beta material
+and approval, review evidence, project/release/candidate/approval equality,
+expiry at completion, and the causal sequence from Beta preparation and
+approval through final-candidate registration, reviews, Publish approval,
+identity/finalization creation, and completion. Only the one-time population
+of missing migration-007 completion facts is conditional.
+
+Completed verification is historical integrity, not current eligibility. The
+completion record preserves approval actor, creation time, lifecycle version,
+and exact binding bytes proven current at `completed_at`. A later Blueprint
+invalidation or product revocation does not alter those historical facts or
+the immutable release bytes. Current distribution eligibility and revocation
+are separate mutable product decisions.
+
+Databases upgraded from the earlier finalization schema reconcile missing
+completion-time approval facts only when every redundant authority agrees:
+completed identity fields, registered candidate project/hash/source/artifacts
+and lifecycle, normalized manifest JSON and checksum, exact human approval and
+bindings, candidate-plus-one approval lifecycle, zero blocking findings,
+historical review-policy hash, exact Beta snapshot/policy material and Beta
+approval lifecycle, Publish expiry, and every creation/completion/invalidation
+timestamp. Manifest project, lifecycle, source, and artifacts must independently
+match the registered candidate. Ambiguous, mismatched, or already-invalid evidence remains
+preserved and fails with an explicit operator-reconciliation requirement;
+migration never trusts a manifest-owned assertion alone or guesses historical
+authority.
 
 The manifest itself receives a SHA-256 checksum. An implementation may add a
 signature, but a signature cannot replace the required artifact and manifest
@@ -300,7 +557,7 @@ review.
   only the permitted approval and staging references.
 - A fixture of at least 512 MiB must prove disk-backed rendering, checksum, and
   transfer with streaming chunks no larger than 8 MiB and a peak RSS
-  (resident set size) increase no greater than 128 MiB above the measured idle
+  (resident set size) increase no greater than 384 MiB above the measured idle
   aggregate for the complete process tree. Measurement includes the
   orchestrator plus every renderer, adapter, and other child process, or uses
   an equivalent container or cgroup boundary that contains them all. The test
@@ -308,6 +565,12 @@ review.
   process-tree or container boundary, memory-sampling method and interval,
   aggregate idle baseline, aggregate peak RSS or equivalent peak, and fixture
   composition.
+
+This 384 MiB complete-process ceiling is the recorded 2026-07-28 replacement
+for the provisional 128 MiB aggregate target after selecting Typst plus the
+pinned Java veraPDF validator. Individual disk-backed streaming stages retain
+the 128 MiB increase ceiling.
+
 - Multi-format failure tests keep the complete release inactive and preserve
   the previous pointer.
 - Duplicate, interrupted, timed-out, and uncertain remote operations prove
