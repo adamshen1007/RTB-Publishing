@@ -1,4 +1,4 @@
-const state = { csrfToken: "", mutationCapability: "", operator: null, data: null };
+const state = { csrfToken: "", mutationCapability: "", operator: null, data: null, workspaceFingerprint: "", jobsFingerprint: "", interactionDepth: 0 };
 const $ = (selector) => document.querySelector(selector);
 const node = (tag, className, text) => { const element = document.createElement(tag); if (className) element.className = className; if (text != null) element.textContent = text; return element; };
 
@@ -84,17 +84,19 @@ function betaPreparationControl(project, status) {
 }
 
 function renderJobs(jobs) {
-  const container = $("#jobs"); container.replaceChildren();
+  const container = $("#jobs");
+  const expandedJobs = new Set([...container.querySelectorAll("details[open]")].map((details) => details.closest("[data-job-id]")?.dataset.jobId).filter(Boolean));
+  container.replaceChildren();
   if (!jobs.length) return container.append($("#empty-jobs").content.cloneNode(true));
   jobs.forEach((job) => {
-    const article = node("article", "job"); const head = node("div", "job-head");
+    const article = node("article", "job"); article.dataset.jobId = job.id; const head = node("div", "job-head");
     const identity = node("div"); identity.append(node("div", "job-id", job.id), node("div", "", `${job.projectId} · ${workflowLabel(job.workflow)}`));
     head.append(identity, node("span", `status ${job.status}`, job.status)); article.append(head);
     const progress = node("ol", "job-progress");
     const step = job.status === "queued" ? 0 : job.status === "running" ? 1 : 2;
     [job.queuePosition ? `Queued #${job.queuePosition}` : "Queued", "Executing", "Recorded"].forEach((label, index) => progress.append(node("li", index < step ? "done" : index === step ? "current" : "", label)));
     progress.setAttribute("aria-label", `Job progress: ${job.progress}`); article.append(progress);
-    const details = node("details"); details.append(node("summary", "", "View local log"), node("pre", "", job.log || "No output yet.")); article.append(details);
+    const details = node("details"); details.open = expandedJobs.has(job.id); details.append(node("summary", "", "View local log"), node("pre", "", job.log || "No output yet.")); article.append(details);
     const actions = node("div", "job-actions");
     if (["queued", "running"].includes(job.status)) { const cancel = node("button", "quiet-button", "Cancel job"); cancel.type = "button"; cancel.addEventListener("click", () => jobAction(job, "cancel")); actions.append(cancel); }
     else { const rerun = node("button", "quiet-button", "Run again"); rerun.type = "button"; rerun.addEventListener("click", () => jobAction(job, "rerun")); actions.append(rerun); }
@@ -104,11 +106,28 @@ function renderJobs(jobs) {
   });
 }
 
-function render(data) {
-  state.data = data; $("#workspace-title").textContent = data.workspace.name; $("#project-count").textContent = `${data.projects.length} projects / local`;
+function renderWorkspace(data) {
+  $("#workspace-title").textContent = data.workspace.name; $("#project-count").textContent = `${data.projects.length} projects / local`;
   const indexStatus = $("#index-status"); indexStatus.textContent = data.index?.stale ? `Showing last valid index: ${data.index.error}` : `Live index generation ${data.index?.generation ?? 1}`; indexStatus.classList.toggle("warning", Boolean(data.index?.stale));
   $("#pilot-status").textContent = data.pilot ? `Pilot evidence ${data.pilot.sessions.observed}/${data.pilot.sessions.required} · ${data.pilot.decision}` : "Pilot evidence unavailable";
-  const visibleProjects = [...data.projects, ...(data.publicationProjects ?? [])]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard)); renderJobs(data.jobs ?? []);
+  const visibleProjects = [...data.projects, ...(data.publicationProjects ?? [])]; const projects = $("#projects"); projects.replaceChildren(...visibleProjects.map(projectCard));
+}
+
+function workspaceFingerprint(data) {
+  const { jobs: _jobs, ...workspace } = data;
+  const { indexedAt: _indexedAt, ...index } = workspace.index ?? {};
+  return JSON.stringify({ ...workspace, index });
+}
+
+function preserveViewport(render) {
+  const { scrollX, scrollY } = window;
+  render();
+  window.scrollTo(scrollX, scrollY);
+}
+
+function workspaceRenderPaused() {
+  const active = document.activeElement;
+  return state.interactionDepth > 0 || Boolean(document.querySelector("dialog[open]")) || Boolean(active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName));
 }
 
 function showNotice(message) { const notice = $("#notice"); notice.textContent = message; notice.hidden = !message; }
@@ -137,44 +156,70 @@ async function jobAction(job, action) {
 }
 
 async function confirmGate(project, gate, intent) {
-  if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
-  const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, intent };
-  const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
-  const result = await response.json();
-  captureRotation(response); if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
+  state.interactionDepth += 1;
+  try {
+    if (!window.confirm(`Approve the exact current ${gate} gate in this confirmed human session?`)) return;
+    const payload = { confirm: true, reason: `Explicit guided Creator Studio ${gate} approval`, intent };
+    const response = await fetch(`/api/projects/${project.id}/lifecycle/gates/${gate}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
+    const result = await response.json();
+    captureRotation(response); if (!response.ok) { if (response.status === 409) await refresh({ force: true }); return showNotice(result.message); } await refresh({ force: true }); showNotice(`${gate[0].toUpperCase() + gate.slice(1)} approval recorded.`);
+  } finally { state.interactionDepth -= 1; }
 }
 
 async function prepareBeta(project) {
-  if (!window.confirm("Prepare Beta from every current canonical chapter and the fixed private Notion sync receipt?")) return;
-  const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-preparation`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
-  const result = await response.json(); captureRotation(response);
-  if (!response.ok) return showNotice(result.message); await refresh(); showNotice("Exact Beta material prepared on the server. Review the now-ready Beta gate before approving it.");
+  state.interactionDepth += 1;
+  try {
+    if (!window.confirm("Prepare Beta from every current canonical chapter and the fixed private Notion sync receipt?")) return;
+    const response = await fetch(`/api/projects/${project.id}/lifecycle/beta-preparation`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+    const result = await response.json(); captureRotation(response);
+    if (!response.ok) return showNotice(result.message); await refresh({ force: true }); showNotice("Exact Beta material prepared on the server. Review the now-ready Beta gate before approving it.");
+  } finally { state.interactionDepth -= 1; }
 }
 
 async function recordReleaseReview(project, kind, decision, roleInput, intent) {
   const qualifiedRole = roleInput?.value.trim() ?? "";
   if (kind === "rights-and-brand-review" && decision === "approved" && !qualifiedRole) { roleInput.focus(); return showNotice("Declare your non-empty qualified rights-review role before recording approval."); }
-  if (!window.confirm(`Record a durable ${decision} decision for ${reviewLabels[kind]} on the latest exact candidate?`)) return;
-  const payload = { confirm: true, intent, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
-  const response = await fetch(`/api/projects/${project.id}/release-reviews/${kind}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
-  const result = await response.json(); captureRotation(response);
-  if (!response.ok) { if (response.status === 409) await refresh(); return showNotice(result.message); } await refresh(); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the displayed exact candidate.`);
+  state.interactionDepth += 1;
+  try {
+    if (!window.confirm(`Record a durable ${decision} decision for ${reviewLabels[kind]} on the latest exact candidate?`)) return;
+    const payload = { confirm: true, intent, decision, ...(kind === "rights-and-brand-review" && qualifiedRole ? { qualifiedRole } : {}) };
+    const response = await fetch(`/api/projects/${project.id}/release-reviews/${kind}`, { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify(payload) });
+    const result = await response.json(); captureRotation(response);
+    if (!response.ok) { if (response.status === 409) await refresh({ force: true }); return showNotice(result.message); } await refresh({ force: true }); showNotice(`${reviewLabels[kind]} ${decision} decision recorded for the displayed exact candidate.`);
+  } finally { state.interactionDepth -= 1; }
 }
 
 async function bootstrapOperator() {
-  if (!window.confirm("Confirm that a human is present and taking responsibility for review decisions in this local session?")) return;
-  const submit = () => fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
-  let response = await submit();
-  if (response.status === 403) { await issueSession(); response = await submit(); }
-  const result = await response.json();
-  if (!response.ok) return showNotice(result.message);
-  state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; $("#human-session-status").textContent = "Confirmed human review session"; $("#confirm-human-session").textContent = "Renew human review session"; await refresh();
+  state.interactionDepth += 1;
+  try {
+    if (!window.confirm("Confirm that a human is present and taking responsibility for review decisions in this local session?")) return;
+    const submit = () => fetch("/api/session/bootstrap", { method: "POST", headers: { "content-type": "application/json", "x-rtb-publishing-csrf": state.csrfToken, "x-rtb-publishing-capability": state.mutationCapability, origin: window.location.origin, "sec-fetch-site": "same-origin" }, body: JSON.stringify({ confirm: true }) });
+    let response = await submit();
+    if (response.status === 403) { await issueSession(); response = await submit(); }
+    const result = await response.json();
+    if (!response.ok) return showNotice(result.message);
+    state.operator = result.operator; state.csrfToken = result.csrfToken; state.mutationCapability = result.mutationCapability; $("#human-session-status").textContent = "Confirmed human review session"; $("#confirm-human-session").textContent = "Renew human review session"; await refresh({ force: true });
+  } finally { state.interactionDepth -= 1; }
 }
 
 async function issueSession() { const session = await (await fetch("/api/session")).json(); state.operator = null; state.csrfToken = session.csrfToken; state.mutationCapability = session.mutationCapability; $("#human-session-status").textContent = "Human review session not confirmed"; }
 
-async function refresh() {
-  const response = await fetch("/api/workspace"); if (!response.ok) throw new Error("Workspace state could not be loaded. Run platform doctor in the terminal."); render(await response.json()); showNotice("");
+async function refresh({ force = false } = {}) {
+  const response = await fetch("/api/workspace"); if (!response.ok) throw new Error("Workspace state could not be loaded. Run platform doctor in the terminal.");
+  const data = await response.json();
+  const nextWorkspaceFingerprint = workspaceFingerprint(data), nextJobsFingerprint = JSON.stringify(data.jobs ?? []);
+  const workspaceChanged = force || nextWorkspaceFingerprint !== state.workspaceFingerprint;
+  const jobsChanged = force || nextJobsFingerprint !== state.jobsFingerprint;
+  state.data = data;
+  if (workspaceChanged && (force || !workspaceRenderPaused())) {
+    preserveViewport(() => renderWorkspace(data));
+    state.workspaceFingerprint = nextWorkspaceFingerprint;
+  }
+  if (jobsChanged) {
+    preserveViewport(() => renderJobs(data.jobs ?? []));
+    state.jobsFingerprint = nextJobsFingerprint;
+  }
+  showNotice("");
 }
 
 async function runWorkflow(project, workflow, button) {
